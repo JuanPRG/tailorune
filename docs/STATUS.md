@@ -50,23 +50,32 @@ number onto the printed page and no CSS can suppress it. Verified end to end in
 `vertical-slice.test.mjs`: clicking the button opens a real tab with the tailored content and the
 print hint both present.
 
+**Reliability, a right-sized slice of Phase 4.** `chatWithRetry()` retries only what's actually
+transient — timeouts, network errors, HTTP 429/5xx — with exponential backoff, and fails fast on
+everything else (a bad API key, malformed JSON, an empty response) where retrying would just waste
+time and get the same answer. This is not the full `RotatingClient` port (no multi-provider
+rotation, no per-model cooldowns) — that's still Phase 4 proper — but it closes the most common
+real-world failure mode (a transient rate limit killing the whole tailoring run) without that
+larger scope.
+
 ## Explicitly simplified from v4, on purpose
 
 - One combined LLM call for summary+bullets. v4 runs two separate calls (main content, then
   skills, with its own judge/retry loop). Skills are currently passed through unchanged.
-- No provider rotation/cooldown/rate-limiting (`llm.js` is single-provider, single-call). That's
-  Phase 4 in the plan; the vertical slice needed one honest call, not the full `RotatingClient`
-  port.
+- No provider rotation or per-model cooldowns across multiple providers (`llm.js` is
+  single-provider). Full `RotatingClient` fidelity is Phase 4 proper; what's built now is
+  single-provider retry-on-transient-failure, described above.
 - No cover letter generation yet.
 - No settings persistence UI beyond provider/model/API key.
 
 ## Test coverage
 
-- `npm run test:unit` — 41 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 47 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
-  headers), the LLM client's error taxonomy via injected-fetch mocking, the word-budget compactor,
-  prompt-construction leak checks, DOCX text extraction against a real `.docx`, HTML render
-  (including an XSS-escaping check, since this HTML is opened as a live page).
+  headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
+  injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
+  extraction against a real `.docx`, HTML render (including an XSS-escaping check, since this HTML
+  is opened as a live page).
 - `npm run test:e2e` — 3 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP

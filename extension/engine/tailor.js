@@ -14,7 +14,7 @@
 // comment for why that is the actual anti-fabrication guarantee, not the
 // instruction text.
 
-import { chat, LlmError } from './llm.js';
+import { chatWithRetry, LlmError } from './llm.js';
 import { flattenEditableEntries, applyTailoredContent, compactToWordBudget, modelWordCount } from './resumeModel.js';
 
 export const ONE_PAGE_WORD_BUDGET = 570; // measured in SPIKE_FINDINGS.md: 571 words -> 1 page, 649 -> 2
@@ -90,20 +90,15 @@ export function buildTailorMessages(model, jobDescription) {
 /**
  * @returns {Promise<{model: object, wordCount: number, compactionIterations: number, raw: string}>}
  */
-export async function tailorResume({ model, jobDescription, provider, apiKey, modelName, fetchImpl, timeoutMs }) {
+export async function tailorResume({ model, jobDescription, provider, apiKey, modelName, fetchImpl, timeoutMs, maxRetries, sleepImpl }) {
   const messages = buildTailorMessages(model, jobDescription);
 
   let response;
   try {
-    response = await chat({
-      provider,
-      apiKey,
-      model: modelName,
-      messages,
-      jsonMode: true,
-      fetchImpl,
-      timeoutMs,
-    });
+    response = await chatWithRetry(
+      { provider, apiKey, model: modelName, messages, jsonMode: true, fetchImpl, timeoutMs },
+      { maxRetries, sleepImpl },
+    );
   } catch (err) {
     if (err instanceof LlmError) throw err;
     throw new LlmError('network_error', String(err && err.message || err));

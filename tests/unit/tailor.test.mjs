@@ -130,8 +130,10 @@ test('tailorResume compacts to the one-page word budget when the mocked response
 test('tailorResume surfaces an LlmError from the underlying chat call rather than swallowing it', async () => {
   const model = parseTxt(fixture('taylor-reed-sparse.txt'));
   const fetchImpl = async () => new Response('quota exceeded', { status: 429 });
+  // 429 is retryable by design (see llm.test.mjs) -- disable retries here so
+  // this test isn't paying real backoff delay just to prove error surfacing.
   await assert.rejects(
-    tailorResume({ model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl }),
+    tailorResume({ model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl, maxRetries: 0 }),
     (err) => err.kind === 'http_error',
   );
 });

@@ -104,3 +104,44 @@ export async function chat({
     },
   };
 }
+
+// A real-world reliability gap the single-shot chat() above leaves open on
+// purpose (it needs to stay simple and directly testable): a rate limit or
+// a transient network blip fails the whole tailoring run. hirepilot_v4
+// handles this via per-model cooldowns across a whole provider chain
+// (llm.py:1216-1439) — full rotation is Phase 4, out of scope here. This is
+// the right-sized equivalent for a single-provider client: retry only what
+// is actually transient, with backoff, and fail fast on everything else.
+const RETRYABLE_KINDS = new Set(['timeout', 'network_error']);
+
+function isRetryableHttpStatus(status) {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+function isRetryable(err) {
+  if (!(err instanceof LlmError)) return false;
+  if (RETRYABLE_KINDS.has(err.kind)) return true;
+  return err.kind === 'http_error' && isRetryableHttpStatus(err.detail && err.detail.status);
+}
+
+/**
+ * @param {object} chatOpts - same shape as chat()'s single argument
+ * @param {object} [retryOpts]
+ * @param {number} [retryOpts.maxRetries]
+ * @param {number} [retryOpts.baseDelayMs]
+ * @param {(ms: number) => Promise<void>} [retryOpts.sleepImpl] - injection seam for tests, same role as fetchImpl
+ */
+export async function chatWithRetry(chatOpts, { maxRetries = 2, baseDelayMs = 500, sleepImpl } = {}) {
+  const sleep = sleepImpl || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await chat(chatOpts);
+    } catch (err) {
+      lastError = err;
+      if (!isRetryable(err) || attempt === maxRetries) throw err;
+      await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+  throw lastError; // unreachable, but keeps this function's return type honest
+}
