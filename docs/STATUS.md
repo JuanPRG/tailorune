@@ -41,6 +41,15 @@ LLM; a test written to check for exactly this caught it before it shipped.
 **One-page budget.** `compactToWordBudget()` replaces v4's render→count→shrink→re-render loop with
 the ~570-word arithmetic budget measured in `SPIKE_FINDINGS.md`.
 
+**Phase 6 — both output exits built.** DOCX (primary) auto-downloads via `chrome.downloads`, as
+above. HTML preview (secondary) opens in a real tab via a data URL from the popup's "Preview /
+Print PDF" button, one content model rendered two ways per `MIGRATION_PLAN.md` §3-4 — not two
+designs. The preview carries a visible reminder to uncheck Chrome's "Headers and footers" print
+setting, since `SPIKE_FINDINGS.md`'s gap-3 closure found that default injects a date/title/URL/page
+number onto the printed page and no CSS can suppress it. Verified end to end in
+`vertical-slice.test.mjs`: clicking the button opens a real tab with the tailored content and the
+print hint both present.
+
 ## Explicitly simplified from v4, on purpose
 
 - One combined LLM call for summary+bullets. v4 runs two separate calls (main content, then
@@ -50,18 +59,16 @@ the ~570-word arithmetic budget measured in `SPIKE_FINDINGS.md`.
   port.
 - No cover letter generation yet.
 - No settings persistence UI beyond provider/model/API key.
-- PDF *output* (the secondary, browser-print path from the plan's §3) is not built. DOCX is the
-  only output format so far — which is also the *primary* format per the plan, so this is not a
-  gap in what ships, only in what's optional.
 
 ## Test coverage
 
-- `npm run test:unit` — 36 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 41 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy via injected-fetch mocking, the word-budget compactor,
-  prompt-construction leak checks, DOCX text extraction against a real `.docx`.
+  prompt-construction leak checks, DOCX text extraction against a real `.docx`, HTML render
+  (including an XSS-escaping check, since this HTML is opened as a live page).
 - `npm run test:e2e` — 3 tests, real Chromium, real unpacked extension load, real
-  `chrome.downloads` calls: pasted-text vertical slice, real `.docx` upload, real `.pdf` upload.
-  LLM calls are answered by a real local HTTP server (`mockLlmServer.mjs`) rather than
-  `context.route()`, which does not intercept offscreen-document fetches — confirmed by direct
-  experiment, not found in any doc.
+  `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
+  checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP
+  server (`mockLlmServer.mjs`) rather than `context.route()`, which does not intercept
+  offscreen-document fetches — confirmed by direct experiment, not found in any doc.

@@ -9,6 +9,7 @@
 import { parseTxt } from '../engine/parseTxt.js';
 import { tailorResume } from '../engine/tailor.js';
 import { renderResumeDocx } from '../engine/renderDocx.js';
+import { renderResumeHtml } from '../engine/renderHtml.js';
 import { getProvider } from '../engine/providers.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
@@ -70,8 +71,14 @@ async function runTailor(payload) {
   const docxBytes = await renderResumeDocx(tailoredModel);
   const docxBase64 = await bytesToBase64(docxBytes);
   const filename = `${slugify(model.name)}_tailored_resume.docx`;
+  // Secondary output path (MIGRATION_PLAN.md §3): one content model, two
+  // exits. DOCX above auto-downloads; this HTML is opened as a real page so
+  // the user can preview it and, if they want a PDF, use the browser's own
+  // print-to-PDF -- the same Skia/PDF renderer as the current v4 backend's
+  // Playwright path, per SPIKE_FINDINGS.md.
+  const htmlPreview = renderResumeHtml(tailoredModel);
 
-  return { ok: true, docxBase64, filename, wordCount, compactionIterations };
+  return { ok: true, docxBase64, filename, htmlPreview, wordCount, compactionIterations };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

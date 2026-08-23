@@ -111,4 +111,17 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   assert.ok(text.includes('Jan 2026'), 'locked date missing from rendered docx');
   assert.ok(text.includes('Seneca Polytechnic'), 'locked education missing from rendered docx');
   assert.ok(text.includes('Advanced Diploma in Computer Programming'), 'locked education missing from rendered docx');
+
+  // Secondary output path: Preview / Print PDF opens a real tab with the
+  // same tailored content, rendered as HTML rather than DOCX.
+  assert.equal(await page.locator('#previewBtn').isVisible(), true, 'preview button should appear after a successful tailor');
+  const [previewPage] = await Promise.all([
+    context.waitForEvent('page'),
+    page.click('#previewBtn'),
+  ]);
+  await previewPage.waitForLoadState();
+  const previewText = await previewPage.textContent('body');
+  assert.ok(previewText.includes('Juan Rivera'), 'preview tab missing locked name');
+  assert.ok(previewText.includes(MOCKED_SUMMARY), 'preview tab missing tailored summary');
+  assert.ok(previewText.includes('Headers and footers'), 'preview tab missing the print-hint about Chrome header/footer defaults');
 });

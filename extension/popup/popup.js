@@ -15,9 +15,17 @@ const els = {
   modelName: document.getElementById('modelName'),
   apiKey: document.getElementById('apiKey'),
   tailorBtn: document.getElementById('tailorBtn'),
+  previewBtn: document.getElementById('previewBtn'),
   status: document.getElementById('status'),
   result: document.getElementById('result'),
 };
+
+let lastHtmlPreview = null;
+
+els.previewBtn.addEventListener('click', () => {
+  if (!lastHtmlPreview) return;
+  chrome.tabs.create({ url: `data:text/html;charset=utf-8,${encodeURIComponent(lastHtmlPreview)}` });
+});
 
 async function restoreSettings() {
   const settings = await getSettings();
@@ -80,8 +88,11 @@ async function onTailorClick() {
     els.result.textContent = JSON.stringify(response);
     if (response && response.ok) {
       setStatus(`Done — ${response.wordCount} words. Check your Downloads folder.`);
+      lastHtmlPreview = response.htmlPreview || null;
+      els.previewBtn.style.display = lastHtmlPreview ? 'block' : 'none';
     } else {
       setStatus(`Failed: ${(response && response.error) || 'unknown error'}`);
+      els.previewBtn.style.display = 'none';
     }
   } catch (err) {
     setStatus(`Failed: ${err && err.message ? err.message : err}`);

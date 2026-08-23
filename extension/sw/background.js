@@ -48,7 +48,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           return;
         }
         const downloadId = await triggerDownload(result.docxBase64, result.filename);
-        sendResponse({ ok: true, wordCount: result.wordCount, compactionIterations: result.compactionIterations, downloadId });
+        sendResponse({
+          ok: true,
+          wordCount: result.wordCount,
+          compactionIterations: result.compactionIterations,
+          downloadId,
+          htmlPreview: result.htmlPreview,
+        });
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });
       }
