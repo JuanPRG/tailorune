@@ -111,3 +111,81 @@ neither of which is a container-format choice.
 - The `docx` library was tested **in Node, not under MV3 CSP**. Extension viability unconfirmed.
 - pdf.js under MV3 (input parsing) untested.
 - `pypdf`/`python-docx` are proxies for real ATS parsers, not the parsers themselves.
+
+---
+
+# Gap Closure — round 2
+
+The three gaps left open above, tested rather than researched.
+
+## Gap 1 — `docx` under MV3 CSP: **CLOSED, passes**
+
+Bundled for the browser with esbuild (349 KB minified) and executed in real Chromium behind the
+literal MV3 default header `script-src 'self'; object-src 'self';`, served same-origin.
+
+```
+docx: { ok: true, bytes: 8629 }     CSP violations: 0
+```
+
+Note the harness first failed with an inline `<script>` block — correctly blocked. MV3 forbids
+inline script, so the module had to be an external file. That is a build constraint, not a defect.
+
+## Gap 2 — pdf.js under MV3 CSP: **CLOSED, passes, and cheaper than expected**
+
+pdf.js 6.2.108, worker loaded from a local bundled file, parsing one of the real tailored resumes.
+
+| CSP | `getDocument` default | `isEvalSupported: false` | Violations |
+|---|---|---|---|
+| `script-src 'self'` | 1 page, 3,104 chars, 375 words | identical | **0** |
+| `script-src 'self' 'wasm-unsafe-eval'` | identical | identical | **0** |
+
+**`wasm-unsafe-eval` is not required.** Static analysis found 1 `new Function` and 8 `WebAssembly`
+references in `pdf.worker.min.mjs`, but those paths are not reached during text extraction — only
+running it proved that. Bundle: `pdf.min.mjs` 448 KB + `pdf.worker.min.mjs` 1.3 MB.
+
+*Implementation note:* pdf.js returns positioned text items; joining them naively drops spaces
+(`"Juan RiveraToronto, ON"`). Item spacing / `hasEOL` must be handled explicitly.
+
+## Gap 3 — print-dialog margins: **partially closed**
+
+**Proven:** `@page` is honored on the default path — the exact configuration the dialog's
+"Margins: Default" uses (no programmatic override, `preferCSSPageSize`).
+
+| Setup | Lines on page 1 |
+|---|---|
+| no `@page` | 66 |
+| `@page{margin:0.75in}` | 57 |
+| `@page{margin:1.5in}` | 48 |
+
+**Still untested:** a user actively switching the dropdown to None / Minimum / Custom. Claude in
+Chrome was not connected, so the interactive dialog could not be driven. This is user intent
+rather than an architectural flaw, and now only affects the optional PDF path.
+
+## Bonus — the DOCX one-page question
+
+Not on the original gap list, and the more important risk for a DOCX-primary design: Word reflows
+content, so there is no `@page`-style guarantee. Measured by generating resumes at increasing
+length and converting with LibreOffice (Arial 10.5pt, 0.75in margins):
+
+| Bullets | Words | Pages |
+|---|---|---|
+| 9 | 337 | 1 |
+| 12 | 415 | 1 |
+| 15 | 493 | 1 |
+| 18 | 571 | **1** |
+| 21 | 649 | **2** |
+
+**One-page budget is ~570–600 words.** The real resume measured earlier is 511 words — comfortably
+inside. This gives the tailoring prompt a concrete word budget and a deterministic pre-export
+check, replacing v4's render-count-shrink-retry loop.
+
+## Net position
+
+| Component | Status |
+|---|---|
+| `docx` generation in MV3 | Verified working, 0 CSP violations |
+| pdf.js text extraction in MV3 | Verified working, no `wasm-unsafe-eval` |
+| `@page` margins on default print path | Verified honored |
+| One-page control via word budget | Verified, threshold measured |
+| jsPDF | **Rejected** — corrupts accented names |
+| User-overridden print margins | Accepted residual risk, optional path only |
