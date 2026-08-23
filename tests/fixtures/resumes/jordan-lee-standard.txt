@@ -1,0 +1,16 @@
+Jordan Lee
+Vancouver, British Columbia, Canada | jordan.lee@example.com | 604-555-0199
+https://www.linkedin.com/in/jordanlee
+
+WORK EXPERIENCE
+Product Analyst | Northwind Analytics | Vancouver, BC
+Mar 2021 - Present
+- Built dashboards that cut reporting turnaround by 50% for 3 business units.
+
+EDUCATION
+Master's in Data Science | 2019
+Simon Fraser University
+
+TECHNICAL SKILLS
+Programming Languages: Python, SQL
+Tools: Tableau, Excel

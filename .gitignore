@@ -3,3 +3,11 @@ dist/
 *.log
 .DS_Store
 .env
+
+# build output -- regenerate with `npm run build`
+extension/offscreen/offscreen.bundle.js
+extension/vendor/pdfjs/
+
+# Playwright/E2E scratch
+tests/e2e/.tmp/
+test-results/

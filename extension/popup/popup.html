@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tailorune</title>
+  <style>
+    body { font: 13px system-ui, sans-serif; width: 360px; margin: 0; padding: 12px; color: #12181a; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    textarea, input, select { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; border: 1px solid #cfd8d9; border-radius: 4px; }
+    textarea { resize: vertical; }
+    #jobDescription { height: 70px; }
+    #resumeText { height: 90px; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    button { margin-top: 12px; width: 100%; padding: 8px; font: inherit; font-weight: 600; background: #0f6e78; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: default; }
+    #status { margin-top: 8px; font-size: 12px; color: #64777d; min-height: 16px; }
+    #result { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Tailorune</h1>
+
+  <label for="resumeText">Resume (plain text)</label>
+  <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
+  <div style="margin-top:6px; font-size:12px; color:#64777d;">or</div>
+  <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" style="margin-top:4px;" />
+
+  <label for="jobDescription">Job description</label>
+  <textarea id="jobDescription" placeholder="Paste the job description..."></textarea>
+
+  <div class="row">
+    <div>
+      <label for="provider">Provider</label>
+      <select id="provider">
+        <option value="gemini">Gemini</option>
+        <option value="groq">Groq</option>
+        <option value="cerebras">Cerebras</option>
+        <option value="openrouter">OpenRouter</option>
+      </select>
+    </div>
+    <div>
+      <label for="modelName">Model (optional)</label>
+      <input id="modelName" placeholder="provider default" />
+    </div>
+  </div>
+
+  <label for="apiKey">API key</label>
+  <input id="apiKey" type="password" placeholder="stored locally only" />
+
+  <button id="tailorBtn" type="button">Tailor resume</button>
+  <div id="status"></div>
+  <pre id="result" aria-hidden="true"></pre>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

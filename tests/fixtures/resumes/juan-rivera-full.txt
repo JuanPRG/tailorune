@@ -1,0 +1,23 @@
+Juan Rivera
+Toronto, ON | 647-555-0142 | j.rivera@example.com
+
+SUMMARY
+Results-driven Software Developer and recent Computer Programming Advanced Diploma graduate with 8 months of professional co-op experience. Specialized in backend development using Python and building scalable REST APIs.
+
+TECHNICAL SKILLS
+- Languages: Java, JavaScript (Node.js), Python, C++, SQL (Oracle, MySQL), HTML/CSS
+- Cloud & DevOps: Amazon Web Services (AWS), Docker, Git, GitHub Actions (CI/CD), Linux
+
+TECHNICAL PROJECTS
+AI-Powered Job Automation Engine (ApplyPilot Fork) | Python, Playwright, LangChain, MCP
+- Integrated Model Context Protocol (MCP) to allow AI agents to interact securely with local filesystem data and external job boards.
+- Developed custom Python scrapers to aggregate data from multiple platforms.
+
+WORK EXPERIENCE
+Co-Op Support Services Officer (SLG Leader) | Seneca Polytechnic | Toronto, ON                    May 2025 - Jan 2026
+- Led and mentored groups of 20+ students in the Computer Programming program.
+- Collaborated with faculty to develop specialized curriculum resources.
+
+EDUCATION
+Advanced Diploma in Computer Programming and Analysis (CPA)
+Seneca Polytechnic, Toronto, ON
