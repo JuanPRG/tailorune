@@ -90,7 +90,9 @@ Full detail and method in [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 | CORS from extension pages | **Bypassed** for `host_permissions` hosts, and rate-limit headers stay readable |
 | Current v4 output | **57/57** untagged `Skia/PDF`, one page, clean extraction |
 | `window.print()` fidelity | **Same renderer.** `page.pdf()` is CDP `Page.printToPDF` is Chrome print-to-PDF |
-| `@page` CSS margins | **Honored** on the default path (66 to 57 to 48 lines as the margin grows) |
+| `@page` CSS margins | **Honored** — confirmed in the real print dialog (Margins=Default, 2 sheets, 44 lines on page 1, matching headless exactly) |
+| Chrome print headers/footers | **ON by default**, injects date + title + URL + page number. **Not CSS-suppressible** |
+| Chrome print background graphics | **OFF by default** — template must not rely on fills |
 | `docx` lib under MV3 CSP | **Passes**, 0 violations, 8.6 KB output |
 | pdf.js under MV3 CSP | **Passes**, 0 violations, **no `wasm-unsafe-eval` needed** |
 | jsPDF | **Rejected** — see below |
@@ -188,7 +190,8 @@ dependency and only loads when a PDF is actually imported.
 
 | Loss | Severity | Note |
 |---|---|---|
-| Silent PDF auto-download | Medium | PDF now needs the print dialog; DOCX auto-downloads. Revisit only if users object. |
+| Silent PDF auto-download | Medium | PDF needs the print dialog; DOCX auto-downloads. |
+| **Print headers/footers** | **Medium** | Chrome injects date, title, URL and page number by default, and CSS cannot suppress it. The user must uncheck "Headers and footers" once. No programmatic fix exists, which is why DOCX is primary rather than co-equal. |
 | Per-paragraph font/size/colour from source | Accepted | See §1.1 |
 | Two-column and table layouts | Low | v4 already linearizes and reorders these badly |
 | `/api/resumes/open` (open in Word) | Low | Extensions cannot launch OS apps |
@@ -260,7 +263,7 @@ which is what shortens everything after it.
 | 3 | Pure-logic core | Extract `tailor.py`'s shared utils first (five modules need them), then the pure modules with their Python tests as spec. No browser required. | 1.5 wk |
 | 4 | LLM client | Chain interleaving, per-model cooldowns, rate-limit reservation and reconciliation, the 6-way failure taxonomy, Gemini 403 escalation, strict-JSON degradation. `fetch` plus `AbortController`. | 1 wk |
 | 5 | Input parsing | pdf.js (with item-spacing handling) and DOCX via JSZip, feeding the ported classifier | 4 d |
-| 6 | Output | HTML template, preview, print CSS; DOCX builder; word-budget enforcement; cover letter | 4 d |
+| 6 | Output | HTML template (no background fills, since they do not print by default), preview, print CSS, and a one-time "uncheck Headers and footers" hint in the print affordance; DOCX builder; word-budget enforcement; cover letter | 4 d |
 | 7 | Pipeline | Real orchestration, retry and judge loops, resumable job state, and **real progress reporting** — today the entire multi-minute run reports one opaque stage | 1 wk |
 | 8 | UI | Lift popup and settings; strip connection, recovery and version surfaces; capability gates become unconditional | 1 wk |
 | 9 | Autofill rewire | Lift `hp-*.js` unchanged, port the mapper, delete the HTTP hop and its guard machinery | 3 d |
