@@ -189,3 +189,65 @@ check, replacing v4's render-count-shrink-retry loop.
 | One-page control via word budget | Verified, threshold measured |
 | jsPDF | **Rejected** — corrupts accented names |
 | User-overridden print margins | Accepted residual risk, optional path only |
+
+---
+
+# Gap 3 — closed against the real print dialog
+
+Observed directly in the user's Chrome (extension-dispatched input cannot reach browser chrome, so
+`window.print()` opened the dialog and the user read it off). Probe page declared
+`@page { size: letter; margin: 1.5in }` with 52 numbered lines.
+
+## Confirmed: `@page` is honored, and matches the headless numbers exactly
+
+| Dialog reading | Value |
+|---|---|
+| Margins dropdown | **Default** |
+| Sheets of paper | **2** |
+| Lines rendered on page 1 | **Line 01 - Line 44** |
+
+44 lines is precisely what the headless run measured. So the print path honors `@page` and the
+default dialog state does not fight it. Recall the headless result that an explicit margin override
+of `0in` and `0.4in` both still produced 44 lines - `@page` beat them - which contradicts the
+comment at `render.py:98-101` for a second time.
+
+*Still untested:* a user actively selecting Margins -> None. Given `@page` beat every programmatic
+override, it is likely authoritative there too, but this is not verified.
+
+## NEW — two Chrome print defaults that work against a resume
+
+Both visible in the same dialog, and neither was on my radar.
+
+**1. "Headers and footers" is ON by default.** The preview shows Chrome injecting, into the margin
+area:
+
+- top-left: the date (`8/23/26, 12:21 AM`)
+- top-centre: the document `<title>`
+- bottom-left: the URL (`127.0.0.1:8791/margintest.html`)
+- bottom-right: the page number (`1/2`)
+
+**This is a browser-level setting and cannot be suppressed from CSS.** A user who prints a tailored
+resume without unchecking it gets a date, a page title, a `localhost`/extension URL and a page
+number printed onto the document. That is unacceptable on a resume, and it is an extra-text risk
+for a parser.
+
+Mitigation is user education (uncheck the box) or a preflight instruction in the UI - there is no
+programmatic fix. This materially weakens browser print as a *primary* output and further
+justifies DOCX-primary.
+
+**2. "Background graphics" is OFF by default.** Any background fill or shading in the HTML template
+will silently not print. The template must carry structure through borders, weight and spacing
+rather than fills - which is what v4's template already does (black section rules, no fills), so
+this is a constraint to preserve rather than a change.
+
+## Revised standing of the PDF path
+
+| | Before this test | After |
+|---|---|---|
+| `@page` margins | assumed honored | **confirmed honored** |
+| Dialog margin override | unknown risk | Default is safe; None untested |
+| Headers/footers | **not considered** | **on by default, not CSS-suppressible** |
+| Background graphics | not considered | off by default; template must not rely on fills |
+
+Browser print remains a legitimate secondary path for users who want a PDF, but it now carries a
+required manual step. DOCX stays the primary, auto-download output.
