@@ -43,9 +43,35 @@ export async function extractDocxText(bytes) {
   // one run of text.
   const paragraphs = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
   const lines = paragraphs.map((p) => {
-    const runs = p.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
-    const text = runs
-      .map((r) => decodeXmlEntities(r.replace(/<w:t[^>]*>/, '').replace(/<\/w:t>/, '')))
+    // Walk a paragraph's inline content IN ORDER, so separators keep their
+    // position relative to the text around them.
+    //
+    // Two things must be matched, not just text runs:
+    //
+    //   <w:t>      the actual text. The `(?:\s[^>]*)?` is load-bearing: a
+    //              naive `<w:t[^>]*>` also matches every other element whose
+    //              name starts with "w:t" -- <w:tab>, <w:tabs>, <w:tblPr>,
+    //              <w:tc> -- and then swallows the markup between it and the
+    //              next real </w:t> as if it were text. A real resume using
+    //              right-aligned tab stops for its dates printed raw OOXML
+    //              into the finished document because of exactly that.
+    //
+    //   <w:tab/>   a tab stop, which in resumes is overwhelmingly how a date
+    //              is pushed to the right margin ("Job Title<tab>2018 -
+    //              Present"). Dropping it silently glues the two together as
+    //              "...S.A.S.2018 - Present", and parseTxt.js can then no
+    //              longer split the date into its own field -- it looks for
+    //              two or more spaces. Emitting two spaces preserves that.
+    const inline = p.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>|<w:tab\s*\/>|<w:br\s*\/>/g) || [];
+    const text = inline
+      .map((node) => {
+        if (/^<w:tab/.test(node)) return '  ';
+        if (/^<w:br/.test(node)) return String.fromCharCode(10);
+        const inner = node.replace(/^<w:t(?:\s[^>]*)?>/, '').replace(/<\/w:t>$/, '');
+        // Defence in depth: a text run should never contain markup, so if
+        // any survived the match above, drop it rather than print it.
+        return decodeXmlEntities(inner.replace(/<[^>]*>/g, ''));
+      })
       .join('');
 
     // A real Word bulleted list carries no literal bullet character in its

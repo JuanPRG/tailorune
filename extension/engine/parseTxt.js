@@ -75,10 +75,34 @@ function parseEntries(bodyLines) {
       current.bullets.push(text);
       continue;
     }
+    // A bare date range on its own line belongs to the entry above it.
     if (current && !current.meta && current.bullets.length === 0 && isDateOnlyLine(line)) {
       current.meta = line;
       continue;
     }
+
+    // A non-bullet, non-date line sitting between a title and its first
+    // bullet is a location/context subtitle, not a new role:
+    //
+    //   Retained Financial Advisor  |  Yesos Colombia S.A.S.   2018 - Present
+    //   Colombia (Long-term outsourced engagement, Manufacturing)   <-- here
+    //   - Served as the sole financial lead...
+    //
+    // Treating it as a new entry (the previous behaviour) doubled the role
+    // count on a real resume and handed every bullet to the phantom entry,
+    // leaving each actual job with none. v4 told these apart using bold runs
+    // from the .docx; that signal does not survive normalization to text, so
+    // position is the signal here: a title already claimed, no bullets yet.
+    //
+    // Guarded so a genuinely bullet-less role is not absorbed by the role
+    // above it: a line carrying its own date range is always a new entry,
+    // whatever came before it.
+    const carriesOwnDate = TRAILING_DATE_RE.test(line) || isDateOnlyLine(line);
+    if (current && current.title && current.bullets.length === 0 && !carriesOwnDate) {
+      current.meta = current.meta ? `${current.meta} · ${line}` : line;
+      continue;
+    }
+
     const { title, meta } = splitTrailingDateRange(line);
     current = { title, meta, bullets: [] };
     entries.push(current);

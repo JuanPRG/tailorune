@@ -52,3 +52,55 @@ test('Word\'s native bulleted lists (no literal bullet character in the text, li
     assert.ok(entry.bullets.length >= 2, `entry "${entry.title}" has only ${entry.bullets.length} bullets`);
   }
 });
+
+// --- Regression: the three defects found in a real tailored resume ---------
+//
+// All three came from ONE run against the user's actual general resume, which
+// uses right-aligned tab stops for its dates and a location/context line under
+// each job title. The pre-existing juan-rivera.docx fixture uses neither
+// shape, which is precisely why every test above passed while the shipped
+// document was broken. juan-rivera-tabstops.docx is that real file.
+
+test('no raw OOXML markup survives into the extracted text', async () => {
+  // Defect 1: `<w:t[^>]*>` also matched <w:tab>, <w:tabs>, <w:tblPr> and
+  // <w:tc>, then swallowed everything up to the next real </w:t> as if it
+  // were body text -- so raw XML was printed into the finished resume.
+  const bytes = readFileSync(fixturePath('juan-rivera-tabstops.docx'));
+  const text = await extractDocxText(bytes);
+  const leaks = text.match(/<[^>]*>/g) || [];
+  assert.deepEqual(leaks, [], `markup leaked into extracted text: ${leaks.slice(0, 5).join(' ')}`);
+});
+
+test('a tab stop between a job title and its date becomes whitespace, so the date still parses into its own field', async () => {
+  // Defect 2: <w:tab/> was dropped outright, gluing the two together as
+  // "...Yesos Colombia S.A.S.2018 - Present". parseTxt splits on two-or-more
+  // spaces, so the date then had nowhere to go and stayed inside the title.
+  const bytes = readFileSync(fixturePath('juan-rivera-tabstops.docx'));
+  const model = parseTxt(await extractDocxText(bytes));
+  const experience = model.sections.find((s) => s.kind === 'experience');
+
+  for (const entry of experience.entries) {
+    assert.ok(entry.meta, `entry "${entry.title}" lost its date range entirely`);
+    assert.doesNotMatch(entry.title, /\d{4}\s*[-–—]/, `date stayed glued inside the title: "${entry.title}"`);
+  }
+  assert.ok(experience.entries.some((e) => e.meta.includes('2018 – Present')),
+    `expected an open-ended date range, got ${JSON.stringify(experience.entries.map((e) => e.meta))}`);
+});
+
+test('a location/context line under a job title is kept as that job\'s subtitle, not read as a separate job', async () => {
+  // Defect 3: those lines started new entries, which doubled the role count
+  // (8 instead of 4) and handed every bullet to the phantom entry -- so each
+  // real job rendered as a bare title with nothing under it.
+  const bytes = readFileSync(fixturePath('juan-rivera-tabstops.docx'));
+  const model = parseTxt(await extractDocxText(bytes));
+  const experience = model.sections.find((s) => s.kind === 'experience');
+
+  assert.equal(experience.entries.length, 4,
+    `expected 4 real jobs, got ${experience.entries.length}: ${JSON.stringify(experience.entries.map((e) => e.title))}`);
+  for (const entry of experience.entries) {
+    assert.ok(entry.bullets.length >= 1, `job "${entry.title}" ended up with no bullets`);
+  }
+  const advisor = experience.entries[0];
+  assert.match(advisor.title, /Retained Financial Advisor/);
+  assert.match(advisor.meta, /Long-term outsourced engagement/, 'the context line was dropped instead of retained as meta');
+});

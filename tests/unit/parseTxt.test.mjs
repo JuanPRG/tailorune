@@ -78,3 +78,34 @@ test('taylor-reed-sparse: no section headers at all -> implicit summary paragrap
   assert.equal(model.sections.length, 0);
   assert.equal(model.skills, null);
 });
+
+test('a context line between a title and its bullets is meta, but a bullet-less role with its own date still starts a new entry', () => {
+  // The subtitle rule keys off position (title claimed, no bullets yet), so it
+  // needs a guard: otherwise a role that genuinely has no bullets would be
+  // absorbed into the role above it. A line carrying its own date range is
+  // always a new entry.
+  const model = parseTxt([
+    'Ada Lovelace',
+    'ada@example.com',
+    '',
+    'EXPERIENCE',
+    'Analytical Engine Lead  |  Difference Co.  1842 – 1843',
+    'London, England (Mechanical computation)',
+    '- Wrote the first published algorithm.',
+    'Correspondent  |  Royal Society  1840 – 1842',
+    'Advisor  |  Babbage Works  1838 – 1840',
+    '- Reviewed engine notation.',
+  ].join('\n'));
+
+  const experience = model.sections.find((s) => s.kind === 'experience');
+  assert.equal(experience.entries.length, 3,
+    JSON.stringify(experience.entries.map((e) => e.title)));
+  assert.match(experience.entries[0].meta, /London, England/);
+  assert.equal(experience.entries[0].bullets.length, 1);
+  // The bullet-less middle role survives as its own entry rather than being
+  // folded into the one above it.
+  assert.match(experience.entries[1].title, /Correspondent/);
+  assert.equal(experience.entries[1].meta, '1840 – 1842');
+  assert.equal(experience.entries[1].bullets.length, 0);
+  assert.match(experience.entries[2].title, /Advisor/);
+});
