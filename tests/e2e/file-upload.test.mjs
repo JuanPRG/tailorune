@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload } from './helpers.mjs';
+import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -60,7 +60,8 @@ async function runUploadScenario(t, fixtureFilename) {
   await page.setInputFiles('#resumeFile', path.resolve(__dirname, '../fixtures/resumes', fixtureFilename));
   await page.fill('#jobDescription', 'Seeking a backend engineer experienced with Python and AWS.');
   await page.selectOption('#provider', 'gemini');
-  await page.fill('#apiKey', 'test-key-not-real');
+  await fillApiKey(page);
+  await page.uncheck('#includeCoverLetter');
   await page.click('#tailorBtn');
 
   await page.waitForFunction(() => {
@@ -71,7 +72,8 @@ async function runUploadScenario(t, fixtureFilename) {
   const resultJson = JSON.parse(await page.textContent('#result'));
   assert.equal(resultJson.ok, true, `expected ok:true for ${fixtureFilename}, got ${JSON.stringify(resultJson)}`);
 
-  const downloadItem = await waitForCompletedDownload(sw, resultJson.downloadId);
+  const resumeDownload = resultJson.downloads.find((d) => d.kind === 'resume');
+  const downloadItem = await waitForCompletedDownload(sw, resumeDownload.downloadId);
   const buffer = readFileSync(downloadItem.filename);
   const text = await docxTextOf(buffer);
 

@@ -8,8 +8,10 @@
 
 import { parseTxt } from '../engine/parseTxt.js';
 import { tailorResume } from '../engine/tailor.js';
-import { renderResumeDocx } from '../engine/renderDocx.js';
+import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js';
 import { renderResumeHtml } from '../engine/renderHtml.js';
+import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
+import { validatePreferences } from '../engine/preferences.js';
 import { getProvider } from '../engine/providers.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
@@ -60,25 +62,69 @@ async function runTailor(payload) {
   // an offscreen document (confirmed empirically, not documented anywhere).
   const provider = baseUrlOverride ? { ...getProvider(providerId), baseUrl: baseUrlOverride } : getProvider(providerId);
 
-  const { model: tailoredModel, wordCount, compactionIterations } = await tailorResume({
+  const preferences = validatePreferences(payload.preferences || {});
+  const resolvedModelName = modelName || provider.defaultModel;
+  const llmArgs = { provider, apiKey, modelName: resolvedModelName };
+
+  const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await tailorResume({
     model,
     jobDescription,
-    provider,
-    apiKey,
-    modelName: modelName || provider.defaultModel,
+    preferences,
+    ...llmArgs,
   });
 
-  const docxBytes = await renderResumeDocx(tailoredModel);
-  const docxBase64 = await bytesToBase64(docxBytes);
-  const filename = `${slugify(model.name)}_tailored_resume.docx`;
+  const slug = slugify(model.name);
+  const outputs = [];
+
+  const resumeDocx = await renderResumeDocx(tailoredModel);
+  outputs.push({
+    kind: 'resume',
+    filename: `${slug}_tailored_resume.docx`,
+    base64: await bytesToBase64(resumeDocx),
+  });
+
   // Secondary output path (MIGRATION_PLAN.md §3): one content model, two
-  // exits. DOCX above auto-downloads; this HTML is opened as a real page so
-  // the user can preview it and, if they want a PDF, use the browser's own
-  // print-to-PDF -- the same Skia/PDF renderer as the current v4 backend's
-  // Playwright path, per SPIKE_FINDINGS.md.
+  // exits. The DOCX above auto-downloads; this HTML is opened as a real page
+  // so the user can preview it and, if they want a PDF, use the browser's own
+  // print-to-PDF -- the same Skia/PDF renderer as the v4 backend's Playwright
+  // path, per SPIKE_FINDINGS.md.
   const htmlPreview = renderResumeHtml(tailoredModel);
 
-  return { ok: true, docxBase64, filename, htmlPreview, wordCount, compactionIterations };
+  let coverLetter = null;
+  if (payload.includeCoverLetter) {
+    const { paragraphs, report } = await generateCoverLetter({
+      model: tailoredModel,
+      job: { title: payload.jobTitle, company: payload.employer, description: jobDescription },
+      preferences,
+      ...llmArgs,
+    });
+    const job = { title: payload.jobTitle, company: payload.employer };
+    const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
+    outputs.push({
+      kind: 'cover_letter',
+      filename: `${slug}_cover_letter.docx`,
+      base64: await bytesToBase64(clDocx),
+    });
+    coverLetter = {
+      status: report.status,
+      wordCount: report.validator ? report.validator.wordCount : null,
+      warnings: report.validator ? report.validator.warnings : [],
+      errors: report.validator ? report.validator.errors : [],
+      htmlPreview: renderCoverLetterHtml({ bodyParagraphs: paragraphs, model: tailoredModel, job }),
+    };
+  }
+
+  return {
+    ok: true,
+    outputs,
+    htmlPreview,
+    wordCount,
+    compactionIterations,
+    resumeStatus: resumeReport.status,
+    resumeWarnings: resumeReport.validator.warnings,
+    resumeErrors: resumeReport.validator.errors,
+    coverLetter,
+  };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseTxt } from '../../extension/engine/parseTxt.js';
-import { buildTailorMessages, parseLlmJson, tailorResume, ONE_PAGE_WORD_BUDGET } from '../../extension/engine/tailor.js';
+import { buildTailorMessages, parseLlmJson, tailorResume, validateTailoredModel, ONE_PAGE_WORD_BUDGET } from '../../extension/engine/tailor.js';
+import { validatePreferences } from '../../extension/engine/preferences.js';
 import { getProvider } from '../../extension/engine/providers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -136,4 +137,97 @@ test('tailorResume surfaces an LlmError from the underlying chat call rather tha
     tailorResume({ model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl, maxRetries: 0 }),
     (err) => err.kind === 'http_error',
   );
+});
+
+// --- validateTailoredModel: the anti-fabrication checks ---
+
+test('validateTailoredModel flags a professional identity the source resume never claimed', () => {
+  const original = parseTxt(fixture('juan-rivera-full.txt'));
+  const tailored = structuredClone(original);
+  // The real resume says "Software Developer"; claiming Product Manager is
+  // an identity change, not a transferable-skills reframing.
+  tailored.summary = 'Product Manager with 4 years of experience leading roadmaps.';
+  const v = validateTailoredModel(original, tailored);
+  assert.equal(v.passed, false);
+  assert.ok(v.errors.some((e) => /professional identity/.test(e) && /product manager/.test(e)));
+});
+
+test('validateTailoredModel allows a role title the source resume genuinely contains', () => {
+  const original = parseTxt(fixture('juan-rivera-full.txt'));
+  const tailored = structuredClone(original);
+  // "Software Developer" is in the real summary already.
+  tailored.summary = 'Software Developer focused on backend APIs and cloud deployment work.';
+  const v = validateTailoredModel(original, tailored);
+  assert.ok(!v.errors.some((e) => /professional identity/.test(e)), JSON.stringify(v.errors));
+});
+
+test('validateTailoredModel errors when an entry loses every bullet (content dropped, not tailored)', () => {
+  const original = parseTxt(fixture('juan-rivera-full.txt'));
+  const tailored = structuredClone(original);
+  tailored.sections.find((s) => s.kind === 'experience').entries[0].bullets = [];
+  const v = validateTailoredModel(original, tailored);
+  assert.equal(v.passed, false);
+  assert.ok(v.errors.some((e) => /lost all of its bullet points/.test(e)));
+});
+
+test('validateTailoredModel warns on a too-short summary without failing the whole run', () => {
+  const original = parseTxt(fixture('juan-rivera-full.txt'));
+  const tailored = structuredClone(original);
+  tailored.summary = 'Short summary.';
+  const v = validateTailoredModel(original, tailored);
+  assert.equal(v.passed, true, 'a short summary is a warning, not an error');
+  assert.ok(v.warnings.some((w) => /only 2 words/.test(w)));
+});
+
+// --- retry + preferences wiring ---
+
+test('tailorResume retries with the validation errors fed back, then reports the passing attempt', async () => {
+  const model = parseTxt(fixture('juan-rivera-full.txt'));
+  const bad = { summary: 'Product Manager with deep roadmap ownership across many teams and years.', entries: [] };
+  const good = { summary: 'Software Developer building backend services with Python and AWS at scale daily.', entries: [] };
+  const bodies = [JSON.stringify(bad), JSON.stringify(good)];
+  let call = 0;
+  const fetchImpl = async () => {
+    const content = bodies[Math.min(call, bodies.length - 1)];
+    call += 1;
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+  };
+  const result = await tailorResume({
+    model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl,
+  });
+  assert.equal(result.report.status, 'approved');
+  assert.equal(result.report.attempts, 2);
+});
+
+test('tailorResume reports fallback_after_validation rather than a false approved when every attempt fails', async () => {
+  const model = parseTxt(fixture('juan-rivera-full.txt'));
+  const bad = JSON.stringify({ summary: 'Product Manager owning the roadmap for several separate product lines.', entries: [] });
+  const fetchImpl = async () => new Response(JSON.stringify({ choices: [{ message: { content: bad } }] }), { status: 200 });
+  const result = await tailorResume({
+    model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl,
+  });
+  assert.equal(result.report.status, 'fallback_after_validation');
+  assert.ok(result.report.validator.errors.length > 0);
+  assert.ok(result.model, 'must still return a usable model');
+});
+
+test('tailorResume sanitizes em dashes and smart quotes out of the model output', async () => {
+  const model = parseTxt(fixture('juan-rivera-full.txt'));
+  const body = JSON.stringify({
+    summary: 'Software Developer — building APIs with “quoted” terms and solid backend delivery work.',
+    entries: [{ index: 0, bullets: ['Did a thing — with dashes.'] }],
+  });
+  const fetchImpl = async () => new Response(JSON.stringify({ choices: [{ message: { content: body } }] }), { status: 200 });
+  const result = await tailorResume({ model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl });
+  assert.ok(!result.model.summary.includes('—'), 'em dash should be sanitized');
+  assert.ok(!result.model.summary.includes('“'), 'smart quote should be sanitized');
+});
+
+test('buildTailorMessages injects the user preference section, including free-text notes', () => {
+  const model = parseTxt(fixture('juan-rivera-full.txt'));
+  const prefs = validatePreferences({ resume_density: 'concise', resume_notes: 'Emphasize the AWS work.' });
+  const system = buildTailorMessages(model, 'jd', prefs).find((m) => m.role === 'system').content;
+  assert.match(system, /Resume density: concise/);
+  assert.match(system, /Emphasize the AWS work\./);
+  assert.match(system, /scope="style_only"/);
 });

@@ -31,6 +31,25 @@ async function triggerDownload(base64, filename) {
   return downloadId;
 }
 
+/**
+ * Download every produced artifact (tailored resume, and the cover letter
+ * when requested). Sequential rather than Promise.all: two data-URL
+ * downloads fired simultaneously is exactly the kind of race the v4 backend
+ * had to add a whole staging-and-move dance to work around
+ * (server.py:604-630), and there is no reason to invite it back here.
+ */
+async function downloadOutputs(outputs) {
+  const results = [];
+  for (const output of outputs || []) {
+    results.push({
+      kind: output.kind,
+      filename: output.filename,
+      downloadId: await triggerDownload(output.base64, output.filename),
+    });
+  }
+  return results;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'sw') return undefined;
 
@@ -47,13 +66,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse(result || { ok: false, error: 'Offscreen document returned no result.' });
           return;
         }
-        const downloadId = await triggerDownload(result.docxBase64, result.filename);
+        const downloads = await downloadOutputs(result.outputs);
         sendResponse({
           ok: true,
           wordCount: result.wordCount,
           compactionIterations: result.compactionIterations,
-          downloadId,
+          downloads,
           htmlPreview: result.htmlPreview,
+          resumeStatus: result.resumeStatus,
+          resumeWarnings: result.resumeWarnings,
+          resumeErrors: result.resumeErrors,
+          coverLetter: result.coverLetter,
         });
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });

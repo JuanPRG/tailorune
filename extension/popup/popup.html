@@ -4,19 +4,28 @@
   <meta charset="utf-8" />
   <title>Tailorune</title>
   <style>
-    body { font: 13px system-ui, sans-serif; width: 360px; margin: 0; padding: 12px; color: #12181a; }
+    body { font: 13px system-ui, sans-serif; width: 380px; margin: 0; padding: 12px; color: #12181a; }
     h1 { font-size: 15px; margin: 0 0 10px; }
     label { display: block; margin: 10px 0 4px; font-weight: 600; }
     textarea, input, select { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; border: 1px solid #cfd8d9; border-radius: 4px; }
     textarea { resize: vertical; }
     #jobDescription { height: 70px; }
-    #resumeText { height: 90px; }
+    #resumeText { height: 80px; }
     .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
+    .row > * { flex: 1; min-width: 0; }
     button { margin-top: 12px; width: 100%; padding: 8px; font: inherit; font-weight: 600; background: #0f6e78; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: default; }
+    button.secondary { background: #37474d; margin-top: 6px; }
     #status { margin-top: 8px; font-size: 12px; color: #64777d; min-height: 16px; }
+    #warnings { margin-top: 6px; font-size: 12px; color: #9c5326; }
+    #warnings ul { margin: 4px 0 0; padding-left: 18px; }
     #result { display: none; }
+    details { margin-top: 12px; border-top: 1px solid #e2e9e9; padding-top: 8px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 12px; color: #37474d; }
+    details .body { padding-top: 4px; }
+    .check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-weight: 600; }
+    .check input { width: auto; }
+    .hint { font-size: 11px; color: #64777d; font-weight: 400; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -24,7 +33,7 @@
 
   <label for="resumeText">Resume (plain text)</label>
   <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
-  <div style="margin-top:6px; font-size:12px; color:#64777d;">or</div>
+  <div class="hint">or upload .txt / .docx / .pdf</div>
   <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" style="margin-top:4px;" />
 
   <label for="jobDescription">Job description</label>
@@ -32,26 +41,96 @@
 
   <div class="row">
     <div>
-      <label for="provider">Provider</label>
-      <select id="provider">
-        <option value="gemini">Gemini</option>
-        <option value="groq">Groq</option>
-        <option value="cerebras">Cerebras</option>
-        <option value="openrouter">OpenRouter</option>
-      </select>
+      <label for="jobTitle">Job title</label>
+      <input id="jobTitle" placeholder="Backend Engineer" />
     </div>
     <div>
-      <label for="modelName">Model (optional)</label>
-      <input id="modelName" placeholder="provider default" />
+      <label for="employer">Company</label>
+      <input id="employer" placeholder="Acme Corp" />
     </div>
   </div>
 
-  <label for="apiKey">API key</label>
-  <input id="apiKey" type="password" placeholder="stored locally only" />
+  <div class="check">
+    <input id="includeCoverLetter" type="checkbox" checked />
+    <label for="includeCoverLetter" style="margin:0;">Also generate a cover letter</label>
+  </div>
+
+  <details>
+    <summary>Tailoring preferences</summary>
+    <div class="body">
+      <div class="row">
+        <div>
+          <label for="resumeDensity">Resume density</label>
+          <select id="resumeDensity">
+            <option value="concise">Concise</option>
+            <option value="standard">Standard</option>
+            <option value="detailed" selected>Detailed</option>
+          </select>
+        </div>
+        <div>
+          <label for="keywordAlignment">Keyword alignment</label>
+          <select id="keywordAlignment">
+            <option value="light">Light</option>
+            <option value="balanced" selected>Balanced</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="coverLetterLength">Letter length</label>
+          <select id="coverLetterLength">
+            <option value="short">Short</option>
+            <option value="standard" selected>Standard</option>
+            <option value="long">Long</option>
+          </select>
+        </div>
+        <div>
+          <label for="coverLetterTone">Letter tone</label>
+          <select id="coverLetterTone">
+            <option value="direct" selected>Direct</option>
+            <option value="warm">Warm</option>
+            <option value="confident">Confident</option>
+            <option value="formal">Formal</option>
+          </select>
+        </div>
+      </div>
+      <label for="preservePoints">Points to preserve</label>
+      <input id="preservePoints" placeholder="e.g. keep the AWS work prominent" />
+      <label for="resumeNotes">Resume notes</label>
+      <input id="resumeNotes" placeholder="optional guidance for the resume" />
+      <label for="coverLetterNotes">Cover letter notes</label>
+      <input id="coverLetterNotes" placeholder="optional guidance for the letter" />
+    </div>
+  </details>
+
+  <details id="providerDetails">
+    <summary>AI provider</summary>
+    <div class="body">
+      <div class="row">
+        <div>
+          <label for="provider">Provider</label>
+          <select id="provider">
+            <option value="gemini">Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="cerebras">Cerebras</option>
+            <option value="openrouter">OpenRouter</option>
+          </select>
+        </div>
+        <div>
+          <label for="modelName">Model (optional)</label>
+          <input id="modelName" placeholder="provider default" />
+        </div>
+      </div>
+      <label for="apiKey">API key</label>
+      <input id="apiKey" type="password" placeholder="stored locally only" />
+    </div>
+  </details>
 
   <button id="tailorBtn" type="button">Tailor resume</button>
-  <button id="previewBtn" type="button" style="display:none; margin-top:6px; background:#37474d;">Preview / Print PDF</button>
+  <button id="previewBtn" class="secondary" type="button" style="display:none;">Preview / Print resume</button>
+  <button id="previewClBtn" class="secondary" type="button" style="display:none;">Preview / Print cover letter</button>
   <div id="status"></div>
+  <div id="warnings"></div>
   <pre id="result" aria-hidden="true"></pre>
 
   <script type="module" src="popup.js"></script>

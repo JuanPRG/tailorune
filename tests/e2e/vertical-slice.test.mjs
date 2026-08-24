@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload } from './helpers.mjs';
+import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -68,7 +68,8 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   await page.fill('#resumeText', FIXTURE);
   await page.fill('#jobDescription', 'Seeking a backend engineer experienced with Python and AWS.');
   await page.selectOption('#provider', 'gemini');
-  await page.fill('#apiKey', 'test-key-not-real');
+  await fillApiKey(page);
+  await page.uncheck('#includeCoverLetter');
   await page.click('#tailorBtn');
 
   await page.waitForFunction(() => {
@@ -78,7 +79,9 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
 
   const resultJson = JSON.parse(await page.textContent('#result'));
   assert.equal(resultJson.ok, true, `expected ok:true, got ${JSON.stringify(resultJson)}`);
-  assert.ok(resultJson.downloadId !== undefined, 'expected a real chrome.downloads id in the response');
+  assert.ok(Array.isArray(resultJson.downloads) && resultJson.downloads.length >= 1, 'expected at least one download in the response');
+  const resumeDownload = resultJson.downloads.find((d) => d.kind === 'resume');
+  assert.ok(resumeDownload && resumeDownload.downloadId !== undefined, 'expected a real chrome.downloads id for the resume');
   assert.equal(mockLlm.requestCount(), 1, 'expected exactly one real HTTP request to reach the mock LLM server');
 
   // Note: downloadItem.filename here is wherever Playwright's own
@@ -86,7 +89,7 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   // extension) -- it does not reflect the filename the extension actually
   // requested. That's Playwright's download-capture behavior, not
   // something under test; the content checks below are the real proof.
-  const downloadItem = await waitForCompletedDownload(sw, resultJson.downloadId);
+  const downloadItem = await waitForCompletedDownload(sw, resumeDownload.downloadId);
 
   const buffer = readFileSync(downloadItem.filename);
   const text = await docxTextOf(buffer);
@@ -114,7 +117,7 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
 
   // Secondary output path: Preview / Print PDF opens a real tab with the
   // same tailored content, rendered as HTML rather than DOCX.
-  assert.equal(await page.locator('#previewBtn').isVisible(), true, 'preview button should appear after a successful tailor');
+  assert.equal(await page.locator('#previewBtn').isVisible(), true, 'resume preview button should appear after a successful tailor');
   const [previewPage] = await Promise.all([
     context.waitForEvent('page'),
     page.click('#previewBtn'),

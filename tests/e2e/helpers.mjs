@@ -34,3 +34,13 @@ export async function waitForCompletedDownload(sw, downloadId, timeoutMs = 15000
   }
   throw new Error(`Download ${downloadId} did not complete within ${timeoutMs}ms`);
 }
+
+/**
+ * The API key input lives inside a collapsed <details>, which Playwright
+ * cannot fill. popup.js auto-expands it when no key is stored, but a test
+ * shouldn't depend on that timing -- force it open, then fill.
+ */
+export async function fillApiKey(page, key = 'test-key-not-real') {
+  await page.locator('#providerDetails').evaluate((el) => { el.open = true; });
+  await page.fill('#apiKey', key);
+}

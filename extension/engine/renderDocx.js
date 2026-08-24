@@ -102,3 +102,48 @@ export async function renderResumeDocx(model) {
   const blob = await Packer.toBlob(doc);
   return new Uint8Array(await blob.arrayBuffer());
 }
+
+const CL_MARGIN_TWIPS = 1224; // 0.85in, matching cover_letter.py's COVER_LETTER_MARGIN
+
+/**
+ * Cover letter as DOCX. Greeting and sign-off are assembled here from the
+ * resume model, never from the LLM — see coverLetter.js's module comment.
+ * Same Arial/10.5pt body as the resume so the two read as a set.
+ */
+export function buildCoverLetterDocument({ bodyParagraphs, model, job }) {
+  const name = model.name || 'Candidate';
+  const contactLine = model.contact ? model.contact.split('\n').join(' | ') : '';
+  const jobLine = `Re: ${job.title || 'the role'}${job.company ? ` at ${job.company}` : ''}`;
+
+  const children = [
+    textParagraph(name, { bold: true, size: 36, after: 20 }),
+  ];
+  if (contactLine) children.push(textParagraph(contactLine, { size: 19, after: 10 }));
+  children.push(textParagraph(jobLine, { size: 19, rule: true, after: 240 }));
+
+  // Greeting and sign-off bold, body regular -- matches cover_letter.py:265-272.
+  children.push(textParagraph('Dear Hiring Manager,', { bold: true, after: 200 }));
+  for (const paragraph of bodyParagraphs) {
+    children.push(textParagraph(paragraph, { after: 200 }));
+  }
+  children.push(textParagraph('Sincerely,', { bold: true, after: 20 }));
+  children.push(textParagraph(name, { bold: true }));
+
+  return new Document({
+    sections: [
+      {
+        properties: {
+          page: { margin: { top: CL_MARGIN_TWIPS, right: CL_MARGIN_TWIPS, bottom: CL_MARGIN_TWIPS, left: CL_MARGIN_TWIPS } },
+        },
+        children,
+      },
+    ],
+  });
+}
+
+/** @returns {Promise<Uint8Array>} */
+export async function renderCoverLetterDocx({ bodyParagraphs, model, job }) {
+  const doc = buildCoverLetterDocument({ bodyParagraphs, model, job });
+  const blob = await Packer.toBlob(doc);
+  return new Uint8Array(await blob.arrayBuffer());
+}

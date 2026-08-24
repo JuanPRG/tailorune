@@ -3,10 +3,10 @@
 Tracks what actually exists in code, against MIGRATION_PLAN.md's phases. Updated as work lands —
 this file describes the repo as it is, not as it's planned to be.
 
-**Scope for this build: tailoring + resume (CV) only.** Autofill, cover letters, and the v4
-backend are explicitly out of scope per the standing decision — this repo is a standalone
-experiment, not a parallel track alongside v4, and no user data is migrated (real resumes are used
-only as test fixtures).
+**Scope for this build: resume tailoring and cover letters.** **Autofill** is the one feature
+explicitly out of scope per the standing decision. This repo is a standalone experiment, not a
+parallel track alongside v4, and no user data is migrated — real resumes are used only as test
+fixtures.
 
 ## Done
 
@@ -58,25 +58,55 @@ rotation, no per-model cooldowns) — that's still Phase 4 proper — but it clo
 real-world failure mode (a transient rate limit killing the whole tailoring run) without that
 larger scope.
 
-## Explicitly simplified from v4, on purpose
+## Feature parity with v4 (non-autofill)
 
-- One combined LLM call for summary+bullets. v4 runs two separate calls (main content, then
-  skills, with its own judge/retry loop). Skills are currently passed through unchanged.
-- No provider rotation or per-model cooldowns across multiple providers (`llm.js` is
-  single-provider). Full `RotatingClient` fidelity is Phase 4 proper; what's built now is
-  single-provider retry-on-transient-failure, described above.
-- No cover letter generation yet.
-- No settings persistence UI beyond provider/model/API key.
+The first pass of this build shipped only the thin vertical slice and deferred several v4 features
+behind a "Phase 2" boundary. That was the wrong call — the only feature actually excluded from
+scope was autofill, and cover letter generation had been listed as a keep from the very first
+message. Those gaps are now closed:
+
+| v4 feature | Status here |
+|---|---|
+| Resume tailoring | Ported, with preferences + validation + retry |
+| **Cover letter generation** | **Ported** — `coverLetter.js`, full validation suite, own DOCX + print preview |
+| **Prompt preferences** | **Ported** — `preferences.js`, wired into both the resume and letter prompts and into the popup UI |
+| **Tailoring validation + retry** | **Ported** — `validateTailoredModel()` plus a retry loop feeding errors back into the next attempt |
+| **Shared text utils / anti-fabrication watchlists** | **Ported** — `textUtils.js` (v4 kept these inside `tailor.py` and had five modules import its privates; MIGRATION_PLAN.md §5 flagged that as the one coupling smell to fix during the port) |
+| Transient-failure retry | Ported (`chatWithRetry`), single-provider |
+| Autofill (mapper, rules, answer memory, candidate settings) | **Out of scope by decision** |
+
+### Deliberate departures from v4, with reasons
+
+- **One combined LLM call for summary + bullets; skills pass through unchanged.** v4 runs a second
+  call for skills with a 20% verbatim-retention guard. Not yet ported — skills are currently
+  untailored, which is a real quality gap for keyword matching and the most valuable thing left.
+- **No LLM "judge" pass.** v4 spends a second call per attempt asking a model to re-check the
+  tailoring. `validateTailoredModel()` checks the same things deterministically, and the structural
+  guarantee (locked fields never enter the prompt) covers the failure mode the judge existed to
+  catch. Deliberate, not deferred.
+- **No multi-provider rotation or per-model cooldowns.** v4's `RotatingClient` fails over across a
+  four-provider chain; this fails over across retries on one provider. Still a genuine reliability
+  regression vs. v4 and the clearest remaining gap after skills.
+- **No JD cleanup call.** v4 derives employer/title from the raw JD with an LLM call; here they're
+  two optional text fields in the popup.
+- **No resume library.** One resume per run, pasted or uploaded. v4 stores multiple with
+  default/archive/rename/revisions.
+- **`tailoring_style` preference dropped.** v4 kept it only so an older extension's Settings UI
+  wouldn't break, then forcibly overwrote it and never read it. No legacy UI here to stay
+  compatible with.
 
 ## Test coverage
 
-- `npm run test:unit` — 47 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 87 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
   extraction against a real `.docx`, HTML render (including an XSS-escaping check, since this HTML
-  is opened as a live page).
-- `npm run test:e2e` — 3 tests, real Chromium, real unpacked extension load, real
+  is opened as a live page), cover-letter validation (word/paragraph bounds, the 5% tolerance band,
+  AI-cliche phrases, em-dash rejection, and the fabrication check against the resume's own skills),
+  preference validation and prompt-section building, and the tailoring validator's
+  professional-identity and dropped-bullet checks.
+- `npm run test:e2e` — 4 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP
   server (`mockLlmServer.mjs`) rather than `context.route()`, which does not intercept
