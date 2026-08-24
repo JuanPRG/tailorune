@@ -10,10 +10,14 @@ fixtures.
 
 ## Done
 
-**Phase 1 — Skeleton.** MV3 manifest (`offscreen`, `storage`, `downloads`; host_permissions for
-the 4 LLM hosts only — no autofill means no broad content-script permissions at all), service
-worker, offscreen document, build pipeline (`npm run build` bundles the offscreen entry + vendors
-pdf.js's prebuilt files).
+**Phase 1 — Skeleton.** MV3 manifest, service worker, offscreen document, build pipeline
+(`npm run build` bundles the offscreen entry and vendors pdf.js's prebuilt files).
+
+Permissions are deliberately narrow: `storage`, `downloads`, `offscreen`, plus `activeTab` and
+`scripting` for reading a job posting. `host_permissions` covers only the 4 LLM API hosts. There is
+**no declared `content_scripts` entry and no broad host access** — the job-page reader is injected
+on demand under `activeTab`, which Chrome grants for a single tab only because the user clicked
+this extension's own toolbar button. Dropping autofill is what keeps it this small.
 
 **Phase 2 — Vertical slice, exceeded.** The plan's minimum bar was "TXT in → one LLM call → DOCX
 in Downloads." Built and proven with a real end-to-end browser test (not just unit tests):
@@ -50,13 +54,17 @@ number onto the printed page and no CSS can suppress it. Verified end to end in
 `vertical-slice.test.mjs`: clicking the button opens a real tab with the tailored content and the
 print hint both present.
 
-**Reliability, a right-sized slice of Phase 4.** `chatWithRetry()` retries only what's actually
-transient — timeouts, network errors, HTTP 429/5xx — with exponential backoff, and fails fast on
-everything else (a bad API key, malformed JSON, an empty response) where retrying would just waste
-time and get the same answer. This is not the full `RotatingClient` port (no multi-provider
-rotation, no per-model cooldowns) — that's still Phase 4 proper — but it closes the most common
-real-world failure mode (a transient rate limit killing the whole tailoring run) without that
-larger scope.
+**Phase 4 — reliability, complete.** Two layers. `chatWithRetry()` retries only what is actually
+transient (timeouts, network errors, HTTP 429/5xx) with exponential backoff, and fails fast on a bad
+key or malformed output where a retry would get the same answer. Above it, `chatWithRotation()`
+walks a chain built from every provider the user supplied a key for, expanded into one entry per
+model and interleaved round-robin by model index — so every provider's best model is tried before
+any provider's fallback model. Cooldowns are keyed per (provider, model), because free-tier limits
+are commonly per-model: a throttled `gemini-2.5-flash` must not take `gemini-3.1-flash-lite` down
+with it. A quota 429 earns a 15-minute cooldown and a plain rate-limit 429 earns 60 seconds, told
+apart by inspecting the response body. One rotating caller is shared across the resume, skills,
+judge, and cover-letter passes, so a provider throttled early is already cooling down later in the
+same run.
 
 ## Feature parity with v4 (non-autofill)
 
@@ -75,31 +83,35 @@ message. Those gaps are now closed:
 | **Skills tailoring** | **Ported** — `tailorSkills.js`, own pass, own prompt, 20% verbatim retention guard enforced deterministically |
 | **Multi-provider rotation + cooldowns** | **Ported** — `rotatingClient.js`, per-provider cooldowns with quota-vs-rate-limit distinction |
 | Transient-failure retry | Ported (`chatWithRetry`), plus rotation above |
+| **JD extraction from the job page** | **Ported** — `content/extractJob.js`, 3 tiers + Indeed adapter, `activeTab` only |
+| **LLM judge (semantic review)** | **Ported** — `judge.js`, fails open, advisory, feeds the retry loop |
+| **Per-model rotation** | **Ported** — model pools expanded and interleaved, cooldowns keyed per (provider, model) |
 | Autofill (mapper, rules, answer memory, candidate settings) | **Out of scope by decision** |
 
 ### Deliberate departures from v4, with reasons
 
-- **No LLM "judge" pass.** v4 spends a second call per attempt asking a model to re-check the
-  tailoring. `validateTailoredModel()` checks the same things deterministically, and the structural
-  guarantee (locked fields never enter the prompt) covers the failure mode the judge existed to
-  catch. Deliberate, not deferred.
-- **Rotation is per-provider, not per-model.** v4 explodes each provider's model pool into separate
-  chain entries and interleaves them round-robin by model index, with cooldowns keyed on
-  (provider, model, key). That machinery exists to squeeze a large multi-model config; here each
-  provider has one configured model, so the chain is per-provider and the six-way failure taxonomy
-  collapses to the four buckets that actually change behaviour (quota / rate limit / transient /
-  config error), plus "don't retry a 400 against every provider".
-- **No JD cleanup call.** v4 derives employer/title from the raw JD with an LLM call; here they're
-  two optional text fields in the popup.
 - **No resume library.** One resume per run, pasted or uploaded. v4 stores multiple with
-  default/archive/rename/revisions.
+  default/archive/rename/revisions. Purely convenience; the only remaining feature gap.
+- **No JD cleanup LLM call.** v4 spent a call deriving employer/title from raw scraped JD text.
+  Largely obsolete here: `content/extractJob.js` reads both directly from JSON-LD or platform
+  selectors for free, and they are editable fields in the popup either way.
 - **`tailoring_style` preference dropped.** v4 kept it only so an older extension's Settings UI
   wouldn't break, then forcibly overwrote it and never read it. No legacy UI here to stay
   compatible with.
 
+### Known limitation: the activeTab grant path is not automated
+
+"Read job from this page" depends on `activeTab`, which Chrome grants only when the user *invokes*
+the extension on a tab — i.e. clicks its toolbar icon. Playwright cannot click the browser's own
+toolbar, so the happy path through a real click is **unverified by automated tests**. What is
+tested: the full extraction logic against real pages (all three tiers, `@graph` nesting, async
+panes, malformed JSON-LD, job-board name rejection, re-injection safety), and that the service
+worker converts a missing grant into actionable guidance rather than leaking Chrome's raw
+"Extension manifest must request permission" string. The click path itself needs one manual check.
+
 ## Test coverage
 
-- `npm run test:unit` — 119 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 138 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
@@ -110,8 +122,10 @@ message. Those gaps are now closed:
   professional-identity and dropped-bullet checks, the skills retention guard (including that a
   wholesale replacement reverts rather than being accepted), and provider rotation (failover order,
   cooldown expiry, quota-vs-rate-limit cooldown lengths, and that a 400 is not retried across the
-  chain).
-- `npm run test:e2e` — 6 tests, real Chromium, real unpacked extension load, real
+  chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
+  field; that it skips the call when nothing changed; and that it is not called when the
+  deterministic validator already failed), and per-model chain expansion and interleaving.
+- `npm run test:e2e` — 14 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP
   server (`mockLlmServer.mjs`) rather than `context.route()`, which does not intercept

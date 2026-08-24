@@ -1,14 +1,20 @@
 // rotatingClient.js — multi-provider failover with per-provider cooldowns.
 //
-// Ported in spirit from hirepilot_v4/llm.py's `RotatingClient` (llm.py:1161,
-// main loop :1463-1763). Not a line-for-line port: v4 explodes each
-// provider's model pool into one chain entry per model and interleaves them
-// round-robin by model index (:2098-2102), tracks cooldowns in process-global
-// dicts keyed by (provider, model, api_key), and distinguishes six failure
-// types with four different cooldown durations. That machinery exists to
-// squeeze a large multi-model config; here each provider has one configured
-// model, so the chain is per-provider and the taxonomy collapses to the
-// distinction that actually changes behaviour:
+// Ported from hirepilot_v4/llm.py's `RotatingClient` (llm.py:1161, main loop
+// :1463-1763). Like v4, each provider's model pool is exploded into one chain
+// entry per model and the entries are interleaved round-robin by model index
+// (:2098-2102), with cooldowns keyed per (provider, model) -- free-tier rate
+// limits are commonly per-model, so a throttled `gemini-2.5-flash` should not
+// take `gemini-3.1-flash-lite` down with it.
+//
+// Round-robin by model index rather than provider-then-provider means the
+// order is: every provider's best model first, then every provider's second
+// model. A user with three keys gets three strong attempts before falling
+// back to lighter models, rather than exhausting one provider's whole pool
+// while two untouched providers wait.
+//
+// v4's six failure types collapse to the four buckets that actually change
+// behaviour here:
 //
 //   - quota_exhausted   -> long cooldown, this provider is done for a while
 //   - rate_limited      -> short cooldown, try again soon
@@ -31,24 +37,51 @@ export const COOLDOWN_MS = {
   config_error: 900_000,
 };
 
-const cooldowns = new Map(); // providerId -> epoch ms when it becomes usable again
+const cooldowns = new Map(); // "providerId::model" -> epoch ms when usable again
+
+function cooldownKey(providerId, model) {
+  return `${providerId}::${model}`;
+}
 
 /** Test seam: cooldowns are module state, so tests need a way to reset them. */
 export function resetCooldowns() {
   cooldowns.clear();
 }
 
+/** @returns {Object<string, number>} "provider::model" -> seconds remaining */
 export function cooldownState(now = Date.now()) {
   const state = {};
-  for (const [providerId, until] of cooldowns) {
-    if (until > now) state[providerId] = Math.round((until - now) / 1000);
+  for (const [key, until] of cooldowns) {
+    if (until > now) state[key] = Math.round((until - now) / 1000);
   }
   return state;
 }
 
-function isAvailable(providerId, now) {
-  const until = cooldowns.get(providerId);
+function isAvailable(providerId, model, now) {
+  const until = cooldowns.get(cooldownKey(providerId, model));
   return !until || until <= now;
+}
+
+/**
+ * Expand {providerId, apiKey, model?} entries into one entry per model, then
+ * interleave round-robin by model index. An explicit `model` pins that entry
+ * to just that model -- an explicit choice is never silently widened.
+ */
+export function buildChainEntries(chain) {
+  const perProvider = chain.map((entry) => {
+    const provider = getProvider(entry.providerId);
+    const models = entry.model ? [entry.model] : provider.models;
+    return models.map((model) => ({ providerId: entry.providerId, apiKey: entry.apiKey, model }));
+  });
+
+  const interleaved = [];
+  const deepest = Math.max(0, ...perProvider.map((list) => list.length));
+  for (let modelIndex = 0; modelIndex < deepest; modelIndex++) {
+    for (const list of perProvider) {
+      if (list[modelIndex]) interleaved.push(list[modelIndex]);
+    }
+  }
+  return interleaved;
 }
 
 /**
@@ -98,12 +131,13 @@ export async function chatWithRotation({
     throw new LlmError('provider_configuration_error', 'No providers configured.');
   }
 
+  const entries = buildChainEntries(chain);
   const now = nowFn();
-  const available = chain.filter((entry) => isAvailable(entry.providerId, now));
+  const available = entries.filter((entry) => isAvailable(entry.providerId, entry.model, now));
   // If everything is cooling down, still try the whole chain rather than
   // failing without making a single request -- a stale cooldown should not
   // be able to hard-block the user.
-  const order = available.length ? available : chain;
+  const order = available.length ? available : entries;
 
   const attempts = [];
   let lastError = null;
@@ -111,7 +145,7 @@ export async function chatWithRotation({
   for (const entry of order) {
     const base = getProvider(entry.providerId);
     const provider = baseUrlOverride ? { ...base, baseUrl: baseUrlOverride } : base;
-    const model = entry.model || base.defaultModel;
+    const { model } = entry;
 
     try {
       const response = await chat({
@@ -128,14 +162,14 @@ export async function chatWithRotation({
       if (!retryable) throw err;
 
       const cooldownMs = COOLDOWN_MS[kind];
-      if (cooldownMs) cooldowns.set(entry.providerId, nowFn() + cooldownMs);
+      if (cooldownMs) cooldowns.set(cooldownKey(entry.providerId, model), nowFn() + cooldownMs);
     }
   }
 
   // Every provider failed. Surface the last real error, annotated with the
   // full attempt trail so the UI can say *which* providers were tried and
   // why each one failed, rather than a bare "it didn't work".
-  const summary = attempts.map((a) => `${a.providerId}: ${a.kind}`).join('; ');
+  const summary = attempts.map((a) => `${a.providerId}/${a.model}: ${a.kind}`).join('; ');
   const err = new LlmError(
     lastError && lastError.kind === 'http_error' && attempts.every((a) => a.kind === 'quota_exhausted')
       ? 'quota_exhausted'

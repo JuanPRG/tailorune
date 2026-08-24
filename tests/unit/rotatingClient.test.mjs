@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   chatWithRotation, classifyFailure, resetCooldowns, cooldownState, COOLDOWN_MS,
+  buildChainEntries,
 } from '../../extension/engine/rotatingClient.js';
 import { LlmError } from '../../extension/engine/llm.js';
 
@@ -111,9 +112,10 @@ test('chatWithRotation throws a providers_unavailable error listing every attemp
     chatWithRotation({ chain: CHAIN, messages: [], fetchImpl }),
     (err) => {
       assert.equal(err.kind, 'providers_unavailable');
-      assert.equal(err.detail.attempts.length, 3);
-      assert.match(err.message, /gemini: transient/);
-      assert.match(err.message, /cerebras: transient/);
+      // 3 providers expanded across their model pools: 2 + 2 + 2.
+      assert.equal(err.detail.attempts.length, 6);
+      assert.match(err.message, /gemini\/gemini-2\.5-flash: transient/);
+      assert.match(err.message, /cerebras\/gpt-oss-120b: transient/);
       return true;
     },
   );
@@ -131,23 +133,24 @@ test('chatWithRotation reports quota_exhausted when every provider is specifical
 
 // --- cooldowns ---
 
-test('a rate-limited provider is skipped on the next call while its cooldown holds', async (t) => {
+test('a rate-limited (provider, model) pair is skipped on the next call while its cooldown holds', async (t) => {
   resetCooldowns();
   t.after(resetCooldowns);
-  const seen = [];
-  const fetchImpl = routedFetch({
-    'generativelanguage.googleapis.com': () => new Response('Too many requests', { status: 429 }),
-  });
-  const tracking = async (url) => { seen.push(url); return fetchImpl(url); };
+  const bodies = [];
+  const fetchImpl = async (url, init) => {
+    bodies.push(JSON.parse(init.body).model);
+    if (url.includes('googleapis')) return new Response('Too many requests', { status: 429 });
+    return ok();
+  };
 
-  await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl: tracking });
-  const firstRoundGeminiCalls = seen.filter((u) => u.includes('googleapis')).length;
-  assert.equal(firstRoundGeminiCalls, 1);
+  await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl });
+  assert.deepEqual(bodies, ['gemini-2.5-flash', 'openai/gpt-oss-120b'],
+    'should try the best gemini model, then fail over to the next provider');
 
-  // Second call: gemini is cooling down, so it should be skipped entirely.
-  await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl: tracking });
-  const totalGeminiCalls = seen.filter((u) => u.includes('googleapis')).length;
-  assert.equal(totalGeminiCalls, 1, 'the cooling-down provider must not be retried');
+  bodies.length = 0;
+  await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl });
+  assert.ok(!bodies.includes('gemini-2.5-flash'),
+    'the cooling-down model must be skipped on the next call');
 });
 
 test('a cooldown expires, and the provider is used again afterwards', async (t) => {
@@ -162,7 +165,7 @@ test('a cooldown expires, and the provider is used again afterwards', async (t) 
   };
 
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl, nowFn });
-  assert.ok(cooldownState(clock).gemini > 0, 'gemini should be cooling down');
+  assert.ok(cooldownState(clock)['gemini::gemini-2.5-flash'] > 0, 'the throttled model should be cooling down');
 
   clock += COOLDOWN_MS.rate_limited + 1;
   geminiShouldFail = false;
@@ -178,7 +181,7 @@ test('a quota failure earns a much longer cooldown than a plain rate limit', asy
     'generativelanguage.googleapis.com': () => new Response('insufficient_quota', { status: 429 }),
   });
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl, nowFn: () => clock });
-  const remainingSecs = cooldownState(clock).gemini;
+  const remainingSecs = cooldownState(clock)['gemini::gemini-2.5-flash'];
   assert.ok(remainingSecs > COOLDOWN_MS.rate_limited / 1000, `expected a long cooldown, got ${remainingSecs}s`);
 });
 
@@ -190,7 +193,8 @@ test('when every provider is cooling down, the chain is still tried rather than 
   await assert.rejects(chatWithRotation({
     chain: CHAIN, messages: [], fetchImpl: async () => new Response('down', { status: 503 }), nowFn: () => clock,
   }));
-  assert.equal(Object.keys(cooldownState(clock)).length, 3);
+  // One cooldown per (provider, model) pair, not per provider.
+  assert.equal(Object.keys(cooldownState(clock)).length, 6);
 
   // A stale cooldown must not be able to block the user entirely.
   const result = await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl: async () => ok('recovered'), nowFn: () => clock });
@@ -203,4 +207,75 @@ test('chatWithRotation rejects an empty chain with a clear configuration error',
     chatWithRotation({ chain: [], messages: [] }),
     (err) => err.kind === 'provider_configuration_error',
   );
+});
+
+// --- per-model expansion and interleaving ---
+
+test('buildChainEntries expands each provider into one entry per model', () => {
+  const entries = buildChainEntries([{ providerId: 'gemini', apiKey: 'k' }]);
+  assert.deepEqual(entries.map((e) => e.model), ['gemini-2.5-flash', 'gemini-3.1-flash-lite']);
+  assert.ok(entries.every((e) => e.apiKey === 'k'));
+});
+
+test('buildChainEntries interleaves round-robin by model index, not provider by provider', () => {
+  const entries = buildChainEntries([
+    { providerId: 'gemini', apiKey: 'a' },
+    { providerId: 'groq', apiKey: 'b' },
+  ]);
+  // Every provider's BEST model first, then every provider's second model --
+  // so a user with two keys gets two strong attempts before any fallback.
+  assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
+    'gemini/gemini-2.5-flash',
+    'groq/openai/gpt-oss-120b',
+    'gemini/gemini-3.1-flash-lite',
+    'groq/openai/gpt-oss-20b',
+  ]);
+});
+
+test('buildChainEntries respects an explicitly pinned model instead of widening to the pool', () => {
+  const entries = buildChainEntries([{ providerId: 'gemini', apiKey: 'k', model: 'my-custom-model' }]);
+  assert.deepEqual(entries.map((e) => e.model), ['my-custom-model']);
+});
+
+test('buildChainEntries handles providers with unequal pool sizes without leaving gaps', () => {
+  const entries = buildChainEntries([
+    { providerId: 'gemini', apiKey: 'a' },      // 2 models
+    { providerId: 'openrouter', apiKey: 'b' },  // 1 model
+  ]);
+  assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
+    'gemini/gemini-2.5-flash',
+    'openrouter/openai/gpt-oss-20b:free',
+    'gemini/gemini-3.1-flash-lite',
+  ]);
+});
+
+test('a throttled model falls over to the next model on the same provider when no other key exists', async (t) => {
+  resetCooldowns();
+  t.after(resetCooldowns);
+  const tried = [];
+  const fetchImpl = async (_url, init) => {
+    const { model } = JSON.parse(init.body);
+    tried.push(model);
+    if (model === 'gemini-2.5-flash') return new Response('Too many requests', { status: 429 });
+    return ok('from the lighter model');
+  };
+  const result = await chatWithRotation({ chain: [{ providerId: 'gemini', apiKey: 'k' }], messages: [], fetchImpl });
+  assert.deepEqual(tried, ['gemini-2.5-flash', 'gemini-3.1-flash-lite']);
+  assert.equal(result.model, 'gemini-3.1-flash-lite');
+  assert.equal(result.content, 'from the lighter model');
+});
+
+test('cooling down one model leaves its sibling on the same provider usable', async (t) => {
+  resetCooldowns();
+  t.after(resetCooldowns);
+  const clock = 3_000_000;
+  const fetchImpl = async (_url, init) => {
+    const { model } = JSON.parse(init.body);
+    if (model === 'gemini-2.5-flash') return new Response('Too many requests', { status: 429 });
+    return ok();
+  };
+  await chatWithRotation({ chain: [{ providerId: 'gemini', apiKey: 'k' }], messages: [], fetchImpl, nowFn: () => clock });
+  const state = cooldownState(clock);
+  assert.ok(state['gemini::gemini-2.5-flash'] > 0, 'throttled model should be cooling');
+  assert.equal(state['gemini::gemini-3.1-flash-lite'], undefined, 'its sibling must NOT be cooling');
 });

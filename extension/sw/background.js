@@ -50,10 +50,76 @@ async function downloadOutputs(outputs) {
   return results;
 }
 
+/**
+ * Read the job posting off the user's active tab.
+ *
+ * Injected on demand rather than declared as a `content_scripts` entry, so
+ * the extension holds no standing access to any page: `activeTab` grants
+ * access to exactly one tab, only because the user clicked this extension's
+ * own button, and it lapses afterwards. Reading a posting is a strictly
+ * narrower capability than filling a form.
+ */
+const RESTRICTED_URL_RE = /^(chrome|edge|about|chrome-extension|devtools|view-source|file):/i;
+
+/**
+ * Translate Chrome's injection failures into something a user can act on.
+ *
+ * Note `tab.url` is NOT reliably readable here: without the broad `tabs`
+ * permission it is only populated for tabs the extension already has access
+ * to, so the pre-check below can be skipped entirely on the very page that
+ * needs it. The post-hoc mapping is therefore the real guard, and the
+ * pre-check is just a faster path when the URL happens to be visible.
+ */
+function friendlyInjectionError(message) {
+  const text = String(message || '');
+  if (/chrome:\/\/|Cannot access a chrome/i.test(text)) {
+    return 'Chrome blocks reading its own internal pages. Open the job posting in a normal tab first.';
+  }
+  if (/must request permission|Cannot access contents/i.test(text)) {
+    // activeTab is granted only when the user invokes the extension on that
+    // tab -- i.e. by clicking its toolbar icon while the job page is open.
+    return 'Open the job posting in the active tab, then click the Tailorune toolbar icon and try again.';
+  }
+  if (/No tab with id|No active tab/i.test(text)) {
+    return 'No active tab to read. Open the job posting first.';
+  }
+  return `Could not read this page: ${text}`;
+}
+
+async function extractJobFromActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || !tab.id) throw new Error('No active tab to read. Open the job posting first.');
+  if (RESTRICTED_URL_RE.test(tab.url || '')) {
+    throw new Error('This page cannot be read. Open the job posting in a normal tab first.');
+  }
+
+  let injected;
+  try {
+    [injected] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content/extractJob.js'],
+    });
+  } catch (err) {
+    throw new Error(friendlyInjectionError((err && err.message) || err));
+  }
+
+  if (!injected || !injected.result) throw new Error('Could not find a job posting on this page.');
+  return injected.result;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'sw') return undefined;
 
   (async () => {
+    if (message.type === 'job:extract') {
+      try {
+        sendResponse({ ok: true, job: await extractJobFromActiveTab() });
+      } catch (err) {
+        sendResponse({ ok: false, error: String((err && err.message) || err) });
+      }
+      return;
+    }
+
     if (message.type === 'tailor:run') {
       try {
         await ensureOffscreenDocument();
@@ -76,6 +142,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           resumeStatus: result.resumeStatus,
           resumeWarnings: result.resumeWarnings,
           resumeErrors: result.resumeErrors,
+          resumeJudge: result.resumeJudge,
           skills: result.skills,
           coverLetter: result.coverLetter,
           cooldowns: result.cooldowns,

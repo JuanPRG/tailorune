@@ -12,6 +12,7 @@ import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js
 import { renderResumeHtml } from '../engine/renderHtml.js';
 import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
 import { tailorSkills } from '../engine/tailorSkills.js';
+import { judgeTailoredModel } from '../engine/judge.js';
 import { chatWithRotation, cooldownState } from '../engine/rotatingClient.js';
 import { validatePreferences } from '../engine/preferences.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
@@ -83,11 +84,19 @@ async function runTailor(payload) {
 
   const job = { title: payload.jobTitle, company: payload.employer, description: jobDescription };
 
+  // The judge is a real extra call per attempt, so it is opt-out rather than
+  // mandatory -- but defaults ON, because it is the only check that catches a
+  // rewrite swapping in a different-but-plausible activity (see judge.js).
+  const useJudge = payload.useJudge !== false;
+  const judge = useJudge ? (args) => judgeTailoredModel({ ...args, callLlm }) : undefined;
+
   const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await tailorResume({
     model,
     jobDescription,
     preferences,
     callLlm,
+    judge,
+    job,
   });
 
   // Skills are a separate pass with their own rules (adding plausible
@@ -153,6 +162,7 @@ async function runTailor(payload) {
     resumeStatus: resumeReport.status,
     resumeWarnings: resumeReport.validator.warnings,
     resumeErrors: resumeReport.validator.errors,
+    resumeJudge: resumeReport.judge || null,
     skills: skillsReport,
     coverLetter,
     cooldowns: cooldownState(),

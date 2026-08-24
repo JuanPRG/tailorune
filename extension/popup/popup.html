@@ -37,7 +37,9 @@
   <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" style="margin-top:4px;" />
 
   <label for="jobDescription">Job description</label>
-  <textarea id="jobDescription" placeholder="Paste the job description..."></textarea>
+  <button id="readPageBtn" class="secondary" type="button" style="margin-top:0;margin-bottom:6px;">Read job from this page</button>
+  <div id="extractHint" class="hint" style="margin-bottom:4px;"></div>
+  <textarea id="jobDescription" placeholder="Paste the job description, or read it from the current tab..."></textarea>
 
   <div class="row">
     <div>
@@ -54,6 +56,11 @@
     <input id="includeCoverLetter" type="checkbox" checked />
     <label for="includeCoverLetter" style="margin:0;">Also generate a cover letter</label>
   </div>
+  <div class="check">
+    <input id="useJudge" type="checkbox" checked />
+    <label for="useJudge" style="margin:0;">Review tailoring for accuracy</label>
+  </div>
+  <div class="hint">Costs one extra AI call, and catches rewrites that drift from what you actually did.</div>
 
   <details>
     <summary>Tailoring preferences</summary>

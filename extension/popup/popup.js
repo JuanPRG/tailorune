@@ -13,9 +13,12 @@ const els = {
   resumeText: $('resumeText'),
   resumeFile: $('resumeFile'),
   jobDescription: $('jobDescription'),
+  readPageBtn: $('readPageBtn'),
+  extractHint: $('extractHint'),
   jobTitle: $('jobTitle'),
   employer: $('employer'),
   includeCoverLetter: $('includeCoverLetter'),
+  useJudge: $('useJudge'),
   resumeDensity: $('resumeDensity'),
   keywordAlignment: $('keywordAlignment'),
   coverLetterLength: $('coverLetterLength'),
@@ -48,6 +51,40 @@ function openHtmlInTab(html) {
 
 els.previewBtn.addEventListener('click', () => lastResumeHtml && openHtmlInTab(lastResumeHtml));
 els.previewClBtn.addEventListener('click', () => lastCoverLetterHtml && openHtmlInTab(lastCoverLetterHtml));
+
+/** {providerId: key} for every provider the user supplied a fallback key for. */
+/**
+ * Pull the job posting off the active tab and fill the three job fields.
+ *
+ * `confidence` comes from the extractor's tier: 'high' means structured
+ * JSON-LD data, 'low' means it fell back to stripped body text. A low or
+ * partial result is surfaced as a request to review rather than silently
+ * trusted, since the body-text fallback always returns *something*.
+ */
+async function onReadPageClick() {
+  els.readPageBtn.disabled = true;
+  els.extractHint.textContent = 'Reading this page...';
+  try {
+    const response = await chrome.runtime.sendMessage({ target: 'sw', type: 'job:extract' });
+    if (!response || !response.ok) {
+      els.extractHint.textContent = (response && response.error) || 'Could not read this page.';
+      return;
+    }
+    const { text, employer, jobTitle, source, confidence } = response.job;
+    if (text) els.jobDescription.value = text;
+    if (employer) els.employer.value = employer;
+    if (jobTitle) els.jobTitle.value = jobTitle;
+
+    const note = confidence === 'high'
+      ? `Read from ${source}. Looks complete.`
+      : `Read from ${source} (${confidence} confidence) — please check the fields below before tailoring.`;
+    els.extractHint.textContent = note;
+  } catch (err) {
+    els.extractHint.textContent = `Could not read this page: ${(err && err.message) || err}`;
+  } finally {
+    els.readPageBtn.disabled = false;
+  }
+}
 
 /** {providerId: key} for every provider the user supplied a fallback key for. */
 function collectProviderKeys() {
@@ -102,6 +139,7 @@ async function restoreSettings() {
   if (settings.model) els.modelName.value = settings.model;
   if (settings.apiKey) els.apiKey.value = settings.apiKey;
   if (typeof settings.includeCoverLetter === 'boolean') els.includeCoverLetter.checked = settings.includeCoverLetter;
+  if (typeof settings.useJudge === 'boolean') els.useJudge.checked = settings.useJudge;
   applyPreferences(settings.preferences);
   applyProviderKeys(settings.providerKeys);
 }
@@ -111,8 +149,16 @@ function setStatus(text) {
 }
 
 /** Surface validation findings honestly instead of only reporting success. */
-function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, coverLetter, skills }) {
+function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudge, coverLetter, skills }) {
   const blocks = [];
+  // The judge is advisory: its findings are shown so the user can decide,
+  // never used to withhold the document.
+  if (resumeJudge && !resumeJudge.passed && resumeJudge.issues && resumeJudge.issues.length) {
+    blocks.push(`<strong>Accuracy review flagged:</strong><ul>${resumeJudge.issues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+  }
+  if (resumeJudge && resumeJudge.judgeError) {
+    blocks.push(`<strong>Accuracy review skipped:</strong><ul><li>${resumeJudge.judgeError}</li></ul>`);
+  }
   if (skills && skills.reverted && skills.reverted.length) {
     blocks.push(`<strong>Skills:</strong><ul><li>${skills.reverted.length} line(s) reverted — the rewrite dropped too much of your original list.</li></ul>`);
   }
@@ -146,6 +192,7 @@ async function onTailorClick() {
   const apiKey = els.apiKey.value.trim();
   const file = els.resumeFile.files[0];
   const includeCoverLetter = els.includeCoverLetter.checked;
+  const useJudge = els.useJudge.checked;
   const preferences = collectPreferences();
   const providerKeys = collectProviderKeys();
 
@@ -160,7 +207,7 @@ async function onTailorClick() {
     resumeFileBase64 = await readFileAsBase64(file);
   }
 
-  await setSettings({ provider: providerId, model: modelName, apiKey, includeCoverLetter, preferences, providerKeys });
+  await setSettings({ provider: providerId, model: modelName, apiKey, includeCoverLetter, useJudge, preferences, providerKeys });
 
   els.tailorBtn.disabled = true;
   els.previewBtn.style.display = 'none';
@@ -183,7 +230,7 @@ async function onTailorClick() {
       payload: {
         resumeText, resumeFileBase64, resumeFileExt, jobDescription,
         jobTitle: els.jobTitle.value.trim(), employer: els.employer.value.trim(),
-        includeCoverLetter, preferences,
+        includeCoverLetter, useJudge, preferences,
         providerId, apiKey, modelName, providerKeys, baseUrlOverride,
       },
     });
@@ -208,5 +255,6 @@ async function onTailorClick() {
   }
 }
 
+els.readPageBtn.addEventListener('click', onReadPageClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
 restoreSettings();

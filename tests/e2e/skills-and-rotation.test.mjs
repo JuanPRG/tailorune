@@ -166,6 +166,12 @@ test('a rate-limited primary provider fails over to a fallback key instead of fa
   assert.ok(fallbackCall, `no call used the fallback key: ${JSON.stringify(calls.map((c) => c.auth))}`);
   assert.equal(fallbackCall.status, 200);
 
-  // And the rate-limited provider is now recorded as cooling down.
-  assert.ok(result.cooldowns && result.cooldowns.gemini > 0, `expected gemini cooldown, got ${JSON.stringify(result.cooldowns)}`);
+  // And the rate-limited (provider, model) pair is recorded as cooling down.
+  // Cooldowns are keyed per model, not per provider, so a throttled
+  // gemini-2.5-flash does not take its lighter sibling down with it.
+  const cooling = Object.keys(result.cooldowns || {});
+  assert.ok(cooling.some((k) => k.startsWith('gemini::')),
+    `expected a gemini model cooldown, got ${JSON.stringify(result.cooldowns)}`);
+  assert.ok(!cooling.includes('gemini::gemini-3.1-flash-lite'),
+    'the untried sibling model must not be cooling down');
 });

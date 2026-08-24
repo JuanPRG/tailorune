@@ -7,8 +7,11 @@
 // tailorSkills.js (v4 splits them the same way, and tailor.py:352-356
 // explains why).
 //
-// v4 also runs an LLM "judge" pass per attempt. That is deliberately not
-// ported — see validateTailoredModel() below.
+// The deterministic validator (validateTailoredModel) and the semantic judge
+// (judge.js) are complementary, not redundant: the validator catches
+// watchlisted-title fabrication, dropped bullets, and thin summaries; the
+// judge catches a rewrite that swaps in a different-but-plausible activity,
+// which no deterministic check can see. Both feed the same retry loop.
 //
 // Locked fields (name, contact, every entry's title/meta, education) are
 // never included in the prompt below — see resumeModel.js's module comment
@@ -100,11 +103,12 @@ const MIN_SUMMARY_WORDS = 20; // matches hirepilot_v4/tailor.py's _MIN_SUMMARY_W
 
 /**
  * Deterministic post-generation checks, ported in spirit from
- * hirepilot_v4/tailor.py's `validate_tailored_blocks`. v4 additionally runs
- * an LLM "judge" pass; that is deliberately not ported — it costs a second
- * call per attempt to re-check things this function already checks
- * deterministically, and the structural guarantee (locked fields never
- * enter the prompt) covers the failure mode the judge existed to catch.
+ * hirepilot_v4/tailor.py's `validate_tailored_blocks`.
+ *
+ * Note what this deliberately does NOT check: whether a rewritten bullet
+ * still describes the same real activity as its original. That is a semantic
+ * comparison, it needs the original text alongside the rewrite, and it is
+ * the judge's job (judge.js) -- not something a watchlist can approximate.
  *
  * @param {object} original - the pre-tailoring model, as the source of truth
  * @param {object} tailored - the post-application model
@@ -150,7 +154,7 @@ export async function tailorResume({
   model, jobDescription, provider, apiKey, modelName,
   preferences, maxAttempts = 2,
   fetchImpl, timeoutMs, maxRetries, sleepImpl,
-  callLlm,
+  callLlm, judge, job,
 }) {
   const prefs = preferences || factoryPreferences();
   let avoidNotes = [];
@@ -187,7 +191,17 @@ export async function tailorResume({
 
     const applied = applyTailoredContent(model, tailored);
     const validation = validateTailoredModel(model, applied);
+
+    // The semantic judge only runs once the cheap deterministic checks pass
+    // -- no point paying for a review of content already known to be
+    // invalid. `judge` is injected so it stays optional and testable.
+    let judgeResult = null;
+    if (validation.passed && judge) {
+      judgeResult = await judge({ original: model, tailored: applied, job: job || { description: jobDescription } });
+    }
+
     const { model: compacted, wordCount, iterations } = compactToWordBudget(applied, ONE_PAGE_WORD_BUDGET);
+    const judgePassed = !judgeResult || judgeResult.passed;
 
     lastResult = {
       model: compacted,
@@ -195,11 +209,17 @@ export async function tailorResume({
       compactionIterations: iterations,
       raw: response.content,
       usage: response.usage,
-      report: { status: validation.passed ? 'approved' : 'pending', attempts: attempt, validator: validation },
+      report: {
+        status: validation.passed && judgePassed ? 'approved' : 'pending',
+        attempts: attempt,
+        validator: validation,
+        judge: judgeResult,
+      },
     };
 
-    if (validation.passed) return lastResult;
-    avoidNotes = validation.errors;
+    if (validation.passed && judgePassed) return lastResult;
+    // Feed whichever check failed back into the next attempt.
+    avoidNotes = validation.passed ? judgeResult.issues : validation.errors;
   }
 
   // Every attempt failed validation. Return the last one with an honest

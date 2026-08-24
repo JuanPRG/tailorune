@@ -8,31 +8,40 @@
 // simplifies this registry to one shared request builder instead of one per
 // provider.
 
+// `models` is ordered most-capable-first. Rotation walks a provider's models
+// as separate chain entries, because on free tiers rate limits are commonly
+// applied PER MODEL -- when gemini-2.5-flash is throttled, a lighter sibling
+// often is not. Model pools mirror hirepilot_v4/config.py:64-73.
 export const PROVIDERS = {
   gemini: {
     label: 'Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultModel: 'gemini-2.5-flash',
+    models: ['gemini-2.5-flash', 'gemini-3.1-flash-lite'],
   },
   groq: {
     label: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
-    defaultModel: 'openai/gpt-oss-120b',
+    models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
   },
   cerebras: {
     label: 'Cerebras',
     baseUrl: 'https://api.cerebras.ai/v1',
-    defaultModel: 'gpt-oss-120b',
+    models: ['gpt-oss-120b', 'zai-glm-4.7'],
   },
   openrouter: {
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-oss-20b:free',
+    models: ['openai/gpt-oss-20b:free'],
   },
 };
 
+/** The model used when the user hasn't named one. */
+export function defaultModelFor(providerId) {
+  return getProvider(providerId).models[0];
+}
+
 export function listProviders() {
-  return Object.entries(PROVIDERS).map(([id, p]) => ({ id, label: p.label, defaultModel: p.defaultModel }));
+  return Object.entries(PROVIDERS).map(([id, p]) => ({ id, label: p.label, models: [...p.models] }));
 }
 
 export function getProvider(id) {
