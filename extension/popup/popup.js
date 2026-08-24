@@ -27,6 +27,10 @@ const els = {
   modelName: $('modelName'),
   apiKey: $('apiKey'),
   providerDetails: $('providerDetails'),
+  fallbackGemini: $('fallbackGemini'),
+  fallbackGroq: $('fallbackGroq'),
+  fallbackCerebras: $('fallbackCerebras'),
+  fallbackOpenrouter: $('fallbackOpenrouter'),
   tailorBtn: $('tailorBtn'),
   previewBtn: $('previewBtn'),
   previewClBtn: $('previewClBtn'),
@@ -44,6 +48,24 @@ function openHtmlInTab(html) {
 
 els.previewBtn.addEventListener('click', () => lastResumeHtml && openHtmlInTab(lastResumeHtml));
 els.previewClBtn.addEventListener('click', () => lastCoverLetterHtml && openHtmlInTab(lastCoverLetterHtml));
+
+/** {providerId: key} for every provider the user supplied a fallback key for. */
+function collectProviderKeys() {
+  return {
+    gemini: els.fallbackGemini.value.trim(),
+    groq: els.fallbackGroq.value.trim(),
+    cerebras: els.fallbackCerebras.value.trim(),
+    openrouter: els.fallbackOpenrouter.value.trim(),
+  };
+}
+
+function applyProviderKeys(keys) {
+  if (!keys) return;
+  els.fallbackGemini.value = keys.gemini || '';
+  els.fallbackGroq.value = keys.groq || '';
+  els.fallbackCerebras.value = keys.cerebras || '';
+  els.fallbackOpenrouter.value = keys.openrouter || '';
+}
 
 function collectPreferences() {
   return {
@@ -81,6 +103,7 @@ async function restoreSettings() {
   if (settings.apiKey) els.apiKey.value = settings.apiKey;
   if (typeof settings.includeCoverLetter === 'boolean') els.includeCoverLetter.checked = settings.includeCoverLetter;
   applyPreferences(settings.preferences);
+  applyProviderKeys(settings.providerKeys);
 }
 
 function setStatus(text) {
@@ -88,8 +111,11 @@ function setStatus(text) {
 }
 
 /** Surface validation findings honestly instead of only reporting success. */
-function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, coverLetter }) {
+function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, coverLetter, skills }) {
   const blocks = [];
+  if (skills && skills.reverted && skills.reverted.length) {
+    blocks.push(`<strong>Skills:</strong><ul><li>${skills.reverted.length} line(s) reverted — the rewrite dropped too much of your original list.</li></ul>`);
+  }
   const resumeIssues = [...(resumeErrors || []), ...(resumeWarnings || [])];
   if (resumeStatus && resumeStatus !== 'approved' && resumeIssues.length) {
     blocks.push(`<strong>Resume (${resumeStatus}):</strong><ul>${resumeIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
@@ -121,6 +147,7 @@ async function onTailorClick() {
   const file = els.resumeFile.files[0];
   const includeCoverLetter = els.includeCoverLetter.checked;
   const preferences = collectPreferences();
+  const providerKeys = collectProviderKeys();
 
   if (!resumeText && !file) { setStatus('Paste your resume or upload a file first.'); return; }
   if (!jobDescription) { setStatus('Paste the job description first.'); return; }
@@ -133,7 +160,7 @@ async function onTailorClick() {
     resumeFileBase64 = await readFileAsBase64(file);
   }
 
-  await setSettings({ provider: providerId, model: modelName, apiKey, includeCoverLetter, preferences });
+  await setSettings({ provider: providerId, model: modelName, apiKey, includeCoverLetter, preferences, providerKeys });
 
   els.tailorBtn.disabled = true;
   els.previewBtn.style.display = 'none';
@@ -157,7 +184,7 @@ async function onTailorClick() {
         resumeText, resumeFileBase64, resumeFileExt, jobDescription,
         jobTitle: els.jobTitle.value.trim(), employer: els.employer.value.trim(),
         includeCoverLetter, preferences,
-        providerId, apiKey, modelName, baseUrlOverride,
+        providerId, apiKey, modelName, providerKeys, baseUrlOverride,
       },
     });
     els.result.textContent = JSON.stringify(response);

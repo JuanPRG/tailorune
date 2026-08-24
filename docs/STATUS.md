@@ -72,21 +72,23 @@ message. Those gaps are now closed:
 | **Prompt preferences** | **Ported** — `preferences.js`, wired into both the resume and letter prompts and into the popup UI |
 | **Tailoring validation + retry** | **Ported** — `validateTailoredModel()` plus a retry loop feeding errors back into the next attempt |
 | **Shared text utils / anti-fabrication watchlists** | **Ported** — `textUtils.js` (v4 kept these inside `tailor.py` and had five modules import its privates; MIGRATION_PLAN.md §5 flagged that as the one coupling smell to fix during the port) |
-| Transient-failure retry | Ported (`chatWithRetry`), single-provider |
+| **Skills tailoring** | **Ported** — `tailorSkills.js`, own pass, own prompt, 20% verbatim retention guard enforced deterministically |
+| **Multi-provider rotation + cooldowns** | **Ported** — `rotatingClient.js`, per-provider cooldowns with quota-vs-rate-limit distinction |
+| Transient-failure retry | Ported (`chatWithRetry`), plus rotation above |
 | Autofill (mapper, rules, answer memory, candidate settings) | **Out of scope by decision** |
 
 ### Deliberate departures from v4, with reasons
 
-- **One combined LLM call for summary + bullets; skills pass through unchanged.** v4 runs a second
-  call for skills with a 20% verbatim-retention guard. Not yet ported — skills are currently
-  untailored, which is a real quality gap for keyword matching and the most valuable thing left.
 - **No LLM "judge" pass.** v4 spends a second call per attempt asking a model to re-check the
   tailoring. `validateTailoredModel()` checks the same things deterministically, and the structural
   guarantee (locked fields never enter the prompt) covers the failure mode the judge existed to
   catch. Deliberate, not deferred.
-- **No multi-provider rotation or per-model cooldowns.** v4's `RotatingClient` fails over across a
-  four-provider chain; this fails over across retries on one provider. Still a genuine reliability
-  regression vs. v4 and the clearest remaining gap after skills.
+- **Rotation is per-provider, not per-model.** v4 explodes each provider's model pool into separate
+  chain entries and interleaves them round-robin by model index, with cooldowns keyed on
+  (provider, model, key). That machinery exists to squeeze a large multi-model config; here each
+  provider has one configured model, so the chain is per-provider and the six-way failure taxonomy
+  collapses to the four buckets that actually change behaviour (quota / rate limit / transient /
+  config error), plus "don't retry a 400 against every provider".
 - **No JD cleanup call.** v4 derives employer/title from the raw JD with an LLM call; here they're
   two optional text fields in the popup.
 - **No resume library.** One resume per run, pasted or uploaded. v4 stores multiple with
@@ -97,7 +99,7 @@ message. Those gaps are now closed:
 
 ## Test coverage
 
-- `npm run test:unit` — 87 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 119 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
@@ -105,8 +107,11 @@ message. Those gaps are now closed:
   is opened as a live page), cover-letter validation (word/paragraph bounds, the 5% tolerance band,
   AI-cliche phrases, em-dash rejection, and the fabrication check against the resume's own skills),
   preference validation and prompt-section building, and the tailoring validator's
-  professional-identity and dropped-bullet checks.
-- `npm run test:e2e` — 4 tests, real Chromium, real unpacked extension load, real
+  professional-identity and dropped-bullet checks, the skills retention guard (including that a
+  wholesale replacement reverts rather than being accepted), and provider rotation (failover order,
+  cooldown expiry, quota-vs-rate-limit cooldown lengths, and that a 400 is not retried across the
+  chain).
+- `npm run test:e2e` — 6 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP
   server (`mockLlmServer.mjs`) rather than `context.route()`, which does not intercept

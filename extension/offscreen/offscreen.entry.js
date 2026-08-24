@@ -11,8 +11,9 @@ import { tailorResume } from '../engine/tailor.js';
 import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js';
 import { renderResumeHtml } from '../engine/renderHtml.js';
 import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
+import { tailorSkills } from '../engine/tailorSkills.js';
+import { chatWithRotation, cooldownState } from '../engine/rotatingClient.js';
 import { validatePreferences } from '../engine/preferences.js';
-import { getProvider } from '../engine/providers.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
 
@@ -54,24 +55,54 @@ async function runTailor(payload) {
 
   const resumeText = await resolveResumeText(payload);
   const model = parseTxt(resumeText);
-  // baseUrlOverride points at any OpenAI-compatible endpoint instead of the
-  // provider's real host — the same escape hatch hirepilot_v4 offered for a
-  // local/self-hosted model (config.py's LOCAL_LLM_URL), and what the
-  // Playwright e2e test uses to exercise the real pipeline against a local
+  const preferences = validatePreferences(payload.preferences || {});
+
+  // The provider chain: the user's selected provider first, then every other
+  // provider they've supplied a key for, so a rate limit on the primary fails
+  // over instead of failing the run. `providerKeys` is a {providerId: key}
+  // map from the popup; `apiKey`/`providerId` remain the primary selection.
+  //
+  // baseUrlOverride points every entry at one OpenAI-compatible endpoint
+  // instead of the real hosts — the same escape hatch hirepilot_v4 offered
+  // for a local/self-hosted model (config.py's LOCAL_LLM_URL), and what the
+  // Playwright e2e tests use to exercise the real pipeline against a local
   // mock server, since context.route() does not intercept fetches made from
   // an offscreen document (confirmed empirically, not documented anywhere).
-  const provider = baseUrlOverride ? { ...getProvider(providerId), baseUrl: baseUrlOverride } : getProvider(providerId);
+  const providerKeys = payload.providerKeys || {};
+  const chain = [{ providerId, apiKey, model: modelName || undefined }];
+  for (const [id, key] of Object.entries(providerKeys)) {
+    if (id !== providerId && key) chain.push({ providerId: id, apiKey: key });
+  }
 
-  const preferences = validatePreferences(payload.preferences || {});
-  const resolvedModelName = modelName || provider.defaultModel;
-  const llmArgs = { provider, apiKey, modelName: resolvedModelName };
+  // One rotating caller shared by every stage, so a provider that just got
+  // rate-limited during the resume pass is already cooling down by the time
+  // the skills and cover-letter passes run.
+  const callLlm = ({ messages, jsonMode, maxTokens }) => chatWithRotation({
+    chain, messages, jsonMode, maxTokens, baseUrlOverride,
+  });
+
+  const job = { title: payload.jobTitle, company: payload.employer, description: jobDescription };
 
   const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await tailorResume({
     model,
     jobDescription,
     preferences,
-    ...llmArgs,
+    callLlm,
   });
+
+  // Skills are a separate pass with their own rules (adding plausible
+  // adjacent skills is allowed here, unlike for bullets) and their own
+  // deterministic retention guard -- see tailorSkills.js.
+  let skillsReport = { status: 'no_change', attempts: 0, reverted: [] };
+  if (tailoredModel.skills && tailoredModel.skills.lines.length) {
+    const { lines, report } = await tailorSkills({
+      skillsLines: tailoredModel.skills.lines,
+      job,
+      callLlm,
+    });
+    tailoredModel.skills = { ...tailoredModel.skills, lines };
+    skillsReport = report;
+  }
 
   const slug = slugify(model.name);
   const outputs = [];
@@ -94,11 +125,10 @@ async function runTailor(payload) {
   if (payload.includeCoverLetter) {
     const { paragraphs, report } = await generateCoverLetter({
       model: tailoredModel,
-      job: { title: payload.jobTitle, company: payload.employer, description: jobDescription },
+      job,
       preferences,
-      ...llmArgs,
+      callLlm,
     });
-    const job = { title: payload.jobTitle, company: payload.employer };
     const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
     outputs.push({
       kind: 'cover_letter',
@@ -123,7 +153,9 @@ async function runTailor(payload) {
     resumeStatus: resumeReport.status,
     resumeWarnings: resumeReport.validator.warnings,
     resumeErrors: resumeReport.validator.errors,
+    skills: skillsReport,
     coverLetter,
+    cooldowns: cooldownState(),
   };
 }
 

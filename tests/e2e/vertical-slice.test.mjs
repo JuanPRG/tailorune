@@ -82,7 +82,13 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   assert.ok(Array.isArray(resultJson.downloads) && resultJson.downloads.length >= 1, 'expected at least one download in the response');
   const resumeDownload = resultJson.downloads.find((d) => d.kind === 'resume');
   assert.ok(resumeDownload && resumeDownload.downloadId !== undefined, 'expected a real chrome.downloads id for the resume');
-  assert.equal(mockLlm.requestCount(), 1, 'expected exactly one real HTTP request to reach the mock LLM server');
+  // At least one real HTTP request reached the mock server. It is more than
+  // one because the skills section is a separate tailoring pass (see
+  // tailorSkills.js) and this single-response mock never returns a valid
+  // skills map, so that pass exhausts its retries -- which is exactly the
+  // deterministic-revert behaviour it is supposed to have. The dedicated
+  // assertion for skills lives in tests/unit/tailorSkills.test.mjs.
+  assert.ok(mockLlm.requestCount() >= 1, 'expected at least one real HTTP request to reach the mock LLM server');
 
   // Note: downloadItem.filename here is wherever Playwright's own
   // acceptDownloads artifact capture relocated the file to (a UUID, no

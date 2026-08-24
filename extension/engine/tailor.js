@@ -1,18 +1,19 @@
 // tailor.js — the tailoring pipeline: build the prompt, call the LLM once,
 // parse its answer, apply it, and enforce the one-page word budget.
 //
-// Ported spirit of hirepilot_v4/tailor.py, simplified to one combined call:
-// v4 runs two separate LLM steps (tailor_editable_blocks, then
-// tailor_skill_blocks with a judge retry loop, tailor.py:451-518). This
-// phase-2 slice tailors summary + bullets only and leaves skills untouched —
-// an explicit simplification, not an oversight; skills tailoring and the
-// judge/retry loop are natural Phase-7 additions once the vertical slice is
-// proven.
+// Ported from hirepilot_v4/tailor.py's `tailor_editable_blocks`. This pass
+// handles the summary and per-role bullets; the skills section is a separate
+// call with different rules and its own deterministic guard, in
+// tailorSkills.js (v4 splits them the same way, and tailor.py:352-356
+// explains why).
 //
-// Locked fields (name, contact, every entry's title/meta, education, skills)
-// are never included in the prompt below — see resumeModel.js's module
-// comment for why that is the actual anti-fabrication guarantee, not the
-// instruction text.
+// v4 also runs an LLM "judge" pass per attempt. That is deliberately not
+// ported — see validateTailoredModel() below.
+//
+// Locked fields (name, contact, every entry's title/meta, education) are
+// never included in the prompt below — see resumeModel.js's module comment
+// for why that is the actual anti-fabrication guarantee, not the instruction
+// text.
 
 import { chatWithRetry, LlmError } from './llm.js';
 import { flattenEditableEntries, applyTailoredContent, compactToWordBudget, modelWordCount } from './resumeModel.js';
@@ -149,6 +150,7 @@ export async function tailorResume({
   model, jobDescription, provider, apiKey, modelName,
   preferences, maxAttempts = 2,
   fetchImpl, timeoutMs, maxRetries, sleepImpl,
+  callLlm,
 }) {
   const prefs = preferences || factoryPreferences();
   let avoidNotes = [];
@@ -159,10 +161,15 @@ export async function tailorResume({
 
     let response;
     try {
-      response = await chatWithRetry(
-        { provider, apiKey, model: modelName, messages, jsonMode: true, fetchImpl, timeoutMs },
-        { maxRetries, sleepImpl },
-      );
+      // callLlm lets the pipeline inject the rotating multi-provider caller.
+      // Without it this falls back to a single provider with retries, which
+      // is what the unit tests exercise.
+      response = callLlm
+        ? await callLlm({ messages, jsonMode: true })
+        : await chatWithRetry(
+          { provider, apiKey, model: modelName, messages, jsonMode: true, fetchImpl, timeoutMs },
+          { maxRetries, sleepImpl },
+        );
     } catch (err) {
       if (err instanceof LlmError) throw err;
       throw new LlmError('network_error', String(err && err.message || err));

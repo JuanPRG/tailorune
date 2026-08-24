@@ -76,7 +76,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           resumeStatus: result.resumeStatus,
           resumeWarnings: result.resumeWarnings,
           resumeErrors: result.resumeErrors,
+          skills: result.skills,
           coverLetter: result.coverLetter,
+          cooldowns: result.cooldowns,
         });
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });

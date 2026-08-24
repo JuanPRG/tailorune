@@ -153,6 +153,7 @@ export async function generateCoverLetter({
   fetchImpl,
   timeoutMs,
   sleepImpl,
+  callLlm,
 }) {
   const prefs = preferences || factoryPreferences();
   const [minWords, maxWords] = coverLetterWordRange(prefs);
@@ -165,10 +166,12 @@ export async function generateCoverLetter({
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const messages = buildCoverLetterMessages({ model, job, preferences: prefs, avoidNotes });
-    const response = await chatWithRetry(
-      { provider, apiKey, model: modelName, messages, maxTokens: 1024, fetchImpl, timeoutMs },
-      { sleepImpl },
-    );
+    const response = callLlm
+      ? await callLlm({ messages, maxTokens: 1024 })
+      : await chatWithRetry(
+        { provider, apiKey, model: modelName, messages, maxTokens: 1024, fetchImpl, timeoutMs },
+        { sleepImpl },
+      );
 
     const cleaned = sanitizeText(response.content).trim();
     const paragraphs = cleaned.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);

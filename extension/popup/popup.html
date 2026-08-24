@@ -123,6 +123,18 @@
       </div>
       <label for="apiKey">API key</label>
       <input id="apiKey" type="password" placeholder="stored locally only" />
+      <div class="hint" style="margin-top:8px;">
+        Optional fallback keys. If your main provider is rate-limited mid-run, the next one with a
+        key here is used instead.
+      </div>
+      <label for="fallbackGemini" style="font-weight:400;font-size:12px;">Gemini</label>
+      <input id="fallbackGemini" type="password" placeholder="optional" />
+      <label for="fallbackGroq" style="font-weight:400;font-size:12px;">Groq</label>
+      <input id="fallbackGroq" type="password" placeholder="optional" />
+      <label for="fallbackCerebras" style="font-weight:400;font-size:12px;">Cerebras</label>
+      <input id="fallbackCerebras" type="password" placeholder="optional" />
+      <label for="fallbackOpenrouter" style="font-weight:400;font-size:12px;">OpenRouter</label>
+      <input id="fallbackOpenrouter" type="password" placeholder="optional" />
     </div>
   </details>
 
