@@ -122,6 +122,14 @@ file extracts it to text immediately (via a `resume:extract` round trip to the o
 which is where JSZip and pdf.js live) rather than at tailoring time, which is what makes an uploaded
 file saveable and surfaces an unreadable PDF at once instead of a minute into a run.
 
+**The popup reads uploaded files itself.** `.docx` (JSZip) and `.pdf` (pdf.js) are parsed in the
+popup, so `popup.entry.js` is bundled to `popup.bundle.js` alongside the offscreen bundle. This
+replaced a popup → service worker → offscreen-document round trip: two message hops and three
+lifetimes for what is a pure function over bytes. The offscreen document exists because the LLM
+pipeline can outlive the service worker's 5-minute event ceiling — reading a file has nothing to do
+with that, and inherited a whole class of failure for no benefit. The bundle is ~800KB (pdf.js
+inlined) but measures 40ms to DOMContentLoaded in a real popup, so it is not worth code-splitting.
+
 Two consequences worth recording:
 
 - **The textarea is now the single source of truth.** The run payload no longer carries a file, so
@@ -171,7 +179,7 @@ so launching with `--remote-debugging-port` and reconnecting over CDP yields a r
   chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
   field; that it skips the call when nothing changed; and that it is not called when the
   deterministic validator already failed), and per-model chain expansion and interleaving.
-- `npm run test:e2e` — 21 tests, real Chromium, real unpacked extension load, real
+- `npm run test:e2e` — 22 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload, and the resume library round trip — a `.docx`
   uploaded once, the popup closed, then reopened and tailored with the saved resume and no second

@@ -120,24 +120,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
-    // Turn an uploaded file into plain text without running the pipeline, so
-    // the popup can offer to save it to the resume library. Cheap and
-    // LLM-free: it is the same extraction step tailoring would have done.
-    if (message.type === 'resume:extract') {
-      try {
-        await ensureOffscreenDocument();
-        const result = await chrome.runtime.sendMessage({
-          target: 'offscreen',
-          type: 'resume:extract',
-          payload: message.payload,
-        });
-        sendResponse(result || { ok: false, error: 'Offscreen document returned no result.' });
-      } catch (err) {
-        sendResponse({ ok: false, error: String((err && err.message) || err) });
-      }
-      return;
-    }
-
     if (message.type === 'tailor:run') {
       try {
         await ensureOffscreenDocument();

@@ -11,3 +11,4 @@ extension/vendor/pdfjs/
 # Playwright/E2E scratch
 tests/e2e/.tmp/
 test-results/
+extension/popup/popup.bundle.js

@@ -33,6 +33,19 @@ test('real popup: uploading a .docx extracts it, all the way through the service
   assert.deepEqual(dialogs, [], 'the real popup must never open a JS dialog');
 });
 
+test('real popup: the name field takes the uploaded file name, replacing whatever was there', async (t) => {
+  const { popup } = await openRealPopup(t);
+
+  // Something already typed in the name field must not survive a new upload:
+  // the file the user just picked is what they are naming, and a stale label
+  // would silently mislabel what gets saved.
+  await popup.fill('#resumeName', '123');
+  await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
+  await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
+
+  assert.equal(await popup.inputValue('#resumeName'), 'juan-rivera-tabstops');
+});
+
 test('real popup: saving actually writes to storage — the flow that silently did nothing before', async (t) => {
   const { popup, sw } = await openRealPopup(t);
 

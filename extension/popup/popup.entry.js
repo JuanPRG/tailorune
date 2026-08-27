@@ -1,15 +1,21 @@
-// popup/popup.js — the whole UI: paste or upload a resume plus a job
+// popup/popup.entry.js — the whole UI: paste or upload a resume plus a job
 // description, get a tailored .docx (and optionally a cover letter .docx)
 // in Downloads, with an HTML preview of each for browser print-to-PDF.
 //
-// No bundling needed: this file imports only relative, dependency-free
-// modules plus the ambient `chrome` global, so MV3's native ES module
-// loading handles it directly.
+// Bundled to popup.bundle.js by build/build-offscreen.mjs, because the popup
+// reads uploaded files itself (JSZip for .docx, pdf.js for .pdf) rather than
+// shipping the bytes to the offscreen document and waiting for an answer.
+// That round trip -- popup -> service worker -> offscreen document and back --
+// was two message hops and three lifetimes for what is a pure function over
+// bytes, and it failed in a real popup in a way no test could reproduce.
+// Reading a file locally has no lifetime to get wrong.
 
 import { getSettings, setSettings } from '../engine/store.js';
 import {
   chromeStorageAdapter, loadLibrary, saveResume, deleteResume, markUsed, suggestName,
 } from '../engine/resumeLibrary.js';
+import { extractDocxText } from '../engine/extractDocxText.js';
+import { extractPdfText } from '../engine/extractPdfText.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -204,43 +210,57 @@ async function onDeleteResume() {
  * on run is what makes the file saveable to the library at all -- and it
  * surfaces an unreadable PDF right away instead of a minute into a run.
  */
-/** Extract the currently selected file into the textarea. Returns its text, or null. */
-async function extractSelectedFile() {
+/**
+ * Read one uploaded file into plain text, here in the popup.
+ *
+ * .docx and .pdf both parse straight from bytes -- no service worker, no
+ * offscreen document, no messages. See the module header for why that round
+ * trip was removed rather than debugged.
+ */
+async function fileToText(file) {
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (ext === '.docx') return extractDocxText(bytes);
+  if (ext === '.pdf') return extractPdfText(bytes);
+  if (ext === '.txt') return new TextDecoder('utf-8').decode(bytes);
+  throw new Error(`Unsupported file type "${ext}". Upload a .txt, .docx, or .pdf.`);
+}
+
+/**
+ * Extract the currently selected file into the textarea. Returns its text, or null.
+ *
+ * `renameFromFile` is true only when the user actually picked a file: the
+ * filename is then the label they expect, and it wins over anything left in
+ * the name field. It is false when extraction is triggered implicitly, by
+ * Save or Tailor recovering an unread file — there the name field holds
+ * something the user typed deliberately, and overwriting it would save their
+ * resume under a name they never chose.
+ */
+async function extractSelectedFile({ renameFromFile = false } = {}) {
   const file = els.resumeFile.files[0];
   if (!file) return null;
-  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   setLibraryHint(`Reading ${file.name}...`);
 
   pendingExtraction = (async () => {
     try {
-      const base64 = await readFileAsBase64(file);
-      const response = await chrome.runtime.sendMessage({
-        target: 'sw',
-        type: 'resume:extract',
-        payload: { resumeFileBase64: base64, resumeFileExt: ext },
-      });
-      if (!response || !response.ok) {
-        // Surfaced in BOTH places on purpose. The hint is right under the
-        // button that failed, but it is also the line every other library
-        // action overwrites -- so a failure that scrolls past unnoticed
-        // becomes "it just does nothing", which is exactly how this was
-        // reported. #status is the durable copy.
-        const message = `Could not read ${file.name}: ${(response && response.error) || 'unknown error'}`;
-        setLibraryHint(message);
-        setStatus(message);
-        return null;
+      const text = await fileToText(file);
+      if (!text || !text.trim()) {
+        throw new Error('that file contained no readable text.');
       }
-      els.resumeText.value = response.text;
+      els.resumeText.value = text;
       els.savedResumes.value = '';
-      // Default the name to the file's own base name -- it is almost always a
-      // better label than the first line of the resume, which is just the
-      // person's name and identical across every one of their resumes.
-      if (!els.resumeName.value.trim()) {
+      if (renameFromFile || !els.resumeName.value.trim()) {
         els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
       }
       setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
-      return response.text;
+      setStatus('');
+      return text;
     } catch (err) {
+      // Surfaced in BOTH places on purpose. The hint sits under the control
+      // that failed, but it is also the line every other library action
+      // overwrites -- so a failure could scroll past unnoticed and read as
+      // "it just does nothing", which is exactly how this was reported.
+      // #status is the durable copy.
       const message = `Could not read ${file.name}: ${(err && err.message) || err}`;
       setLibraryHint(message);
       setStatus(message);
@@ -273,7 +293,7 @@ async function ensureResumeText() {
 
 async function onResumeFileChange() {
   if (!els.resumeFile.files[0]) return;
-  await extractSelectedFile();
+  await extractSelectedFile({ renameFromFile: true });
 }
 
 function openHtmlInTab(html) {
@@ -452,15 +472,6 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
     }
   }
   els.warnings.innerHTML = blocks.join('');
-}
-
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1]);
-    reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
-    reader.readAsDataURL(file);
-  });
 }
 
 async function onTailorClick() {
