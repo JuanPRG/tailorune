@@ -21,7 +21,10 @@
 import { chatWithRetry, LlmError } from './llm.js';
 import { flattenEditableEntries, applyTailoredContent, compactToWordBudget, modelWordCount } from './resumeModel.js';
 import { buildResumePreferencesSection, factoryPreferences } from './preferences.js';
-import { sanitizeText, fabricatedRoleTitles, modelFullText } from './textUtils.js';
+import {
+  sanitizeText, fabricatedRoleTitles, modelFullText,
+  conceptTokens, conceptRetentionRatio, droppedNumbers,
+} from './textUtils.js';
 
 export const ONE_PAGE_WORD_BUDGET = 570; // measured in SPIKE_FINDINGS.md: 571 words -> 1 page, 649 -> 2
 const JD_MAX_CHARS = 6000; // matches hirepilot_v4/tailor.py:160
@@ -78,6 +81,20 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
     'Do not invent employers, dates, titles, or credentials. Rewrite only what is given.',
     'Keep bullets concise and quantified where the original supports it — the whole resume'
     + ` must fit roughly ${ONE_PAGE_WORD_BUDGET} words total, so favor tight, high-signal bullets.`,
+    // The single most common way a rewrite makes a resume worse. Screening is
+    // keyword-driven first, so trading "bookkeeping, IFRS, budget tracking"
+    // for "comprehensive financial administration" loses the candidate real
+    // matches while sounding more senior. Stated as a rule and enforced
+    // afterwards by conceptRetentionRatio, because instructions alone do not
+    // hold across models.
+    'CARRY OVER THE CONCRETE WORDS. Keep every number, percentage, currency amount and'
+    + ' quantity exactly as written, and keep the specific nouns the original used — tools,'
+    + ' systems, standards, processes, certifications, domain terms. Rephrase around them;'
+    + ' never replace them with generic descriptions. "Reconciled accounts payable in NetSuite"'
+    + ' may not become "managed comprehensive financial workflows".',
+    'Prefer adding a job-description keyword alongside an original term to swapping one for'
+    + ' the other. Do not pad with adjectives like comprehensive, robust, strategic or'
+    + ' meticulous; they match nothing and consume the word budget.',
     buildResumePreferencesSection(prefs),
     'Respond with ONLY a JSON object of this exact shape, no prose, no markdown fence:',
     '{"summary": "...", "entries": [{"index": 0, "bullets": ["...", "..."]}]}',
@@ -100,6 +117,19 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
 }
 
 const MIN_SUMMARY_WORDS = 20; // matches hirepilot_v4/tailor.py's _MIN_SUMMARY_WORDS
+
+// Share of a bullet's concrete vocabulary that must survive rewriting.
+//
+// Calibrated against a real run rather than picked: a tailoring pass that
+// visibly hollowed out its bullets -- "bookkeeping, financial reporting,
+// budget tracking" becoming "comprehensive financial administration" -- scored
+// 27-33% per role. 45% flags every one of those while still permitting a
+// heavy rewrite, since it means over half the wording may still change.
+//
+// The summary is deliberately NOT checked. It is a positioning statement, and
+// rewriting it wholesale for a specific job is the legitimate core of
+// tailoring; the same run scored 15% there and that was the right outcome.
+export const MIN_BULLET_CONCEPT_RETENTION = 0.45;
 
 /**
  * Deterministic post-generation checks, ported in spirit from
@@ -141,6 +171,34 @@ export function validateTailoredModel(original, tailored) {
   for (let i = 0; i < originalEntries.length; i++) {
     if (originalEntries[i].bullets.length > 0 && (tailoredEntries[i]?.bullets.length ?? 0) === 0) {
       errors.push(`Role ${i + 1} lost all of its bullet points.`);
+      continue;
+    }
+
+    const before = originalEntries[i].bullets.join(' ');
+    const after = (tailoredEntries[i]?.bullets ?? []).join(' ');
+    if (!before) continue;
+
+    // Quantities are never a stylistic choice: "a team of 15+" outperforms
+    // "cross-functional teams" for every reader, human or machine.
+    const lostNumbers = droppedNumbers(before, after);
+    if (lostNumbers.length) {
+      errors.push(`Role ${i + 1} dropped quantities that were in the original: ${lostNumbers.join(', ')}. Put them back.`);
+    }
+
+    // Concreteness. Errors rather than warnings so the retry loop feeds the
+    // specific missing terms back into the next attempt -- they come from the
+    // original bullets, which the model is already shown, so naming them
+    // leaks nothing locked.
+    const retention = conceptRetentionRatio(before, after);
+    if (retention < MIN_BULLET_CONCEPT_RETENTION) {
+      const beforeTokens = conceptTokens(before);
+      const afterTokens = conceptTokens(after);
+      const lost = [...beforeTokens].filter((t) => !afterTokens.has(t)).slice(0, 12);
+      errors.push(
+        `Role ${i + 1} kept only ${Math.round(retention * 100)}% of the original's specific vocabulary`
+        + ` (needs ${Math.round(MIN_BULLET_CONCEPT_RETENTION * 100)}%). Rephrase around these instead of`
+        + ` replacing them: ${lost.join(', ')}.`,
+      );
     }
   }
 

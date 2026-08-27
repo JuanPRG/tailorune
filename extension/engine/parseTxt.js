@@ -5,21 +5,35 @@
 // resume_profile.py's date/title extraction) — 100% regex/heuristic, no LLM,
 // matching the original's own docstring claim (resume_profile.py:7).
 //
-// TXT has no bold/style signal, so title-vs-bullet detection relies on
-// structural shape only: a bullet character prefix, or a line that is itself
-// (or is followed by) a bare date range.
+// TXT has no bold/style signal, so entry detection relies on structural shape
+// alone. The rules, in priority order, are deliberately about SHAPE rather
+// than about any particular resume's layout:
 //
-// Known, accepted limitation: an unrecognized section header (e.g.
-// "CERTIFICATIONS", not in SECTION_PATTERNS) is not detected as a new
-// section — its lines merge into whichever section precedes it. v4 handles
-// this with a single-fire generic-header fallback
-// (docx_ingest.py:259-270); omitted here since none of the real fixtures in
-// tests/fixtures/resumes/ need it. Worth adding if a real resume surfaces
-// the gap.
+//   1. A bullet-prefixed line is a bullet.
+//   2. A line that is ONLY a date range is metadata. It can never be a title,
+//      so it always attaches to the entry above it.
+//   3. A line carrying its own date range (leading or trailing) starts a new
+//      entry — the date is split off into meta.
+//   4. Any other line, while the current entry has no bullets yet, is a
+//      context line (employer, location, engagement type) and joins meta.
+//   5. Anything else starts a new entry.
+//
+// Rule 4 is the one that needs care. An earlier version capped it at a single
+// context line and treated a bare date line as a new entry, which parsed a
+// "Employer / Job Title / Dates" stack — common in consulting and finance
+// resumes — as two entries, burying the real title in meta and handing the
+// bullets to a phantom entry titled with the date. Rules 2 and 4 are now
+// unbounded and shape-based, which handles one context line or three.
+//
+// Where several lines could each plausibly be "the title", this deliberately
+// does NOT guess. It keeps source order: the first line of the block is the
+// heading, the rest become meta, and both render adjacently. Guessing which
+// of "Deloitte Canada" and "Senior Consultant" is the title is not reliably
+// decidable from text alone, and getting it wrong reorders someone's history.
 
 const SECTION_PATTERNS = [
   ['summary', /^(summary|professional summary|profile|about me|career summary|objective)$/i],
-  ['skills', /^(technical skills|core skills|skills|technologies|competencies|skills\s*(?:&|and)\s*tools)$/i],
+  ['skills', /^(technical skills|core skills|skills|technologies|competencies|core competencies|key competencies|areas of expertise|skills\s*(?:&|and)\s*tools)$/i],
   ['experience', /^(work experience|professional experience|experience|employment history|career history)$/i],
   ['projects', /^(technical projects|projects|personal projects|key projects)$/i],
   ['education', /^(education|academic background|educational background)$/i],
@@ -27,14 +41,41 @@ const SECTION_PATTERNS = [
 
 const BULLET_RE = /^[-*•▪◦‣]\s+/;
 const MONTH_YEAR = /[A-Za-z]{3,9}\.?\s+\d{4}/;
-const DATE_RANGE_RE = new RegExp(
-  `^(?:${MONTH_YEAR.source}|\\d{4})\\s*[-–—]\\s*(?:present|current|${MONTH_YEAR.source}|\\d{4})$`,
-  'i',
-);
-const TRAILING_DATE_RE = new RegExp(
-  `^(.*\\S)\\s{2,}((?:${MONTH_YEAR.source}|\\d{4})\\s*[-–—]\\s*(?:present|current|${MONTH_YEAR.source}|\\d{4}))\\s*$`,
-  'i',
-);
+const DATE_RANGE_SOURCE = `(?:${MONTH_YEAR.source}|\\d{4})\\s*[-–—]\\s*(?:present|current|${MONTH_YEAR.source}|\\d{4})`;
+
+const DATE_RANGE_RE = new RegExp(`^(?:${DATE_RANGE_SOURCE})$`, 'i');
+/** "Senior Engineer, Shopify      2019 - 2024" */
+const TRAILING_DATE_RE = new RegExp(`^(.*\\S)\\s{2,}(${DATE_RANGE_SOURCE})\\s*$`, 'i');
+/** "2019 - 2024      Senior Engineer, Shopify" — the mirror layout. */
+const LEADING_DATE_RE = new RegExp(`^(${DATE_RANGE_SOURCE})\\s{2,}(\\S.*)$`, 'i');
+
+/**
+ * A heading this parser does not have a pattern for, e.g. CERTIFICATIONS,
+ * AWARDS, PUBLICATIONS, LANGUAGES, VOLUNTEER EXPERIENCE.
+ *
+ * v4 handles these with a generic-header fallback (docx_ingest.py:259-270).
+ * Omitting it meant such a section silently merged into whichever section
+ * preceded it — and once entry parsing gained context lines, the certificates
+ * were absorbed into a phantom entry's meta, which is worse than merely
+ * misfiled.
+ *
+ * Requiring ALL CAPS is the conservative choice on purpose. A false positive
+ * here splits a real job into a bogus section, which is far more damaging
+ * than a title-case "Certifications" going undetected; job-title lines that
+ * happen to be short are almost never fully capitalised, and the extra
+ * guards (no digits, no pipe, few words) exclude the ones that are.
+ */
+function looksLikeSectionHeader(line) {
+  const text = line.trim().replace(/:$/, '');
+  if (text.length < 3 || text.length > 40) return false;
+  if (text !== text.toUpperCase() || !/[A-Z]/.test(text)) return false;
+  // Letters, spaces and ampersands only. Punctuation is the tell that a line
+  // is content rather than a heading: "BFA, OCAD" and "AWS SOLUTIONS
+  // ARCHITECT - PROFESSIONAL, 2023" are both shouted credentials, not
+  // sections, and a comma or digit separates them from AWARDS & HONOURS.
+  if (!/^[A-Za-z&]+(?: [A-Za-z&]+)*$/.test(text)) return false;
+  return text.split(/\s+/).length <= 4;
+}
 
 function matchSectionHeader(line) {
   const normalized = line.trim().replace(/:$/, '');
@@ -57,56 +98,58 @@ function isDateOnlyLine(line) {
   return DATE_RANGE_RE.test(line.trim());
 }
 
-function splitTrailingDateRange(line) {
-  const m = TRAILING_DATE_RE.exec(line);
-  if (m) return { title: m[1].trim(), meta: m[2].trim() };
+/** Split a title line from its date range, whichever side the date sits on. */
+function splitDateRange(line) {
+  const trailing = TRAILING_DATE_RE.exec(line);
+  if (trailing) return { title: trailing[1].trim(), meta: trailing[2].trim() };
+  const leading = LEADING_DATE_RE.exec(line);
+  if (leading) return { title: leading[2].trim(), meta: leading[1].trim() };
   return { title: line.trim(), meta: null };
+}
+
+function carriesOwnDate(line) {
+  return TRAILING_DATE_RE.test(line) || LEADING_DATE_RE.test(line);
+}
+
+function appendMeta(entry, line) {
+  entry.meta = entry.meta ? `${entry.meta} · ${line}` : line;
 }
 
 function parseEntries(bodyLines) {
   const entries = [];
   let current = null;
+
   for (const raw of bodyLines) {
     const line = raw.trim();
     if (!line) continue;
+
     if (BULLET_RE.test(line)) {
       const text = line.replace(BULLET_RE, '').trim();
       if (!current) { current = { title: '', meta: null, bullets: [] }; entries.push(current); }
       current.bullets.push(text);
       continue;
     }
-    // A bare date range on its own line belongs to the entry above it.
-    if (current && !current.meta && current.bullets.length === 0 && isDateOnlyLine(line)) {
-      current.meta = line;
+
+    // Rule 2: a bare date range is never a title, so it belongs to the entry
+    // above it however many context lines have already accumulated.
+    if (current && current.bullets.length === 0 && isDateOnlyLine(line)) {
+      appendMeta(current, line);
       continue;
     }
 
-    // A non-bullet, non-date line sitting between a title and its first
-    // bullet is a location/context subtitle, not a new role:
-    //
-    //   Retained Financial Advisor  |  Yesos Colombia S.A.S.   2018 - Present
-    //   Colombia (Long-term outsourced engagement, Manufacturing)   <-- here
-    //   - Served as the sole financial lead...
-    //
-    // Treating it as a new entry (the previous behaviour) doubled the role
-    // count on a real resume and handed every bullet to the phantom entry,
-    // leaving each actual job with none. v4 told these apart using bold runs
-    // from the .docx; that signal does not survive normalization to text, so
-    // position is the signal here: a title already claimed, no bullets yet.
-    //
-    // Guarded so a genuinely bullet-less role is not absorbed by the role
-    // above it: a line carrying its own date range is always a new entry,
-    // whatever came before it.
-    const carriesOwnDate = TRAILING_DATE_RE.test(line) || isDateOnlyLine(line);
-    if (current && current.title && current.bullets.length === 0 && !carriesOwnDate) {
-      current.meta = current.meta ? `${current.meta} · ${line}` : line;
+    // Rule 3 before rule 4: a line carrying its own date is a new entry even
+    // when the previous one never had bullets, so a genuinely bullet-less
+    // role is not swallowed by the role above it.
+    if (current && current.bullets.length === 0 && current.title && !carriesOwnDate(line)) {
+      appendMeta(current, line);
       continue;
     }
 
-    const { title, meta } = splitTrailingDateRange(line);
+    const { title, meta } = splitDateRange(line);
     current = { title, meta, bullets: [] };
     entries.push(current);
   }
+
   return entries;
 }
 
@@ -125,7 +168,7 @@ export function parseTxt(rawText) {
   while (i < lines.length) {
     const line = lines[i];
     if (line === '') { i++; continue; }
-    if (matchSectionHeader(line)) break;
+    if (matchSectionHeader(line) || looksLikeSectionHeader(line)) break;
     if (!sawProse && isContactLike(line)) {
       contactLines.push(line);
     } else {
@@ -136,36 +179,50 @@ export function parseTxt(rawText) {
   }
 
   let summary = proseLines.length ? proseLines.join(' ') : null;
+  // Retained so the renderer can label the summary with the heading the
+  // resume actually used -- PROFILE, OBJECTIVE, ABOUT ME -- instead of
+  // dropping it and emitting an unlabelled orphan paragraph.
+  let summaryHeading = null;
   let skills = null;
   const sections = [];
 
   while (i < lines.length) {
     const line = lines[i];
     if (line === '') { i++; continue; }
-    const kind = matchSectionHeader(line);
-    if (!kind) { i++; continue; } // defensive: shouldn't happen given the loop shape above
+    const known = matchSectionHeader(line);
+    if (!known && !looksLikeSectionHeader(line)) { i++; continue; }
 
-    const heading = line;
+    const heading = line.replace(/:$/, '');
+    const kind = known || 'other';
     i++;
     const bodyLines = [];
     while (i < lines.length) {
       const next = lines[i];
-      if (next !== '' && matchSectionHeader(next)) break;
+      // `sawBody` guards the generic fallback only: a section's very first
+      // line cannot be a heading, because two headings never stack. A KNOWN
+      // heading still breaks immediately, since those are unambiguous.
+      const sawBody = bodyLines.some(Boolean);
+      if (next !== '' && (matchSectionHeader(next) || (sawBody && looksLikeSectionHeader(next)))) break;
       bodyLines.push(next);
       i++;
     }
 
     if (kind === 'summary') {
       const text = bodyLines.filter(Boolean).join(' ');
-      if (text) summary = text;
+      if (text) { summary = text; summaryHeading = heading; }
     } else if (kind === 'skills') {
       skills = { heading, lines: bodyLines.filter(Boolean) };
     } else if (kind === 'experience' || kind === 'projects') {
-      sections.push({ kind, heading, entries: parseEntries(bodyLines) });
+      const entries = parseEntries(bodyLines);
+      if (entries.length) sections.push({ kind, heading, entries });
     } else {
-      sections.push({ kind: 'education', heading, lines: bodyLines.filter(Boolean) });
+      // education, plus every unrecognised section: kept as verbatim lines.
+      // That is also the right handling for credentials -- certifications and
+      // awards are facts, and must never be handed to the rewriter.
+      const sectionLines = bodyLines.filter(Boolean);
+      if (sectionLines.length) sections.push({ kind, heading, lines: sectionLines });
     }
   }
 
-  return { name, contact: contactLines.join('\n'), summary, skills, sections };
+  return { name, contact: contactLines.join('\n'), summary, summaryHeading, skills, sections };
 }

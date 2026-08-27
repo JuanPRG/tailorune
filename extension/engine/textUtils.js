@@ -127,3 +127,116 @@ export function modelFullText(model) {
   }
   return parts.filter(Boolean).join('\n');
 }
+
+/**
+ * Is this string usable as a job title in user-facing output?
+ *
+ * Job-page extraction reads titles from whatever the page offers, and pages
+ * offer plenty that is not a job title: a personalised greeting, a nav label,
+ * a cookie banner heading. One such value ("Welcome, Juan", scraped from a
+ * signed-in Indeed page) reached a finished cover letter as
+ * "Re: Welcome, Juan at TP Canada".
+ *
+ * Deliberately a rejection test rather than a recognition test. Job titles
+ * are unbounded and inventing a whitelist would reject real ones; what CAN be
+ * enumerated is the small set of shapes that are definitely not titles. The
+ * candidate's own name is included because a greeting usually contains it,
+ * and a title that is the applicant's name is wrong however it got there.
+ */
+const GREETING_RE = /^\s*(welcome|hello|hi|hey|dear|greetings|thanks|thank you|good (morning|afternoon|evening)|sign in|log in|apply now|save this job)\b/i;
+
+export function isPlausibleJobTitle(title, candidateName = '') {
+  const text = String(title || '').trim();
+  if (text.length < 2 || text.length > 100) return false;
+  if (GREETING_RE.test(text)) return false;
+  if (/[!?]/.test(text)) return false;
+  // A URL or an email address is scraped chrome, not a title.
+  if (/https?:\/\/|@/.test(text)) return false;
+
+  const name = String(candidateName || '').trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter((p) => p.length > 2).map((p) => p.toLowerCase());
+    const lower = text.toLowerCase();
+    if (parts.length && parts.every((p) => lower.includes(p))) return false;
+  }
+  return true;
+}
+
+// --- Concreteness retention -------------------------------------------------
+//
+// A rewrite can preserve every fact and still cost the candidate the job.
+// Asked to make bullets sound stronger, an LLM reliably trades specific nouns
+// for abstract process verbs: "bookkeeping, financial reporting, and budget
+// tracking" becomes "comprehensive financial administration ... to optimize
+// operational efficiency". Nothing is fabricated and nothing is lost that a
+// human would call a fact — but the searchable terms are gone, and keyword
+// matching is most of what a resume is screened on first.
+//
+// So concreteness is measured, not asked for. These functions define what is
+// measured; tailor.js decides the thresholds and what to do about a shortfall.
+
+/** Words that carry no matchable meaning, so retaining them proves nothing. */
+const RETENTION_STOPWORDS = new Set([
+  'and', 'the', 'for', 'with', 'that', 'from', 'this', 'into', 'across', 'while', 'their',
+  'were', 'was', 'has', 'have', 'had', 'are', 'not', 'out', 'all', 'can', 'its', 'who',
+  'you', 'your', 'our', 'each', 'also', 'more', 'than', 'other', 'some', 'such', 'only',
+  'over', 'then', 'them', 'they', 'when', 'where', 'which', 'will', 'would', 'about',
+  'after', 'before', 'being', 'both', 'during', 'through', 'under', 'very', 'most', 'many',
+  'much', 'including', 'include', 'includes', 'within', 'per', 'via', 'upon', 'these',
+  // Generic resume verbs and intensifiers. These are what a rewrite ADDS, so
+  // counting them as retained concreteness would mask the very loss being
+  // measured.
+  'managed', 'handled', 'led', 'ran', 'executed', 'delivered', 'drove', 'built', 'made',
+  'worked', 'used', 'using', 'utilized', 'utilised', 'utilizing', 'leveraged', 'leveraging',
+  'orchestrated', 'spearheaded', 'demonstrating', 'showcasing', 'ensuring', 'ensure',
+  'providing', 'provide', 'supporting', 'support', 'responsible', 'various', 'several',
+  'key', 'high', 'strong', 'proven', 'comprehensive', 'complex', 'rigorous', 'meticulous',
+  'strategic', 'robust', 'seamless', 'superior', 'significant', 'substantial', 'effective',
+  'efficient', 'efficiency', 'excellence', 'expertise', 'ability', 'able', 'skills',
+  // Adverbs and vague quantifiers. Counting these as concrete vocabulary
+  // would both inflate the score and clutter the "you dropped these" list
+  // with words no screener searches for.
+  'how', 'kept', 'quickly', 'different', 'needs', 'clearly', 'visibly', 'line', 'lines',
+  'multiple', 'daily', 'regular', 'regularly', 'consistently', 'successfully',
+]);
+
+/**
+ * Numbers and metrics: "20+", "40%", "15", "$1.2M", "200+".
+ *
+ * Dropping one is never a stylistic choice — a quantified claim is strictly
+ * more useful to a reader and a screener than the same claim unquantified.
+ */
+export function numericTokens(text) {
+  const found = String(text || '').match(/\$?\d[\d,.]*\s?[%+kKmMbB]?\+?/g) || [];
+  return new Set(found.map((t) => t.replace(/[\s,]/g, '').toLowerCase().replace(/\.$/, '')));
+}
+
+/** Concrete, matchable vocabulary: content words minus stopwords and filler. */
+export function conceptTokens(text) {
+  const words = String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9/&+-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  return new Set(words.filter((w) => w.length > 2 && !RETENTION_STOPWORDS.has(w)));
+}
+
+/**
+ * Share of the original's concrete vocabulary still present after rewriting.
+ * 1 when the original had nothing to retain, so an empty source can never
+ * fail the check.
+ */
+export function conceptRetentionRatio(originalText, rewrittenText) {
+  const before = conceptTokens(originalText);
+  if (before.size === 0) return 1;
+  const after = conceptTokens(rewrittenText);
+  let kept = 0;
+  for (const token of before) if (after.has(token)) kept++;
+  return kept / before.size;
+}
+
+/** Numbers present in the original that no longer appear anywhere in the rewrite. */
+export function droppedNumbers(originalText, rewrittenText) {
+  const after = numericTokens(rewrittenText);
+  return [...numericTokens(originalText)].filter((n) => !after.has(n));
+}

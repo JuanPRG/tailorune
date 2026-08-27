@@ -1,0 +1,13 @@
+Lena Ortiz
+lena@example.com
+
+EXPERIENCE
+Site Reliability Engineer  |  Cloudflare   2021 - Present
+- Ran the on-call rotation for edge networking.
+
+CERTIFICATIONS
+AWS Solutions Architect - Professional, 2023
+Certified Kubernetes Administrator, 2022
+
+EDUCATION
+BEng, Queen's University

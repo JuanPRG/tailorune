@@ -16,7 +16,7 @@
 // (kept the least-bad attempt) / `failed_after_retries`. All four survive.
 
 import { chatWithRetry, LlmError } from './llm.js';
-import { sanitizeText, tokenize, FABRICATION_WATCHLIST_TERMS, resumeSkillsBoundary } from './textUtils.js';
+import { sanitizeText, tokenize, FABRICATION_WATCHLIST_TERMS, resumeSkillsBoundary, isPlausibleJobTitle } from './textUtils.js';
 import { coverLetterWordRange, buildCoverLetterPreferencesSection, factoryPreferences } from './preferences.js';
 
 export const MIN_BODY_PARAGRAPHS = 2;
@@ -232,10 +232,31 @@ function escapeHtml(text) {
  * (cover_letter.py:288-292 records this as a direct user preference, not an
  * incidental choice).
  */
+/**
+ * The "Re:" line, built defensively.
+ *
+ * job.title comes from page scraping, which returns whatever the page had --
+ * including a signed-in greeting. Printing an implausible title verbatim
+ * produced "Re: Welcome, Juan at TP Canada" on a real letter. When the title
+ * cannot be trusted the subject degrades to the company alone, or is dropped
+ * entirely: a letter with no subject line reads as a stylistic choice, while
+ * a letter addressed to a greeting reads as a machine that was not checked.
+ */
+export function coverLetterSubject(job = {}, model = {}) {
+  const company = String(job.company || '').trim();
+  const title = String(job.title || '').trim();
+  const usable = isPlausibleJobTitle(title, model.name);
+
+  if (usable && company) return `Re: ${title} at ${company}`;
+  if (usable) return `Re: ${title}`;
+  if (company) return `Re: Application to ${company}`;
+  return '';
+}
+
 export function renderCoverLetterHtml({ bodyParagraphs, model, job }) {
   const name = escapeHtml(model.name || 'Candidate');
   const contactLine = escapeHtml(model.contact ? model.contact.split('\n').join(' | ') : '');
-  const jobLine = escapeHtml(`Re: ${job.title || 'the role'}${job.company ? ` at ${job.company}` : ''}`);
+  const jobLine = escapeHtml(coverLetterSubject(job, model));
   const body = bodyParagraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n');
 
   return `<!doctype html>
@@ -271,7 +292,7 @@ export function renderCoverLetterHtml({ bodyParagraphs, model, job }) {
     <div class="cl-header">
       <div class="cl-name">${name}</div>
       <div class="cl-contact">${contactLine}</div>
-      <div class="cl-job">${jobLine}</div>
+      ${jobLine ? `<div class="cl-job">${jobLine}</div>` : ''}
     </div>
     <p class="bold-line">Dear Hiring Manager,</p>
     ${body}

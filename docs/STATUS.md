@@ -163,9 +163,50 @@ so launching with `--remote-debugging-port` and reconnecting over CDP yields a r
   browser-owned — also verified directly, which is what ruled it out as the cause of a reported
   upload failure.
 
+## Guarding against single-resume overfitting
+
+Every original fixture was one person's resume, which is how a heuristic parser ends up encoding one
+layout's quirks as rules. It did: a "non-bullet line after a title is a subtitle" rule assumed at
+most ONE context line, because that is what the one real fixture had. On an employer/title/date
+stack — ordinary in consulting and finance resumes — it produced two roles, buried the real title in
+meta, and gave both bullets to a phantom entry titled with a date.
+
+`tests/fixtures/resumes/layouts/` now holds six deliberately different people and layouts: dates on
+the left, an employer/title/date stack, unicode bullets with an `OBJECTIVE` heading, leading prose
+with no heading at all, a role with no bullets between two that have them, and an unrecognised
+`CERTIFICATIONS` section. `parseTxtLayouts.test.mjs` asserts the full parse of each. Their job is to
+fail when a fix is shaped around one resume rather than around resumes.
+
+Two things fell out of writing them: entry rules are now shape-based rather than position-based
+(a bare date line can never be a title, so it always attaches upward, however many context lines
+preceded it), and unrecognised ALL-CAPS headings become their own section instead of merging into
+the previous one — kept as verbatim lines, which is also the correct handling for credentials, since
+certifications are facts the rewriter must never touch.
+
+## Content quality: concreteness is measured, not requested
+
+A rewrite can preserve every fact and still cost the candidate the job. Asked to make bullets sound
+stronger, models reliably trade specific nouns for abstract process verbs — "bookkeeping, financial
+reporting, and budget tracking" becomes "comprehensive financial administration … to optimize
+operational efficiency". Nothing is fabricated, so every other check passes, but screening is
+keyword-driven first and the searchable terms are gone.
+
+`validateTailoredModel()` therefore measures two things per role and feeds failures back into the
+existing retry loop:
+
+- **Dropped quantities** — any number in the original bullets missing from the rewrite. "A team of
+  15+" beats "cross-functional teams" for every reader, human or machine.
+- **Concreteness retention** — the share of the original's specific vocabulary that survives, which
+  must clear `MIN_BULLET_CONCEPT_RETENTION` (0.45). Calibrated against a real run rather than
+  guessed: a pass that visibly hollowed out its bullets scored 27–33% per role, so 45% flags all of
+  them while still permitting over half the wording to change.
+
+The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
+core of tailoring. The same run scored 15% there, and that was the right outcome.
+
 ## Test coverage
 
-- `npm run test:unit` — 157 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 185 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

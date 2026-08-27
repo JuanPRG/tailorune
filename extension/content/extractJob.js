@@ -315,11 +315,33 @@ async function _extractEmployerName() {
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
+// A page offers plenty that is not a job title -- a signed-in greeting, a nav
+// label, a banner heading. "Welcome, Juan" was scraped from a logged-in
+// Indeed page and printed on a finished cover letter. This is the same
+// rejection test as textUtils.js's isPlausibleJobTitle, duplicated because a
+// content script is injected as a standalone file and cannot import; the
+// candidate-name half of that check runs later, where the name is known.
+var _TITLE_REJECT_RE = /^\s*(welcome|hello|hi|hey|dear|greetings|thanks|thank you|good (morning|afternoon|evening)|sign in|log in|apply now|save this job)/i;
+
+function _plausibleJobTitle(title) {
+  var text = String(title || '').trim();
+  if (text.length < 2 || text.length > 100) return '';
+  if (_TITLE_REJECT_RE.test(text)) return '';
+  if (/[!?]/.test(text)) return '';
+  if (/https?:\/\/|@/.test(text)) return '';
+  return text;
+}
+
+/** Blank an untrustworthy title rather than passing it downstream. */
+function _withCheckedTitle(result) {
+  return Object.assign({}, result, { jobTitle: _plausibleJobTitle(result && result.jobTitle) });
+}
+
 async function extractJobContext() {
   if (_isIndeedPage()) {
     const complete = await _waitForDom(_findCompleteIndeedSelectedJob);
     const selectedJob = complete || _extractIndeedSelectedJob();
-    if (selectedJob) return selectedJob;
+    if (selectedJob) return _withCheckedTitle(selectedJob);
     return { text: _bodyTextFallback(), employer: '', jobTitle: '', source: 'body_fallback', confidence: 'low' };
   }
 
@@ -328,7 +350,7 @@ async function extractJobContext() {
     _extractEmployerName(),
   ]);
   const posting = _extractJsonLdJobPosting();
-  return {
+  return _withCheckedTitle({
     text: descriptionResult.text,
     employer,
     jobTitle: (posting && typeof posting.title === 'string') ? posting.title.trim() : '',
@@ -336,7 +358,7 @@ async function extractJobContext() {
     // Overall confidence is the description's, downgraded when no employer
     // was found -- the popup uses this to decide whether to ask for review.
     confidence: descriptionResult.confidence === 'low' ? 'low' : (employer ? 'high' : 'partial'),
-  };
+  });
 }
 
 // Injected via chrome.scripting.executeScript, whose result is the value of

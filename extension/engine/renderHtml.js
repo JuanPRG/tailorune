@@ -76,7 +76,7 @@ export function renderResumeHtml(model) {
   <div class="sheet">
     <h1>${escapeHtml(model.name)}</h1>
     <p class="contact">${escapeHtml(contactLine)}</p>
-    ${model.summary ? `<p class="summary">${escapeHtml(model.summary)}</p>` : ''}
+    ${model.summary ? `<h2>${escapeHtml(model.summaryHeading || 'SUMMARY')}</h2><p class="summary">${escapeHtml(model.summary)}</p>` : ''}
     ${skillsHtml}
     ${sectionsHtml}
   </div>

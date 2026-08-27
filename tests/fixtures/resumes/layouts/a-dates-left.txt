@@ -1,0 +1,15 @@
+Priya Raman
+priya@example.com | 416-555-0100
+
+SUMMARY
+Backend engineer with eight years building payment systems.
+
+EXPERIENCE
+2019 - Present   Senior Engineer, Shopify
+- Cut checkout latency by 40%.
+- Led migration of billing to Kafka.
+2016 - 2019   Engineer, Wealthsimple
+- Built the ledger service.
+
+EDUCATION
+BSc Computer Science, University of Waterloo

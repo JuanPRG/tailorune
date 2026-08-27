@@ -9,6 +9,7 @@
 // dialog, no "uncheck Headers and footers" step. See MIGRATION_PLAN.md §3-4.
 
 import { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } from 'docx';
+import { coverLetterSubject } from './coverLetter.js';
 
 const FONT = 'Arial';
 const MARGIN_TWIPS = 1080; // 0.75in
@@ -67,6 +68,12 @@ export function buildResumeDocument(model) {
   }
 
   if (model.summary) {
+    // Labelled, always. An unlabelled paragraph between the contact block and
+    // the first real heading is an orphan: a parser segmenting by heading has
+    // nothing to attach it to. The resume's own heading is used when it had
+    // one (PROFILE, OBJECTIVE, ABOUT ME), and a neutral default when the
+    // summary came from leading prose with no heading at all.
+    children.push(sectionHeading(model.summaryHeading || 'SUMMARY'));
     children.push(textParagraph(model.summary, { after: 140 }));
   }
 
@@ -113,13 +120,13 @@ const CL_MARGIN_TWIPS = 1224; // 0.85in, matching cover_letter.py's COVER_LETTER
 export function buildCoverLetterDocument({ bodyParagraphs, model, job }) {
   const name = model.name || 'Candidate';
   const contactLine = model.contact ? model.contact.split('\n').join(' | ') : '';
-  const jobLine = `Re: ${job.title || 'the role'}${job.company ? ` at ${job.company}` : ''}`;
+  const jobLine = coverLetterSubject(job, model);
 
   const children = [
     textParagraph(name, { bold: true, size: 36, after: 20 }),
   ];
   if (contactLine) children.push(textParagraph(contactLine, { size: 19, after: 10 }));
-  children.push(textParagraph(jobLine, { size: 19, rule: true, after: 240 }));
+  if (jobLine) children.push(textParagraph(jobLine, { size: 19, rule: true, after: 240 }));
 
   // Greeting and sign-off bold, body regular -- matches cover_letter.py:265-272.
   children.push(textParagraph('Dear Hiring Manager,', { bold: true, after: 200 }));
