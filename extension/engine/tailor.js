@@ -95,31 +95,51 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
     'Write in natural, human, ATS-friendly language. Avoid AI-sounding phrasing and cliches.',
     'Keep bullets concise and quantified where the original supports it — the whole resume'
     + ` must fit roughly ${ONE_PAGE_WORD_BUDGET} words total, so favor tight, high-signal bullets.`,
+    // The mandate comes FIRST and the preservation rule second, deliberately.
+    // With the order reversed, a model reads the constraint as the primary
+    // instruction and satisfies it by copying the input back — observed
+    // twice on real runs, on both attempts, even with the failure fed back.
+    'Rewrite every block. Copying a bullet or the summary back unchanged is a failed'
+    + ' response, not a safe one. Fully rewrite phrasing, framing and emphasis to speak to this'
+    + ' posting\'s language and priorities — do not limit yourself to small keyword swaps.'
+    + ' Every rewritten bullet must still describe the exact same real activity as its original,'
+    + ' told more compellingly; never substitute a different activity or responsibility.',
+    // Ported from v4 (tailor.py:137-145). Without this the model treats a
+    // weak connection between a bullet and the posting as grounds to leave
+    // the bullet alone — which is how a finance resume against a sales
+    // posting came back completely untouched, twice. The examples matter:
+    // they show what an honest improvement looks like when there is no
+    // domain overlap to lean on.
+    'Attempt to improve EVERY block, including the ones with no obvious connection to the'
+    + ' posting. A bullet can almost always gain a light keyword or phrasing adjustment —'
+    + ' emphasizing process improvement, accuracy, volume, stakeholder communication,'
+    + ' cross-functional collaboration, reliability — without inventing anything or changing what'
+    + ' it describes. Do NOT leave a block untouched just because the connection is not obvious'
+    + ' at first glance; that is exactly the case that most needs a genuine attempt. Leaving a'
+    + ' block unchanged should be a rare exception you reach after really trying, never the'
+    + ' default for something that looks unrelated.',
     // The single most common way a rewrite makes a resume worse. Screening is
     // keyword-driven first, so trading "bookkeeping, IFRS, budget tracking"
     // for "comprehensive financial administration" loses the candidate real
-    // matches while sounding more senior. Stated as a rule and enforced
-    // afterwards by conceptRetentionRatio, because instructions alone do not
-    // hold across models.
-    'CARRY OVER THE CONCRETE WORDS. Keep every number, percentage, currency amount and'
-    + ' quantity exactly as written, and keep the specific nouns the original used — tools,'
-    + ' systems, standards, processes, certifications, domain terms. Rephrase around them;'
+    // matches while sounding more senior. Enforced afterwards by
+    // conceptRetentionRatio, because instructions alone do not hold across
+    // models — but framed here as a constraint ON the rewrite above, not as
+    // a competing instruction.
+    'While rewriting, CARRY OVER THE CONCRETE WORDS. Keep every number, percentage, currency'
+    + ' amount and quantity exactly as written, and keep the specific nouns the original used —'
+    + ' tools, systems, standards, processes, certifications, domain terms. Rephrase around them;'
     + ' never replace them with generic descriptions. "Reconciled accounts payable in NetSuite"'
     + ' may not become "managed comprehensive financial workflows".',
     'Prefer adding a job-description keyword alongside an original term to swapping one for'
     + ' the other. Do not pad with adjectives like comprehensive, robust, strategic or'
     + ' meticulous; they match nothing and consume the word budget.',
-    // The opposite failure, and a real one: told firmly enough to keep the
-    // concrete words, a model will satisfy that by returning the input
-    // verbatim. Both directions have to be named, or fixing one causes the
-    // other.
-    'BUT ACTUALLY REWRITE. Copying a bullet or the summary back unchanged is a failed'
-    + ' response, not a safe one. Every bullet must be re-framed for THIS job — change the'
-    + ' emphasis, the ordering, and what leads the sentence — while the concrete terms above'
-    + ' travel with it. Keep the nouns, change the framing.',
     buildResumePreferencesSection(prefs),
     'Respond with ONLY a JSON object of this exact shape, no prose, no markdown fence:',
     '{"summary": "...", "entries": [{"index": 0, "bullets": ["...", "..."]}]}',
+    // v4 repeats the point at the output contract (tailor.py:147-150), where
+    // a model deciding what to emit is most likely to take the easy path.
+    'Include every entry index you were given. Returning a bullet unchanged should be rare and'
+    + ' deliberate, never a default for a block that seems hard to connect to the posting.',
   ];
   if (avoidNotes && avoidNotes.length) {
     systemLines.push(`Issues found in a previous attempt — do not repeat them: ${avoidNotes.join(' | ')}`);

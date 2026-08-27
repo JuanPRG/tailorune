@@ -146,6 +146,34 @@ test('the prompt tells the model that copying is a failure, not just that droppi
   assert.match(system, /unchanged is a failed/i);
 });
 
+test('the rewrite mandate comes BEFORE the preservation constraint', () => {
+  // Order is the fix, not just wording. With preservation stated first, a
+  // model reads it as the primary instruction and satisfies it by copying the
+  // input back -- observed on two consecutive real runs, on both attempts,
+  // even with the failure fed back into the retry.
+  const system = buildTailorMessages(modelWith(['Reconciled accounts payable in NetSuite.']), 'A JD.', undefined, [])[0].content;
+  const mandate = system.indexOf('Rewrite every block');
+  const constraint = system.indexOf('CARRY OVER THE CONCRETE WORDS');
+  assert.ok(mandate >= 0 && constraint >= 0, 'both instructions must be present');
+  assert.ok(mandate < constraint, 'the rewrite mandate must precede the preservation constraint');
+});
+
+test('the prompt tells the model to attempt bullets with no obvious link to the posting', () => {
+  // v4 tailor.py:137-145. A finance resume against a sales posting came back
+  // completely untouched twice because the model treated a weak connection as
+  // grounds to leave the bullet alone. The examples are load-bearing: they
+  // show what an honest improvement looks like with no domain overlap.
+  const system = buildTailorMessages(modelWith(['Reconciled accounts payable in NetSuite.']), 'A JD.', undefined, [])[0].content;
+  assert.match(system, /no obvious connection/i);
+  assert.match(system, /most needs a genuine attempt/i);
+  assert.match(system, /cross-functional collaboration/i);
+});
+
+test('the output contract repeats that leaving a bullet unchanged is not a default', () => {
+  const system = buildTailorMessages(modelWith(['A bullet.']), 'A JD.', undefined, [])[0].content;
+  assert.match(system, /Returning a bullet unchanged should be rare and deliberate/i);
+});
+
 // --- job title plausibility -------------------------------------------------
 
 test('isPlausibleJobTitle rejects the page furniture that scraping picks up', () => {

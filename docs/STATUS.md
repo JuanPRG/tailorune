@@ -211,6 +211,27 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## Prompt ordering, and the weak-connection case
+
+Two consecutive real runs came back with the summary and every bullet byte-identical to the upload,
+on both attempts, with the failure fed back into the retry. Both were sales postings against a
+finance and administration resume; the run either side of them, for a closer role, tailored fine.
+So the model was not ignoring an instruction - it was declining to rewrite bullets it saw no honest
+route to connect to the posting, and copying was the available escape.
+
+Two things fixed it, and the second is the substantive one:
+
+- **Order.** The rewrite mandate now precedes the preservation constraint. Stated the other way
+  round, "keep the concrete words" reads as the primary instruction and returning the input verbatim
+  satisfies it perfectly.
+- **v4's weak-connection paragraph** (`tailor.py:137-145`), which had not been ported. It grants the
+  model a route through the case it was stuck on: attempt every block including ones with no obvious
+  link, a bullet can almost always gain a light keyword or phrasing adjustment without inventing
+  anything, and *that is exactly the case that most needs a genuine attempt*. The examples in it are
+  load-bearing - they show what an honest improvement looks like when there is no domain overlap to
+  lean on. v4 repeats the point at the output contract, where a model choosing what to emit is most
+  likely to take the easy path, and so does this now.
+
 ## Anti-fabrication parity with v4
 
 Three guards v4 had and this did not, all closed. None of them changes how aggressive the rewriting
@@ -244,7 +265,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 202 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 205 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
