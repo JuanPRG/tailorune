@@ -86,12 +86,17 @@ message. Those gaps are now closed:
 | **JD extraction from the job page** | **Ported** — `content/extractJob.js`, 3 tiers + Indeed adapter, `activeTab` only |
 | **LLM judge (semantic review)** | **Ported** — `judge.js`, fails open, advisory, feeds the retry loop |
 | **Per-model rotation** | **Ported** — model pools expanded and interleaved, cooldowns keyed per (provider, model) |
+| **Resume library** | **Ported** — `resumeLibrary.js`, named resumes in `chrome.storage.local`, last-used reloaded on open |
 | Autofill (mapper, rules, answer memory, candidate settings) | **Out of scope by decision** |
 
 ### Deliberate departures from v4, with reasons
 
-- **No resume library.** One resume per run, pasted or uploaded. v4 stores multiple with
-  default/archive/rename/revisions. Purely convenience; the only remaining feature gap.
+- **The resume library is smaller than v4's.** Named resumes and a remembered last-used one; no
+  archive, no revisions. Those are filing-cabinet features for a database — a dropdown holding at
+  most twenty entries does not need them. What is stored is the *extracted text*, not the original
+  file: it is what the pipeline consumes anyway (so a saved resume can never drift from what the
+  tailorer sees), it is ~5KB rather than ~20KB, and it makes the library format-agnostic — a `.docx`
+  uploaded once is, from then on, just a saved resume.
 - **No JD cleanup LLM call.** v4 spent a call deriving employer/title from raw scraped JD text.
   Largely obsolete here: `content/extractJob.js` reads both directly from JSON-LD or platform
   selectors for free, and they are editable fields in the popup either way.
@@ -109,9 +114,26 @@ panes, malformed JSON-LD, job-board name rejection, re-injection safety), and th
 worker converts a missing grant into actionable guidance rather than leaking Chrome's raw
 "Extension manifest must request permission" string. The click path itself needs one manual check.
 
+## Resume library
+
+Named resumes persist in `chrome.storage.local`; reopening the popup reloads whichever was used
+last, so the common case — one resume, many applications — costs no interaction at all. Uploading a
+file extracts it to text immediately (via a `resume:extract` round trip to the offscreen document,
+which is where JSZip and pdf.js live) rather than at tailoring time, which is what makes an uploaded
+file saveable and surfaces an unreadable PDF at once instead of a minute into a run.
+
+Two consequences worth recording:
+
+- **The textarea is now the single source of truth.** The run payload no longer carries a file, so
+  there is no "which input wins" question. A file selection is an import step, not a second input.
+- **Settings persist as you type, not only on run.** They used to be written inside the tailor
+  handler, so typing an API key and closing the popup discarded it. Both `input` and `change` are
+  listened for (debounced): on a text field `change` fires only on *blur*, so a user who types a key
+  and clicks straight out of the popup never fires it — verified directly in a browser, not assumed.
+
 ## Test coverage
 
-- `npm run test:unit` — 138 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 157 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
@@ -125,8 +147,10 @@ worker converts a missing grant into actionable guidance rather than leaking Chr
   chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
   field; that it skips the call when nothing changed; and that it is not called when the
   deterministic validator already failed), and per-model chain expansion and interleaving.
-- `npm run test:e2e` — 14 tests, real Chromium, real unpacked extension load, real
+- `npm run test:e2e` — 16 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
-  checked), real `.docx` upload, real `.pdf` upload. LLM calls are answered by a real local HTTP
+  checked), real `.docx` upload, real `.pdf` upload, and the resume library round trip — a `.docx`
+  uploaded once, the popup closed, then reopened and tailored with the saved resume and no second
+  upload. LLM calls are answered by a real local HTTP
   server (`mockLlmServer.mjs`) rather than `context.route()`, which does not intercept
   offscreen-document fetches — confirmed by direct experiment, not found in any doc.
