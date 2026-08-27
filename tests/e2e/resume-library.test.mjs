@@ -72,9 +72,24 @@ async function waitForStoredApiKey(sw, timeoutMs = 5000) {
   throw new Error('the API key was never persisted to chrome.storage.local');
 }
 
-/** Saving prompts for a name; answer it. */
-function answerPrompts(page, name) {
-  page.on('dialog', (dialog) => dialog.accept(name));
+/**
+ * Record any JS dialog the popup opens, so a test can assert there were none.
+ *
+ * This is a real regression guard, not hygiene. A browser-action popup is
+ * DISMISSED the moment a dialog opens, and prompt() then resolves to null — so
+ * naming a resume via window.prompt() silently saved nothing for a real user
+ * while passing every test here, because Playwright loads popup.html as an
+ * ordinary tab where dialogs behave normally. That context difference is
+ * invisible to this harness, so the rule is simply: the popup opens no
+ * dialogs, ever. Dismissing rather than accepting mirrors the real popup.
+ */
+function forbidDialogs(page) {
+  const seen = [];
+  page.on('dialog', (dialog) => {
+    seen.push(`${dialog.type()}: ${dialog.message()}`);
+    dialog.dismiss().catch(() => {});
+  });
+  return () => seen;
 }
 
 test('a resume uploaded once is saved, survives the popup closing, and reloads automatically', async (t) => {
@@ -94,26 +109,40 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
 
   // --- First visit: upload a .docx and save it under a name ---------------
   const first = await openPopup(context, extensionId, mockLlm.url);
-  answerPrompts(first, 'Finance CV');
+  const firstDialogs = forbidDialogs(first);
 
   await first.setInputFiles('#resumeFile', DOCX_FIXTURE);
   // Extraction is async (it round-trips to the offscreen document), so wait
   // for the text to actually land rather than assuming it is instant.
-  await first.waitForFunction(() => document.getElementById('resumeText').value.includes('Juan Rivera'), { timeout: 20000 });
+  await first.waitForFunction(
+    () => document.getElementById('resumeText').value.includes('Juan Rivera'),
+    { timeout: 20000 },
+  );
 
+  // The name defaults to the uploaded file's base name, which beats the first
+  // line of the resume — that is just the person's name, and identical across
+  // every resume they own.
+  assert.equal(await first.inputValue('#resumeName'), 'juan-rivera-tabstops');
+
+  await first.fill('#resumeName', 'Finance CV');
   await first.click('#saveResumeBtn');
-  await first.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'), { timeout: 5000 });
+  await first.waitForFunction(
+    () => document.getElementById('libraryHint').textContent.includes('Saved as'),
+    { timeout: 5000 },
+  );
 
   // Settings persist on change rather than only on run, so an API key typed
   // and never used still survives. Wait for the write to actually land before
-  // closing -- chrome.storage.local.set is async, and a popup that closes
+  // closing — chrome.storage.local.set is async, and a popup that closes
   // mid-write is exactly how the setting would be lost.
   await fillApiKey(first);
   await waitForStoredApiKey(sw);
+  assert.deepEqual(firstDialogs(), [], 'the popup must never open a JS dialog');
   await first.close(); // the popup going away is what a real user does constantly
 
   // --- Second visit: the resume is already there, untouched ---------------
   const second = await openPopup(context, extensionId, mockLlm.url);
+  const secondDialogs = forbidDialogs(second);
   await second.waitForFunction(
     () => document.getElementById('resumeText').value.includes('Juan Rivera'),
     { timeout: 5000 },
@@ -121,6 +150,7 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
 
   const selectedLabel = await second.$eval('#savedResumes', (el) => el.options[el.selectedIndex].textContent);
   assert.equal(selectedLabel, 'Finance CV', 'the saved resume should be selected on open');
+  assert.equal(await second.inputValue('#resumeName'), 'Finance CV', 'the name field should reflect the selection');
 
   const fileInputValue = await second.inputValue('#resumeFile');
   assert.equal(fileInputValue, '', 'no file should need to be re-uploaded');
@@ -144,40 +174,76 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
   const text = await docxTextOf(readFileSync(item.filename));
   assert.ok(text.includes(MOCKED_SUMMARY), 'tailored summary missing from the document');
   assert.ok(text.includes('Juan Rivera'), 'the saved resume was not the one tailored');
+  assert.deepEqual(secondDialogs(), [], 'the popup must never open a JS dialog');
 });
 
-test('a second saved resume can be switched between, and deleting one leaves the other intact', async (t) => {
+test('a second saved resume can be switched between, and deleting takes two clicks', async (t) => {
   const mockLlm = await startMockLlmServer(() => ({ choices: [{ message: { content: '{}' } }] }));
   t.after(() => mockLlm.close());
 
   const { context, extensionId } = await launch(t);
   const page = await openPopup(context, extensionId, mockLlm.url);
+  const dialogs = forbidDialogs(page);
 
   // Save two distinct resumes by pasting, which needs no extraction round-trip.
-  let nextName = 'Resume A';
-  page.on('dialog', (dialog) => dialog.accept(nextName));
-
   await page.fill('#resumeText', 'Ada Lovelace\nAAA distinctive body text');
+  await page.fill('#resumeName', 'Resume A');
   await page.click('#saveResumeBtn');
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
 
-  nextName = 'Resume B';
   await page.fill('#resumeText', 'Ada Lovelace\nBBB distinctive body text');
+  await page.fill('#resumeName', 'Resume B');
   await page.click('#saveResumeBtn');
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Resume B'));
 
   const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
   assert.deepEqual(labels, ['— not saved —', 'Resume A', 'Resume B']);
 
-  // Switching the dropdown loads that resume's text.
+  // Switching the dropdown loads that resume's text and its name.
   const aValue = await page.$eval('#savedResumes option:nth-child(2)', (o) => o.value);
   await page.selectOption('#savedResumes', aValue);
   await page.waitForFunction(() => document.getElementById('resumeText').value.includes('AAA'));
+  assert.equal(await page.inputValue('#resumeName'), 'Resume A');
 
-  // Deleting the selected one leaves the other alone. confirm() -> accept.
+  // Deleting is two-step, since confirm() is unavailable in a real popup.
+  // The first click only arms it — nothing may be removed yet.
+  await page.click('#deleteResumeBtn');
+  await page.waitForFunction(() => document.getElementById('deleteResumeBtn').textContent === 'Confirm');
+  const afterArming = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
+  assert.deepEqual(afterArming, ['— not saved —', 'Resume A', 'Resume B'], 'arming must not delete anything');
+
   await page.click('#deleteResumeBtn');
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Deleted'));
 
   const remaining = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
   assert.deepEqual(remaining, ['— not saved —', 'Resume B'], 'the wrong resume was removed');
+  assert.equal(await page.$eval('#deleteResumeBtn', (el) => el.textContent), 'Delete', 'the button should reset');
+  assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
+});
+
+test('re-saving a loaded resume under the same name updates it instead of duplicating it', async (t) => {
+  const mockLlm = await startMockLlmServer(() => ({ choices: [{ message: { content: '{}' } }] }));
+  t.after(() => mockLlm.close());
+
+  const { context, extensionId } = await launch(t);
+  const page = await openPopup(context, extensionId, mockLlm.url);
+  const dialogs = forbidDialogs(page);
+
+  await page.fill('#resumeText', 'Ada Lovelace\noriginal body');
+  await page.fill('#resumeName', 'My CV');
+  await page.click('#saveResumeBtn');
+  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
+
+  // Edit the loaded resume and save again under the same name.
+  await page.fill('#resumeText', 'Ada Lovelace\nedited body');
+  await page.click('#saveResumeBtn');
+  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
+
+  const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
+  assert.deepEqual(labels, ['— not saved —', 'My CV'], 'a duplicate entry was created');
+
+  // Reopening proves the edit is what persisted, not the original.
+  const reopened = await openPopup(context, extensionId, mockLlm.url);
+  await reopened.waitForFunction(() => document.getElementById('resumeText').value.includes('edited body'));
+  assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
 });

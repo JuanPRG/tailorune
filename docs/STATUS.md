@@ -126,6 +126,13 @@ Two consequences worth recording:
 
 - **The textarea is now the single source of truth.** The run payload no longer carries a file, so
   there is no "which input wins" question. A file selection is an import step, not a second input.
+- **The popup opens no JS dialogs, ever.** Naming a resume originally used `window.prompt()`. A
+  browser-action popup is *dismissed* the moment a dialog opens and `prompt()` then resolves to
+  null, so Save silently did nothing for a real user — while passing every e2e test, because
+  Playwright loads `popup.html` as an ordinary tab where dialogs behave normally. That context
+  difference is invisible to the harness, so naming is now an inline field and deleting is a
+  two-step arm/confirm on the button itself. `forbidDialogs()` in the e2e suite fails any test in
+  which the popup opens a dialog at all.
 - **Settings persist as you type, not only on run.** They used to be written inside the tailor
   handler, so typing an API key and closing the popup discarded it. Both `input` and `change` are
   listened for (debounced): on a text field `change` fires only on *blur*, so a user who types a key
@@ -147,7 +154,7 @@ Two consequences worth recording:
   chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
   field; that it skips the call when nothing changed; and that it is not called when the
   deterministic validator already failed), and per-model chain expansion and interleaving.
-- `npm run test:e2e` — 16 tests, real Chromium, real unpacked extension load, real
+- `npm run test:e2e` — 17 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload, and the resume library round trip — a `.docx`
   uploaded once, the popup closed, then reopened and tailored with the saved resume and no second

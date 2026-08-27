@@ -16,6 +16,7 @@ const els = {
   resumeText: $('resumeText'),
   resumeFile: $('resumeFile'),
   savedResumes: $('savedResumes'),
+  resumeName: $('resumeName'),
   saveResumeBtn: $('saveResumeBtn'),
   deleteResumeBtn: $('deleteResumeBtn'),
   libraryHint: $('libraryHint'),
@@ -93,17 +94,22 @@ async function refreshLibrary({ selectId, loadText = false } = {}) {
 
   const match = library.resumes.find((r) => r.id === chosen);
   els.savedResumes.value = match ? match.id : '';
+  if (match) els.resumeName.value = match.name;
   if (match && loadText) els.resumeText.value = match.text;
   return library;
 }
 
 async function onSelectResume() {
+  // Changing the selection cancels an armed delete: the armed id would no
+  // longer match, but the button label must stop saying "Confirm".
+  disarmDelete();
   const id = els.savedResumes.value;
   if (!id) return;
   const library = await loadLibrary(storage);
   const match = library.resumes.find((r) => r.id === id);
   if (!match) return;
   els.resumeText.value = match.text;
+  els.resumeName.value = match.name;
   // Clear any staged upload: the textarea is now the source of truth, and
   // leaving a file selected would silently override the resume just chosen.
   els.resumeFile.value = '';
@@ -111,6 +117,16 @@ async function onSelectResume() {
   setLibraryHint(`Loaded "${match.name}".`);
 }
 
+/**
+ * Save whatever is in the textarea under the name in the name field.
+ *
+ * The name comes from a real input rather than window.prompt(). That is not a
+ * style preference: opening a JS dialog from a browser-action popup dismisses
+ * the popup, and prompt() returns null, so the save silently never happened.
+ * It looked fine in tests only because Playwright loads popup.html as an
+ * ordinary tab, where dialogs behave normally -- the one context difference
+ * that mattered. Nothing in this file may depend on prompt/confirm/alert.
+ */
 async function onSaveResume() {
   const text = els.resumeText.value.trim();
   if (!text) { setLibraryHint('Nothing to save — paste or upload a resume first.'); return; }
@@ -118,25 +134,40 @@ async function onSaveResume() {
   const selectedId = els.savedResumes.value;
   const library = await loadLibrary(storage);
   const existing = library.resumes.find((r) => r.id === selectedId);
-  const suggested = existing ? existing.name : suggestName(text);
-  // eslint-disable-next-line no-alert -- a popup has nowhere better to put a one-field prompt
-  const name = window.prompt('Name this resume', suggested);
-  if (name === null) return; // cancelled
+  const name = els.resumeName.value.trim() || (existing ? existing.name : suggestName(text));
 
   try {
-    // Pass the id only when the user is updating the resume they had loaded;
-    // otherwise let saveResume() decide by name, so re-saving under an
-    // existing name updates that entry instead of creating a duplicate label.
+    // Pass the id only when the user is updating the resume they had loaded
+    // under its own name; otherwise let saveResume() decide by name, so
+    // re-saving under an existing name updates it rather than duplicating it.
     const saved = await saveResume(storage, {
-      id: existing && existing.name === name.trim() ? existing.id : undefined,
+      id: existing && existing.name === name ? existing.id : undefined,
       name,
       text,
     });
     await refreshLibrary({ selectId: saved.id });
+    els.resumeName.value = saved.name;
     setLibraryHint(`Saved as "${saved.name}".`);
   } catch (err) {
     setLibraryHint(String((err && err.message) || err));
   }
+}
+
+/**
+ * Delete needs a confirmation step, and window.confirm() is unavailable for
+ * the same reason prompt() is (see onSaveResume). So it is two-step: the
+ * first click arms, a second click within a few seconds commits. Arming is
+ * scoped to the id that was selected, so changing the dropdown between clicks
+ * cannot delete something the user never armed.
+ */
+const DELETE_ARM_MS = 4000;
+let armedDeleteId = null;
+let armedDeleteTimer = null;
+
+function disarmDelete() {
+  armedDeleteId = null;
+  if (armedDeleteTimer) { clearTimeout(armedDeleteTimer); armedDeleteTimer = null; }
+  els.deleteResumeBtn.textContent = 'Delete';
 }
 
 async function onDeleteResume() {
@@ -145,10 +176,23 @@ async function onDeleteResume() {
   const library = await loadLibrary(storage);
   const match = library.resumes.find((r) => r.id === id);
   if (!match) return;
-  // eslint-disable-next-line no-alert -- deletion is unrecoverable; confirm it
-  if (!window.confirm(`Delete "${match.name}"? This cannot be undone.`)) return;
+
+  if (armedDeleteId !== id) {
+    disarmDelete();
+    armedDeleteId = id;
+    els.deleteResumeBtn.textContent = 'Confirm';
+    setLibraryHint(`Click Confirm to delete "${match.name}". This cannot be undone.`);
+    armedDeleteTimer = setTimeout(() => {
+      disarmDelete();
+      setLibraryHint('');
+    }, DELETE_ARM_MS);
+    return;
+  }
+
+  disarmDelete();
   await deleteResume(storage, id);
   await refreshLibrary({ selectId: '' });
+  els.resumeName.value = '';
   setLibraryHint(`Deleted "${match.name}".`);
 }
 
@@ -180,6 +224,12 @@ async function onResumeFileChange() {
       }
       els.resumeText.value = response.text;
       els.savedResumes.value = '';
+      // Default the name to the file's own base name -- it is almost always a
+      // better label than the first line of the resume, which is just the
+      // person's name and identical across every one of their resumes.
+      if (!els.resumeName.value.trim()) {
+        els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
+      }
       setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
     } catch (err) {
       setLibraryHint(`Could not read ${file.name}: ${(err && err.message) || err}`);
