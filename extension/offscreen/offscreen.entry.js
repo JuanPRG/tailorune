@@ -171,6 +171,19 @@ async function runTailor(payload) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'offscreen') return undefined;
+
+  // Extraction on its own, with no tailoring behind it. The resume library
+  // stores extracted TEXT, so saving an uploaded .docx or .pdf means turning
+  // it into text first -- and the extractors (JSZip, pdf.js) live in this
+  // bundle, not in the popup. Same resolveResumeText() the pipeline uses, so
+  // a saved resume is byte-identical to what tailoring would have seen.
+  if (message.type === 'resume:extract') {
+    resolveResumeText(message.payload || {})
+      .then((text) => sendResponse({ ok: true, text }))
+      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+    return true;
+  }
+
   if (message.type !== 'tailor:run') {
     sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
     return undefined;

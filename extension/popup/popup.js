@@ -7,11 +7,18 @@
 // loading handles it directly.
 
 import { getSettings, setSettings } from '../engine/store.js';
+import {
+  chromeStorageAdapter, loadLibrary, saveResume, deleteResume, markUsed, suggestName,
+} from '../engine/resumeLibrary.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
   resumeText: $('resumeText'),
   resumeFile: $('resumeFile'),
+  savedResumes: $('savedResumes'),
+  saveResumeBtn: $('saveResumeBtn'),
+  deleteResumeBtn: $('deleteResumeBtn'),
+  libraryHint: $('libraryHint'),
   jobDescription: $('jobDescription'),
   readPageBtn: $('readPageBtn'),
   extractHint: $('extractHint'),
@@ -44,6 +51,144 @@ const els = {
 
 let lastResumeHtml = null;
 let lastCoverLetterHtml = null;
+
+const storage = chromeStorageAdapter();
+
+// In-flight file extraction, if any. Clicking "Tailor resume" while a file is
+// still being read must WAIT for it, not fail with "paste your resume first"
+// -- a large .pdf takes noticeably longer than a .docx (pdf.js has a worker to
+// spin up), which is exactly long enough for a user to click through it.
+// Disabling the button instead would trade one dead end for another.
+let pendingExtraction = null;
+
+// ---------------------------------------------------------------- library --
+
+function setLibraryHint(text) {
+  els.libraryHint.textContent = text || '';
+}
+
+/**
+ * Repaint the dropdown from storage and, when asked, load the selected
+ * resume's text into the textarea.
+ *
+ * `selectId` defaults to the last-used resume, which is the entire point of
+ * the feature: the common case is one resume reused for every application,
+ * and that case should cost zero clicks on open.
+ */
+async function refreshLibrary({ selectId, loadText = false } = {}) {
+  const library = await loadLibrary(storage);
+  const chosen = selectId !== undefined ? selectId : library.lastUsedId;
+
+  els.savedResumes.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = library.resumes.length ? '— not saved —' : '— none saved —';
+  els.savedResumes.appendChild(none);
+  for (const resume of library.resumes) {
+    const option = document.createElement('option');
+    option.value = resume.id;
+    option.textContent = resume.name;
+    els.savedResumes.appendChild(option);
+  }
+
+  const match = library.resumes.find((r) => r.id === chosen);
+  els.savedResumes.value = match ? match.id : '';
+  if (match && loadText) els.resumeText.value = match.text;
+  return library;
+}
+
+async function onSelectResume() {
+  const id = els.savedResumes.value;
+  if (!id) return;
+  const library = await loadLibrary(storage);
+  const match = library.resumes.find((r) => r.id === id);
+  if (!match) return;
+  els.resumeText.value = match.text;
+  // Clear any staged upload: the textarea is now the source of truth, and
+  // leaving a file selected would silently override the resume just chosen.
+  els.resumeFile.value = '';
+  await markUsed(storage, id);
+  setLibraryHint(`Loaded "${match.name}".`);
+}
+
+async function onSaveResume() {
+  const text = els.resumeText.value.trim();
+  if (!text) { setLibraryHint('Nothing to save — paste or upload a resume first.'); return; }
+
+  const selectedId = els.savedResumes.value;
+  const library = await loadLibrary(storage);
+  const existing = library.resumes.find((r) => r.id === selectedId);
+  const suggested = existing ? existing.name : suggestName(text);
+  // eslint-disable-next-line no-alert -- a popup has nowhere better to put a one-field prompt
+  const name = window.prompt('Name this resume', suggested);
+  if (name === null) return; // cancelled
+
+  try {
+    // Pass the id only when the user is updating the resume they had loaded;
+    // otherwise let saveResume() decide by name, so re-saving under an
+    // existing name updates that entry instead of creating a duplicate label.
+    const saved = await saveResume(storage, {
+      id: existing && existing.name === name.trim() ? existing.id : undefined,
+      name,
+      text,
+    });
+    await refreshLibrary({ selectId: saved.id });
+    setLibraryHint(`Saved as "${saved.name}".`);
+  } catch (err) {
+    setLibraryHint(String((err && err.message) || err));
+  }
+}
+
+async function onDeleteResume() {
+  const id = els.savedResumes.value;
+  if (!id) { setLibraryHint('Select a saved resume to delete.'); return; }
+  const library = await loadLibrary(storage);
+  const match = library.resumes.find((r) => r.id === id);
+  if (!match) return;
+  // eslint-disable-next-line no-alert -- deletion is unrecoverable; confirm it
+  if (!window.confirm(`Delete "${match.name}"? This cannot be undone.`)) return;
+  await deleteResume(storage, id);
+  await refreshLibrary({ selectId: '' });
+  setLibraryHint(`Deleted "${match.name}".`);
+}
+
+/**
+ * Turn an uploaded file into text immediately, rather than at tailoring time.
+ *
+ * Extraction needs JSZip/pdf.js, which live in the offscreen bundle, so this
+ * round-trips through the service worker. Doing it on selection rather than
+ * on run is what makes the file saveable to the library at all -- and it
+ * surfaces an unreadable PDF right away instead of a minute into a run.
+ */
+async function onResumeFileChange() {
+  const file = els.resumeFile.files[0];
+  if (!file) return;
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  setLibraryHint(`Reading ${file.name}...`);
+
+  pendingExtraction = (async () => {
+    try {
+      const base64 = await readFileAsBase64(file);
+      const response = await chrome.runtime.sendMessage({
+        target: 'sw',
+        type: 'resume:extract',
+        payload: { resumeFileBase64: base64, resumeFileExt: ext },
+      });
+      if (!response || !response.ok) {
+        setLibraryHint(`Could not read ${file.name}: ${(response && response.error) || 'unknown error'}`);
+        return;
+      }
+      els.resumeText.value = response.text;
+      els.savedResumes.value = '';
+      setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
+    } catch (err) {
+      setLibraryHint(`Could not read ${file.name}: ${(err && err.message) || err}`);
+    }
+  })();
+
+  await pendingExtraction;
+  pendingExtraction = null;
+}
 
 function openHtmlInTab(html) {
   chrome.tabs.create({ url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}` });
@@ -128,6 +273,54 @@ function applyPreferences(prefs) {
   els.coverLetterNotes.value = prefs.cover_letter_notes || '';
 }
 
+/**
+ * Everything the popup remembers between openings, except the resume library
+ * (which has its own store).
+ */
+function collectSettings() {
+  return {
+    provider: els.provider.value,
+    model: els.modelName.value.trim(),
+    apiKey: els.apiKey.value.trim(),
+    includeCoverLetter: els.includeCoverLetter.checked,
+    useJudge: els.useJudge.checked,
+    preferences: collectPreferences(),
+    providerKeys: collectProviderKeys(),
+  };
+}
+
+/**
+ * Persist as the user types, not only on run.
+ *
+ * Settings used to be written inside onTailorClick, which meant typing an API
+ * key and then closing the popup without tailoring silently discarded it --
+ * and a popup closes every time it loses focus, so that is the normal case,
+ * not an edge one.
+ *
+ * Both `input` and `change` are listened for, deliberately. On a text field
+ * `change` fires only on BLUR, so a user who types their key and then clicks
+ * away from the popup entirely never fires it and loses the key -- the exact
+ * bug this is meant to fix. `input` fires per keystroke, hence the debounce;
+ * `change` still matters for <select> and checkboxes.
+ */
+const PERSIST_ON_CHANGE = [
+  'provider', 'modelName', 'apiKey', 'includeCoverLetter', 'useJudge',
+  'resumeDensity', 'keywordAlignment', 'coverLetterLength', 'coverLetterTone',
+  'preservePoints', 'resumeNotes', 'coverLetterNotes',
+  'fallbackGemini', 'fallbackGroq', 'fallbackCerebras', 'fallbackOpenrouter',
+];
+
+async function persistSettings() {
+  await setSettings(collectSettings());
+}
+
+const PERSIST_DEBOUNCE_MS = 250;
+let persistTimer = null;
+function schedulePersist() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => { persistTimer = null; persistSettings(); }, PERSIST_DEBOUNCE_MS);
+}
+
 async function restoreSettings() {
   const settings = await getSettings();
   // No key saved yet means this is a first run: expand the provider section
@@ -185,29 +378,30 @@ function readFileAsBase64(file) {
 }
 
 async function onTailorClick() {
+  // The textarea is the single source of truth for the resume. An uploaded
+  // file is extracted into it the moment it is selected (onResumeFileChange),
+  // so there is no second, competing input here and no "which one wins"
+  // question at run time -- but that extraction may still be running.
+  if (pendingExtraction) {
+    setStatus('Reading your resume file...');
+    await pendingExtraction;
+  }
+
   const resumeText = els.resumeText.value.trim();
   const jobDescription = els.jobDescription.value.trim();
   const providerId = els.provider.value;
   const modelName = els.modelName.value.trim();
   const apiKey = els.apiKey.value.trim();
-  const file = els.resumeFile.files[0];
   const includeCoverLetter = els.includeCoverLetter.checked;
   const useJudge = els.useJudge.checked;
   const preferences = collectPreferences();
   const providerKeys = collectProviderKeys();
 
-  if (!resumeText && !file) { setStatus('Paste your resume or upload a file first.'); return; }
+  if (!resumeText) { setStatus('Paste your resume, upload a file, or pick a saved one first.'); return; }
   if (!jobDescription) { setStatus('Paste the job description first.'); return; }
   if (!apiKey) { setStatus('Enter an API key first (AI provider section).'); return; }
 
-  let resumeFileBase64;
-  let resumeFileExt;
-  if (file) {
-    resumeFileExt = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    resumeFileBase64 = await readFileAsBase64(file);
-  }
-
-  await setSettings({ provider: providerId, model: modelName, apiKey, includeCoverLetter, useJudge, preferences, providerKeys });
+  await persistSettings();
 
   els.tailorBtn.disabled = true;
   els.previewBtn.style.display = 'none';
@@ -228,7 +422,7 @@ async function onTailorClick() {
       target: 'sw',
       type: 'tailor:run',
       payload: {
-        resumeText, resumeFileBase64, resumeFileExt, jobDescription,
+        resumeText, jobDescription,
         jobTitle: els.jobTitle.value.trim(), employer: els.employer.value.trim(),
         includeCoverLetter, useJudge, preferences,
         providerId, apiKey, modelName, providerKeys, baseUrlOverride,
@@ -257,4 +451,18 @@ async function onTailorClick() {
 
 els.readPageBtn.addEventListener('click', onReadPageClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
+els.savedResumes.addEventListener('change', onSelectResume);
+els.saveResumeBtn.addEventListener('click', onSaveResume);
+els.deleteResumeBtn.addEventListener('click', onDeleteResume);
+els.resumeFile.addEventListener('change', onResumeFileChange);
+for (const id of PERSIST_ON_CHANGE) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('input', schedulePersist);
+  el.addEventListener('change', schedulePersist);
+}
+
 restoreSettings();
+// Reopening the popup reloads whichever resume was used last, so the common
+// case -- one resume, many applications -- needs no interaction at all.
+refreshLibrary({ loadText: true });

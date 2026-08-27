@@ -16,6 +16,8 @@
     button { margin-top: 12px; width: 100%; padding: 8px; font: inherit; font-weight: 600; background: #0f6e78; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: default; }
     button.secondary { background: #37474d; margin-top: 6px; }
+    button.inline { margin-top: 0; padding: 6px 4px; font-size: 12px; }
+    button.inline.secondary { margin-top: 0; }
     #status { margin-top: 8px; font-size: 12px; color: #64777d; min-height: 16px; }
     #warnings { margin-top: 6px; font-size: 12px; color: #9c5326; }
     #warnings ul { margin: 4px 0 0; padding-left: 18px; }
@@ -31,9 +33,19 @@
 <body>
   <h1>Tailorune</h1>
 
+  <label for="savedResumes">Saved resumes</label>
+  <div class="row">
+    <select id="savedResumes" style="flex:2;">
+      <option value="">— none saved —</option>
+    </select>
+    <button id="saveResumeBtn" class="inline" type="button" style="flex:1;">Save</button>
+    <button id="deleteResumeBtn" class="inline secondary" type="button" style="flex:1;">Delete</button>
+  </div>
+  <div id="libraryHint" class="hint"></div>
+
   <label for="resumeText">Resume (plain text)</label>
   <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
-  <div class="hint">or upload .txt / .docx / .pdf</div>
+  <div class="hint">or upload .txt / .docx / .pdf — uploading replaces the text above</div>
   <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" style="margin-top:4px;" />
 
   <label for="jobDescription">Job description</label>
