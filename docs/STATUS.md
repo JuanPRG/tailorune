@@ -138,6 +138,23 @@ Two consequences worth recording:
   listened for (debounced): on a text field `change` fires only on *blur*, so a user who types a key
   and clicks straight out of the popup never fires it — verified directly in a browser, not assumed.
 
+### Testing the real popup
+
+`popup.html` loaded in a tab and the actual browser-action popup are different rendering contexts,
+and that difference has already hidden a shipped bug: `window.prompt()` works in a tab and silently
+dismisses the real popup, so a Save button that saved nothing passed a fully green suite.
+
+`tests/e2e/realPopup.mjs` closes that gap. Chrome exposes the popup as an ordinary CDP page target,
+so launching with `--remote-debugging-port` and reconnecting over CDP yields a real Playwright
+`Page` backed by the real popup. Two constraints come with it, both inherent:
+
+- `chrome.action.openPopup()` takes no query string, so the `?llmBaseUrlOverride=` hook is
+  unavailable — real-popup tests cover everything up to, but not including, an LLM call.
+- The popup is **destroyed the instant it loses focus** (verified directly). No real-popup test may
+  focus another window or tab. Note this does *not* apply to the OS file picker, which is
+  browser-owned — also verified directly, which is what ruled it out as the cause of a reported
+  upload failure.
+
 ## Test coverage
 
 - `npm run test:unit` — 157 tests, pure logic, no browser: parser heuristics against 3 real TXT
@@ -154,7 +171,7 @@ Two consequences worth recording:
   chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
   field; that it skips the call when nothing changed; and that it is not called when the
   deterministic validator already failed), and per-model chain expansion and interleaving.
-- `npm run test:e2e` — 17 tests, real Chromium, real unpacked extension load, real
+- `npm run test:e2e` — 21 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload, and the resume library round trip — a `.docx`
   uploaded once, the popup closed, then reopened and tailored with the saved resume and no second

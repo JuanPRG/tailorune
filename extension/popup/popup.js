@@ -128,7 +128,7 @@ async function onSelectResume() {
  * that mattered. Nothing in this file may depend on prompt/confirm/alert.
  */
 async function onSaveResume() {
-  const text = els.resumeText.value.trim();
+  const text = await ensureResumeText();
   if (!text) { setLibraryHint('Nothing to save — paste or upload a resume first.'); return; }
 
   const selectedId = els.savedResumes.value;
@@ -204,9 +204,10 @@ async function onDeleteResume() {
  * on run is what makes the file saveable to the library at all -- and it
  * surfaces an unreadable PDF right away instead of a minute into a run.
  */
-async function onResumeFileChange() {
+/** Extract the currently selected file into the textarea. Returns its text, or null. */
+async function extractSelectedFile() {
   const file = els.resumeFile.files[0];
-  if (!file) return;
+  if (!file) return null;
   const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   setLibraryHint(`Reading ${file.name}...`);
 
@@ -219,8 +220,15 @@ async function onResumeFileChange() {
         payload: { resumeFileBase64: base64, resumeFileExt: ext },
       });
       if (!response || !response.ok) {
-        setLibraryHint(`Could not read ${file.name}: ${(response && response.error) || 'unknown error'}`);
-        return;
+        // Surfaced in BOTH places on purpose. The hint is right under the
+        // button that failed, but it is also the line every other library
+        // action overwrites -- so a failure that scrolls past unnoticed
+        // becomes "it just does nothing", which is exactly how this was
+        // reported. #status is the durable copy.
+        const message = `Could not read ${file.name}: ${(response && response.error) || 'unknown error'}`;
+        setLibraryHint(message);
+        setStatus(message);
+        return null;
       }
       els.resumeText.value = response.text;
       els.savedResumes.value = '';
@@ -231,13 +239,41 @@ async function onResumeFileChange() {
         els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
       }
       setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
+      return response.text;
     } catch (err) {
-      setLibraryHint(`Could not read ${file.name}: ${(err && err.message) || err}`);
+      const message = `Could not read ${file.name}: ${(err && err.message) || err}`;
+      setLibraryHint(message);
+      setStatus(message);
+      return null;
     }
   })();
 
-  await pendingExtraction;
+  const text = await pendingExtraction;
   pendingExtraction = null;
+  return text;
+}
+
+/**
+ * The resume text, extracting a selected-but-unread file if that is what it
+ * takes.
+ *
+ * A file sitting in the file input with an empty textarea is a state the user
+ * reasonably reads as "my resume is loaded" -- answering that with "nothing to
+ * save" is just wrong, whatever caused the change event to be missed. So both
+ * Save and Tailor recover from it instead of refusing.
+ */
+async function ensureResumeText() {
+  if (pendingExtraction) await pendingExtraction;
+  const text = els.resumeText.value.trim();
+  if (text) return text;
+  if (!els.resumeFile.files[0]) return '';
+  await extractSelectedFile();
+  return els.resumeText.value.trim();
+}
+
+async function onResumeFileChange() {
+  if (!els.resumeFile.files[0]) return;
+  await extractSelectedFile();
 }
 
 function openHtmlInTab(html) {
@@ -432,12 +468,7 @@ async function onTailorClick() {
   // file is extracted into it the moment it is selected (onResumeFileChange),
   // so there is no second, competing input here and no "which one wins"
   // question at run time -- but that extraction may still be running.
-  if (pendingExtraction) {
-    setStatus('Reading your resume file...');
-    await pendingExtraction;
-  }
-
-  const resumeText = els.resumeText.value.trim();
+  const resumeText = await ensureResumeText();
   const jobDescription = els.jobDescription.value.trim();
   const providerId = els.provider.value;
   const modelName = els.modelName.value.trim();
@@ -447,7 +478,10 @@ async function onTailorClick() {
   const preferences = collectPreferences();
   const providerKeys = collectProviderKeys();
 
-  if (!resumeText) { setStatus('Paste your resume, upload a file, or pick a saved one first.'); return; }
+  if (!resumeText) {
+    if (!els.status.textContent) setStatus('Paste your resume, upload a file, or pick a saved one first.');
+    return;
+  }
   if (!jobDescription) { setStatus('Paste the job description first.'); return; }
   if (!apiKey) { setStatus('Enter an API key first (AI provider section).'); return; }
 
@@ -505,6 +539,10 @@ els.savedResumes.addEventListener('change', onSelectResume);
 els.saveResumeBtn.addEventListener('click', onSaveResume);
 els.deleteResumeBtn.addEventListener('click', onDeleteResume);
 els.resumeFile.addEventListener('change', onResumeFileChange);
+// Clearing the value on click guarantees `change` fires even when the user
+// picks the same file twice in a row -- otherwise the value is unchanged, no
+// event is dispatched, and the second pick appears to do nothing at all.
+els.resumeFile.addEventListener('click', () => { els.resumeFile.value = ''; });
 for (const id of PERSIST_ON_CHANGE) {
   const el = document.getElementById(id);
   if (!el) continue;
