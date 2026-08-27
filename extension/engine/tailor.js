@@ -95,6 +95,14 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
     'Prefer adding a job-description keyword alongside an original term to swapping one for'
     + ' the other. Do not pad with adjectives like comprehensive, robust, strategic or'
     + ' meticulous; they match nothing and consume the word budget.',
+    // The opposite failure, and a real one: told firmly enough to keep the
+    // concrete words, a model will satisfy that by returning the input
+    // verbatim. Both directions have to be named, or fixing one causes the
+    // other.
+    'BUT ACTUALLY REWRITE. Copying a bullet or the summary back unchanged is a failed'
+    + ' response, not a safe one. Every bullet must be re-framed for THIS job — change the'
+    + ' emphasis, the ordering, and what leads the sentence — while the concrete terms above'
+    + ' travel with it. Keep the nouns, change the framing.',
     buildResumePreferencesSection(prefs),
     'Respond with ONLY a JSON object of this exact shape, no prose, no markdown fence:',
     '{"summary": "...", "entries": [{"index": 0, "bullets": ["...", "..."]}]}',
@@ -200,6 +208,26 @@ export function validateTailoredModel(original, tailored) {
         + ` replacing them: ${lost.join(', ')}.`,
       );
     }
+  }
+
+  // A rewrite that returns everything unchanged scores perfectly on every
+  // check above -- full retention, no dropped numbers, nothing fabricated --
+  // and is a total failure of the task. Without this, the retention floor
+  // added below actively rewards copying: an untailored resume shipped as
+  // "approved", and the only honest signal was that the text was identical
+  // to the upload.
+  const normalize = (text) => String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const rolesUnchanged = originalEntries.length > 0 && originalEntries.every((entry, i) => (
+    normalize(entry.bullets.join(' ')) === normalize((tailoredEntries[i]?.bullets ?? []).join(' '))
+  ));
+  const summaryUnchanged = normalize(original.summary) === normalize(tailored.summary);
+  if (rolesUnchanged && summaryUnchanged) {
+    errors.push(
+      'The response returned the summary and every bullet unchanged — nothing was tailored.'
+      + ' Re-frame each bullet for this job while keeping its concrete terms.',
+    );
+  } else if (rolesUnchanged) {
+    warnings.push('Every role came back with its bullets unchanged; only the summary was tailored.');
   }
 
   return { passed: errors.length === 0, errors, warnings };

@@ -201,12 +201,19 @@ existing retry loop:
   guessed: a pass that visibly hollowed out its bullets scored 27–33% per role, so 45% flags all of
   them while still permitting over half the wording to change.
 
+Both directions have to be checked, and finding that out cost a real run. Told firmly enough to keep
+the concrete words, a model satisfied the instruction by returning the input **verbatim** — which
+scores 100% retention, drops no numbers and fabricates nothing, so an untailored resume shipped
+reported as `approved`. A retention floor with no counterweight actively rewards copying. A response
+that returns the summary and every bullet unchanged is therefore an error that feeds the retry, and
+the prompt now names copying as a failure alongside hollowing out.
+
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
 ## Test coverage
 
-- `npm run test:unit` — 185 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` — 189 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

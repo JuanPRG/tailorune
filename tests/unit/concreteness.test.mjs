@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conceptTokens, conceptRetentionRatio, droppedNumbers, isPlausibleJobTitle } from '../../extension/engine/textUtils.js';
-import { validateTailoredModel, MIN_BULLET_CONCEPT_RETENTION } from '../../extension/engine/tailor.js';
+import { validateTailoredModel, buildTailorMessages, MIN_BULLET_CONCEPT_RETENTION } from '../../extension/engine/tailor.js';
 
 const modelWith = (bullets) => ({
   name: 'Test Candidate',
@@ -101,6 +101,49 @@ test('the summary is exempt: rewriting it wholesale is the legitimate core of ta
     summary: 'Completely different positioning statement aimed squarely at the target role and its stated priorities.',
   };
   assert.deepEqual(validateTailoredModel(original, rewritten).errors, []);
+});
+
+// --- the opposite failure: echoing the input back ---------------------------
+
+test('a response that returns everything unchanged is rejected, not approved', () => {
+  // Observed in a real run. Told firmly to keep the concrete words, the model
+  // satisfied that by copying the input verbatim -- which scores perfectly on
+  // retention, drops no numbers and fabricates nothing, so it shipped an
+  // untailored resume reported as "approved". The retention floor rewards
+  // copying unless this check exists to counterbalance it.
+  const bullets = ['Reconciled accounts payable in NetSuite for 3 entities.'];
+  const original = modelWith(bullets);
+  const echoed = modelWith([...bullets]);
+
+  const result = validateTailoredModel(original, echoed);
+  assert.equal(result.passed, false, 'an untailored resume must not report as approved');
+  assert.ok(result.errors.some((e) => /nothing was tailored/.test(e)), JSON.stringify(result.errors));
+});
+
+test('whitespace and casing changes alone do not count as tailoring', () => {
+  const original = modelWith(['Reconciled accounts payable in NetSuite for 3 entities.']);
+  const cosmetic = modelWith(['reconciled   accounts payable in netsuite for 3 entities.']);
+  assert.equal(validateTailoredModel(original, cosmetic).passed, false);
+});
+
+test('unchanged bullets with a genuinely rewritten summary warn rather than fail', () => {
+  // Partial work is not the same as no work: the summary is the most
+  // job-specific part, so this ships with a warning instead of a retry.
+  const bullets = ['Reconciled accounts payable in NetSuite for 3 entities.'];
+  const original = modelWith(bullets);
+  const summaryOnly = { ...modelWith([...bullets]), summary: 'A completely different positioning statement written for this specific role and its priorities.' };
+
+  const result = validateTailoredModel(original, summaryOnly);
+  assert.equal(result.passed, true);
+  assert.ok(result.warnings.some((w) => /bullets unchanged/.test(w)), JSON.stringify(result.warnings));
+});
+
+test('the prompt tells the model that copying is a failure, not just that dropping terms is', () => {
+  // Both directions must be stated. Fixing one caused the other in a real run.
+  const messages = buildTailorMessages(modelWith(['Reconciled accounts payable in NetSuite.']), 'A job description.', undefined, []);
+  const system = messages[0].content;
+  assert.match(system, /CARRY OVER THE CONCRETE WORDS/);
+  assert.match(system, /unchanged is a failed/i);
 });
 
 // --- job title plausibility -------------------------------------------------
