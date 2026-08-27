@@ -211,9 +211,40 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## Anti-fabrication parity with v4
+
+Three guards v4 had and this did not, all closed. None of them changes how aggressive the rewriting
+is - v4's "be aggressive, fully rewrite phrasing, framing and emphasis" is carried unchanged, and the
+aggressive guidance is unconditional in both (v4 kept a `tailoring_style` field only to overwrite it
+to "aggressive" and never read it).
+
+- **Skills boundary in the prompt** (`tailor.py:123-125`). The candidate's own declared skills are
+  named as an explicit allow-list. Without it the only thing between a job description mentioning
+  Kubernetes and a resume claiming it was the model's restraint. Derived per-resume, not from a
+  global profile, for the reason `resumeSkillsBoundary()` records.
+- **Fabrication watchlist on bullets** (`tailor.py:225-234`). A bullet introducing a watchlisted tool
+  or certification present in neither the job description nor the candidate's skills is reverted.
+  Multi-word entries like "six sigma" are matched as phrases, which v4's token-only check misses.
+- **Length guard** (`tailor.py:252-258`). A bullet grown past 2.5x its original is padding, and it
+  blows the one-page budget the compactor then has to claw back.
+
+The last two live in a **repair-first** pass (`repairTailoredModel`), ported from v4's philosophy
+rather than folded into the validator: the right answer to one overreaching bullet is a targeted
+revert, not a verdict on the whole model. A bullet that claimed Kubernetes costs that bullet; its
+neighbours keep their rewrite and the run does not burn a retry on one bad line. Where the model
+returns a different bullet count for a role, the whole role reverts - there is no "the original of
+this bullet" to fall back to, and reverting one of a re-split pair would leave a repaired bullet
+beside an unrepaired neighbour that shared its claim.
+
+Repairs surface in the popup even on an approved run, since "approved" can now mean "one bullet was
+silently rolled back" - the one part of the document that did not get tailored.
+
+Two guards that look redundant are not: per-bullet length stops one bullet padding into a paragraph,
+the word budget stops an aggregate that is merely long. A resume can breach either alone.
+
 ## Test coverage
 
-- `npm run test:unit` — 189 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 202 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

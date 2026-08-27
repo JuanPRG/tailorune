@@ -109,11 +109,18 @@ test('tailorResume applies the mocked LLM output and leaves locked fields untouc
 
 test('tailorResume compacts to the one-page word budget when the mocked response is too long', async () => {
   const model = parseTxt(fixture('juan-rivera-full.txt'));
-  const longBullet = 'This is a deliberately long bullet point written to push the total word count of the tailored resume well past the one page budget threshold that the compaction logic is supposed to enforce automatically. '.repeat(3);
-  const fetchImpl = mockTailoredResponse('A summary.', [
-    [longBullet, longBullet, longBullet],
-    [longBullet, longBullet, longBullet],
-  ]);
+  // Over budget by VOLUME rather than by any one bullet ballooning: many
+  // ordinary-length bullets, none of which trips MAX_BULLET_LENGTH_RATIO.
+  //
+  // This mattered once the repair pass landed. A mock built from one enormous
+  // repeated bullet — what this test used to do — is now reverted to the
+  // original before the compactor ever sees it, so it stopped testing
+  // compaction at all. The two guards are complementary: per-bullet length
+  // stops one bullet padding into a paragraph, the word budget stops an
+  // aggregate that is merely long. This test is about the second.
+  const bullet = 'Delivered a measurable improvement to the monthly reporting process for the finance team and its stakeholders.';
+  const manyBullets = Array.from({ length: 20 }, () => bullet);
+  const fetchImpl = mockTailoredResponse('A summary.', [manyBullets, manyBullets]);
 
   const result = await tailorResume({
     model,

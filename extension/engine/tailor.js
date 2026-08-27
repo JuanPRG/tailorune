@@ -22,7 +22,8 @@ import { chatWithRetry, LlmError } from './llm.js';
 import { flattenEditableEntries, applyTailoredContent, compactToWordBudget, modelWordCount } from './resumeModel.js';
 import { buildResumePreferencesSection, factoryPreferences } from './preferences.js';
 import {
-  sanitizeText, fabricatedRoleTitles, modelFullText,
+  sanitizeText, fabricatedRoleTitles, modelFullText, tokenize,
+  resumeSkillsBoundary, FABRICATION_WATCHLIST_TERMS,
   conceptTokens, conceptRetentionRatio, droppedNumbers,
 } from './textUtils.js';
 
@@ -79,6 +80,19 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
     + ' company names, and education — has already been removed from your view and CANNOT be'
     + ' changed by you, because you are not shown it.',
     'Do not invent employers, dates, titles, or credentials. Rewrite only what is given.',
+    // v4's skills boundary (tailor.py:123-125). Naming the candidate's own
+    // declared skills gives the model an explicit allow-list; without it, the
+    // only thing between a job description that mentions Kubernetes and a
+    // resume that claims it is the model's own restraint. Safe to show —
+    // these are the resume's skills section, not a locked field like a title,
+    // employer or date.
+    skillsBoundaryLine(model),
+    // v4 states this separately from the credentials rule (tailor.py:126-127),
+    // because an invented team size or percentage is the fabrication people
+    // actually get caught on in an interview.
+    'Do not invent numbers, metrics, team sizes, or achievements that are not already in the'
+    + ' original text. You may rephrase and re-emphasize what is there; you may not add new facts.',
+    'Write in natural, human, ATS-friendly language. Avoid AI-sounding phrasing and cliches.',
     'Keep bullets concise and quantified where the original supports it — the whole resume'
     + ` must fit roughly ${ONE_PAGE_WORD_BUDGET} words total, so favor tight, high-signal bullets.`,
     // The single most common way a rewrite makes a resume worse. Screening is
@@ -139,6 +153,11 @@ const MIN_SUMMARY_WORDS = 20; // matches hirepilot_v4/tailor.py's _MIN_SUMMARY_W
 // tailoring; the same run scored 15% there and that was the right outcome.
 export const MIN_BULLET_CONCEPT_RETENTION = 0.45;
 
+// v4's length guard (tailor.py:252-258). A rewrite more than 2.5x the length
+// of its original is padding rather than tailoring, and it blows the one-page
+// budget that the compactor then has to claw back.
+export const MAX_BULLET_LENGTH_RATIO = 2.5;
+
 /**
  * Deterministic post-generation checks, ported in spirit from
  * hirepilot_v4/tailor.py's `validate_tailored_blocks`.
@@ -151,6 +170,125 @@ export const MIN_BULLET_CONCEPT_RETENTION = 0.45;
  * @param {object} original - the pre-tailoring model, as the source of truth
  * @param {object} tailored - the post-application model
  */
+/**
+ * The candidate's declared skills, as an explicit allow-list for the prompt.
+ *
+ * Derived from this resume's own skills section rather than a global profile —
+ * see resumeSkillsBoundary()'s note on why v4 treats the per-resume
+ * derivation as the correct default for a multi-resume library.
+ */
+function skillsBoundaryLine(model) {
+  const skills = [...resumeSkillsBoundary(model)].sort();
+  if (!skills.length) {
+    return 'This resume has no skills section, so introduce no tool, technology or certification'
+      + ' that is not already named in the bullet you are editing.';
+  }
+  return `The candidate's verified skills and tools are: ${skills.join(', ')}.`
+    + ' Do not introduce a skill, tool, certification or technology that is not in that list and'
+    + ' not already present in the original text of the bullet you are editing.';
+}
+
+/**
+ * Repair-first pass, ported from v4 (tailor.py:198-262).
+ *
+ * v4 reverts an individual offending block to its original text and carries
+ * on, rather than failing the whole batch: a bullet that overreached costs
+ * that bullet, not the run. Two checks live here rather than in the validator
+ * because their correct outcome is a targeted revert, not a verdict on the
+ * whole model:
+ *
+ *   - a bullet introducing a watchlisted tool or certification that is in
+ *     neither the job description nor the candidate's own skills;
+ *   - a bullet that ballooned past MAX_BULLET_LENGTH_RATIO, which is how a
+ *     tight bullet becomes a paragraph and blows the one-page budget.
+ *
+ * Reverting is index-wise when the model returned the same number of bullets
+ * for a role. When the count differs there is no "the original of this
+ * bullet" to revert to, so the whole role reverts — the conservative reading,
+ * and the only one that cannot silently pair a repaired bullet with an
+ * unrepaired neighbour that shared its claim.
+ */
+export function repairTailoredModel(original, tailored, jobDescription = '') {
+  const originalEntries = flattenEditableEntries(original);
+  const tailoredEntries = flattenEditableEntries(tailored);
+  const jdTokens = tokenize(jobDescription);
+  const knownSkills = resumeSkillsBoundary(original);
+  const jdLower = String(jobDescription).toLowerCase();
+  const warnings = [];
+  const repairs = [];
+
+  const fabricatedTerms = (originalText, newText) => {
+    const found = new Set();
+    const originalTokens = tokenize(originalText);
+    for (const token of tokenize(newText)) {
+      if (originalTokens.has(token) || jdTokens.has(token) || knownSkills.has(token)) continue;
+      if (FABRICATION_WATCHLIST_TERMS.has(token)) found.add(token);
+    }
+    // Multi-word watchlist entries ("six sigma", "aws certified") never
+    // survive tokenization, so they are matched as phrases instead. v4 checks
+    // tokens only and misses these.
+    const originalLower = String(originalText).toLowerCase();
+    const newLower = String(newText).toLowerCase();
+    for (const term of FABRICATION_WATCHLIST_TERMS) {
+      if (!term.includes(' ')) continue;
+      if (newLower.includes(term) && !originalLower.includes(term) && !jdLower.includes(term)) {
+        found.add(term);
+      }
+    }
+    return [...found].sort();
+  };
+
+  const repairedEntries = tailoredEntries.map((entry, i) => {
+    const before = originalEntries[i];
+    if (!before) return entry;
+
+    const sameCount = before.bullets.length === entry.bullets.length;
+    const wholeRole = { index: entry.index, bullets: [...before.bullets] };
+    const bullets = [];
+
+    for (let b = 0; b < entry.bullets.length; b++) {
+      const newText = entry.bullets[b];
+      const originalText = sameCount ? before.bullets[b] : before.bullets.join(' ');
+
+      const fabricated = fabricatedTerms(originalText, newText);
+      if (fabricated.length) {
+        warnings.push(
+          `Role ${i + 1}: reverted a bullet that introduced ${fabricated.join(', ')}`
+          + ' — not in your skills section or the job description.',
+        );
+        repairs.push(`role_${i + 1}_bullet_${b + 1}_fabrication_reverted`);
+        if (!sameCount) return wholeRole;
+        bullets.push(originalText);
+        continue;
+      }
+
+      const originalWords = Math.max(1, String(originalText).split(/\s+/).filter(Boolean).length);
+      const newWords = String(newText).split(/\s+/).filter(Boolean).length;
+      if (newWords > originalWords * MAX_BULLET_LENGTH_RATIO) {
+        warnings.push(
+          `Role ${i + 1}: reverted a bullet that grew to ${newWords} words from ${originalWords}`
+          + ' — too long for a one-page resume.',
+        );
+        repairs.push(`role_${i + 1}_bullet_${b + 1}_too_long_reverted`);
+        if (!sameCount) return wholeRole;
+        bullets.push(originalText);
+        continue;
+      }
+
+      bullets.push(newText);
+    }
+    return { index: entry.index, bullets };
+  });
+
+  if (!repairs.length) return { model: tailored, warnings, repairs };
+
+  const repaired = applyTailoredContent(original, {
+    summary: tailored.summary,
+    entries: repairedEntries.map((e) => ({ index: e.index, bullets: e.bullets })),
+  });
+  return { model: repaired, warnings, repairs };
+}
+
 export function validateTailoredModel(original, tailored) {
   const errors = [];
   const warnings = [];
@@ -275,18 +413,24 @@ export async function tailorResume({
       }
     }
 
+    // Repair before judging. A single overreaching bullet is reverted to its
+    // original rather than costing the whole attempt -- v4's repair-first
+    // philosophy, and the reason it degrades gracefully where a batch-level
+    // pass/fail would burn a retry on one bad line.
     const applied = applyTailoredContent(model, tailored);
-    const validation = validateTailoredModel(model, applied);
+    const repair = repairTailoredModel(model, applied, jobDescription);
+    const validation = validateTailoredModel(model, repair.model);
+    validation.warnings = [...validation.warnings, ...repair.warnings];
 
     // The semantic judge only runs once the cheap deterministic checks pass
     // -- no point paying for a review of content already known to be
     // invalid. `judge` is injected so it stays optional and testable.
     let judgeResult = null;
     if (validation.passed && judge) {
-      judgeResult = await judge({ original: model, tailored: applied, job: job || { description: jobDescription } });
+      judgeResult = await judge({ original: model, tailored: repair.model, job: job || { description: jobDescription } });
     }
 
-    const { model: compacted, wordCount, iterations } = compactToWordBudget(applied, ONE_PAGE_WORD_BUDGET);
+    const { model: compacted, wordCount, iterations } = compactToWordBudget(repair.model, ONE_PAGE_WORD_BUDGET);
     const judgePassed = !judgeResult || judgeResult.passed;
 
     lastResult = {
@@ -300,6 +444,9 @@ export async function tailorResume({
         attempts: attempt,
         validator: validation,
         judge: judgeResult,
+        // What was silently reverted rather than failed. Reported so an
+        // approved run that quietly rolled a bullet back is still visible.
+        repairs: repair.repairs,
       },
     };
 

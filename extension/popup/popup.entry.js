@@ -461,9 +461,15 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
   if (skills && skills.reverted && skills.reverted.length) {
     blocks.push(`<strong>Skills:</strong><ul><li>${skills.reverted.length} line(s) reverted — the rewrite dropped too much of your original list.</li></ul>`);
   }
+  // Shown even on an approved run. The repair pass reverts an overreaching
+  // bullet to its original and lets the run succeed, so "approved" can still
+  // mean "one of your bullets was silently rolled back" -- which the user
+  // needs to know, since it is the one part of the document that did not get
+  // tailored.
   const resumeIssues = [...(resumeErrors || []), ...(resumeWarnings || [])];
-  if (resumeStatus && resumeStatus !== 'approved' && resumeIssues.length) {
-    blocks.push(`<strong>Resume (${resumeStatus}):</strong><ul>${resumeIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+  if (resumeIssues.length) {
+    const label = resumeStatus && resumeStatus !== 'approved' ? `Resume (${resumeStatus})` : 'Resume';
+    blocks.push(`<strong>${label}:</strong><ul>${resumeIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
   }
   if (coverLetter) {
     const clIssues = [...(coverLetter.errors || []), ...(coverLetter.warnings || [])];
