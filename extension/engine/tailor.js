@@ -186,6 +186,15 @@ const MIN_SUMMARY_WORDS = 20; // matches hirepilot_v4/tailor.py's _MIN_SUMMARY_W
 // tailoring; the same run scored 15% there and that was the right outcome.
 export const MIN_BULLET_CONCEPT_RETENTION = 0.45;
 
+// Below this, a rewrite is hollowed out badly enough to be worth another call.
+//
+// Graduated on purpose. A retry costs a whole resume call -- 13-25 seconds,
+// measured -- so spending one to move a role from 40% to 45% is a poor trade,
+// especially when the shortfall is reported either way and the document ships
+// regardless. A miss in the 35-45% band is now a warning; only a real
+// hollowing-out earns the call.
+export const RETRY_BULLET_CONCEPT_RETENTION = 0.35;
+
 // v4's length guard (tailor.py:252-258). A rewrite more than 2.5x the length
 // of its original is padding rather than tailoring, and it blows the one-page
 // budget that the compactor then has to claw back.
@@ -196,7 +205,15 @@ export const MAX_BULLET_LENGTH_RATIO = 2.5;
 // max_tokens caps thinking AND output together -- so a hard posting can spend
 // the budget before emitting usable JSON, and the truncated answer then fails
 // to parse. Skills and cover letter ask for far less and keep their 1024.
-export const RESUME_MAX_TOKENS = 4096;
+export const RESUME_MAX_TOKENS = 8192;
+
+// This pass rewrites text it is handed; it does not need to reason its way to
+// an answer. Measured against real runs, the resume call took 13-25 SECONDS
+// while the skills and cover-letter calls -- same provider, same key, 1024
+// tokens -- took about one. It also still truncated at 4096, because the
+// budget was going on thinking rather than output. Providers that do not
+// understand the parameter simply never receive it; see llm.js.
+export const RESUME_REASONING_EFFORT = 'none';
 
 /**
  * Deterministic post-generation checks, ported in spirit from
@@ -380,11 +397,13 @@ export function validateTailoredModel(original, tailored) {
       const beforeTokens = conceptTokens(before);
       const afterTokens = conceptTokens(after);
       const lost = [...beforeTokens].filter((t) => !afterTokens.has(t)).slice(0, 12);
-      errors.push(
-        `Role ${i + 1} kept only ${Math.round(retention * 100)}% of the original's specific vocabulary`
-        + ` (needs ${Math.round(MIN_BULLET_CONCEPT_RETENTION * 100)}%). Rephrase around these instead of`
-        + ` replacing them: ${lost.join(', ')}.`,
-      );
+      const message = `Role ${i + 1} kept only ${Math.round(retention * 100)}% of the original's`
+        + ` specific vocabulary (aiming for ${Math.round(MIN_BULLET_CONCEPT_RETENTION * 100)}%).`
+        + ` Rephrase around these instead of replacing them: ${lost.join(', ')}.`;
+      // Only a real hollowing-out is worth another call; a near miss is
+      // reported and shipped.
+      if (retention < RETRY_BULLET_CONCEPT_RETENTION) errors.push(message);
+      else warnings.push(message);
     }
   }
 
@@ -437,11 +456,15 @@ export async function tailorResume({
       // Without it this falls back to a single provider with retries, which
       // is what the unit tests exercise.
       response = callLlm
-        ? await callLlm({ messages, jsonMode: true, maxTokens: RESUME_MAX_TOKENS })
+        ? await callLlm({
+          messages, jsonMode: true, maxTokens: RESUME_MAX_TOKENS,
+          reasoningEffort: RESUME_REASONING_EFFORT,
+        })
         : await chatWithRetry(
           {
             provider, apiKey, model: modelName, messages, jsonMode: true,
-            maxTokens: RESUME_MAX_TOKENS, fetchImpl, timeoutMs,
+            maxTokens: RESUME_MAX_TOKENS, reasoningEffort: RESUME_REASONING_EFFORT,
+            fetchImpl, timeoutMs,
           },
           { maxRetries, sleepImpl },
         );

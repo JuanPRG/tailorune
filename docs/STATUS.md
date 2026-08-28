@@ -219,8 +219,8 @@ sweep the original spike used, against today's renderer:
 | Geometry | One page up to | Two pages at |
 |---|---|---|
 | 0.75in all round (the original spike's) | 465 words | 522 |
-| **0.30 / 0.75 / 0.60 (current)** | **522 words** | 543 |
-| 0.30 / 0.60 / 0.50 (tighter) | 522 words | 543 |
+| 0.30 / 0.75 / 0.60 | 522 words | 543 |
+| **0.30 / 0.60 / 0.50 (current)** | **522 words** | 543 |
 
 **Tightening the margins further buys nothing.** Page breaks land on line boundaries: extra width
 does not add lines when the content is bullet-shaped, and the 0.10in of vertical gain is less than
@@ -244,6 +244,41 @@ structural variance, and a test asserting it stays under the measured boundary.
 
 **The budget is a property of the template, not a preference.** Font size, line height and margins
 decide it together, so any change to those invalidates it.
+
+## The resume pass was thinking, not writing
+
+The timing breakdown paid for itself on its first two runs:
+
+```
+53s in 4 AI calls - resume 50.3s (2 calls), skills 1.1s, letter 2.0s, render 0.0s
+29s in 4 AI calls - resume 27.2s (2 calls), skills 0.7s, letter 1.6s, render 0.0s
+```
+
+The resume pass is ~95% of every run, at 13-25 seconds per call against about one second for the
+skills and cover-letter calls - same provider, same key, same JSON mode. And the first run STILL
+reported truncation at 4096 tokens, having been raised from 2048 for exactly that reason.
+
+Both symptoms point one way: on a reasoning model `max_tokens` caps thinking AND output together, so
+the budget went on reasoning rather than on finishing the JSON. This pass rewrites text it is
+handed; it does not need to reason its way to an answer.
+
+- `reasoning_effort: 'none'` on the resume call, and `RESUME_MAX_TOKENS` to 8192 so truncation
+  cannot recur. With thinking off a high ceiling costs nothing, since only generated tokens are paid
+  for.
+- **A provider that does not understand the parameter rejects the whole request with a 400**, and
+  rotation treats 400 as fatal - so the optimisation could have taken every run down with it. `chat()`
+  detects that specific rejection, remembers it per (baseUrl, model), and retries once without the
+  parameter. An unrelated 400 (a bad key) still fails properly rather than being swallowed.
+
+### A retry has to be worth its call
+
+The second run burned a whole extra resume call because one role came back at 40% concreteness
+against a 45% floor. At 13-25 seconds a call, that is a poor trade for five points - especially when
+the shortfall is reported either way and the document ships regardless.
+
+The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a real hollowing-out
+and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
+are objective and trivially fixable.
 
 ## Where the time goes
 
@@ -430,7 +465,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 231 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 239 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

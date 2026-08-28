@@ -86,10 +86,12 @@ async function runTailor(payload) {
   // those actually ran is invisible from the finished document, so it is
   // recorded here and reported alongside the word count.
   const llm = { calls: 0, ms: 0 };
-  const callLlm = async ({ messages, jsonMode, maxTokens }) => {
+  const callLlm = async ({ messages, jsonMode, maxTokens, reasoningEffort }) => {
     const started = Date.now();
     try {
-      return await chatWithRotation({ chain, messages, jsonMode, maxTokens, baseUrlOverride });
+      return await chatWithRotation({
+        chain, messages, jsonMode, maxTokens, reasoningEffort, baseUrlOverride,
+      });
     } finally {
       llm.calls += 1;
       llm.ms += Date.now() - started;

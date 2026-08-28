@@ -104,7 +104,7 @@ export function renderResumeHtml(model) {
 <style>
   /* TWO type sizes for the page: 18pt name, 10pt everything else. Hierarchy
      comes from weight, capitals and rules -- see renderDocx.js. */
-  @page { size: letter; margin: 0.30in 0.75in 0.60in; }
+  @page { size: letter; margin: 0.30in 0.60in 0.50in; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.3; color: #1a1a1a; margin: 0; }
   .sheet { max-width: 7.5in; margin: 0 auto; padding: 0.4in; }

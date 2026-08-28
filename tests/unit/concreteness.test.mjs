@@ -10,7 +10,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conceptTokens, conceptRetentionRatio, droppedNumbers, isPlausibleJobTitle } from '../../extension/engine/textUtils.js';
-import { validateTailoredModel, buildTailorMessages, MIN_BULLET_CONCEPT_RETENTION } from '../../extension/engine/tailor.js';
+import {
+  validateTailoredModel, buildTailorMessages,
+  MIN_BULLET_CONCEPT_RETENTION, RETRY_BULLET_CONCEPT_RETENTION,
+} from '../../extension/engine/tailor.js';
 
 const modelWith = (bullets) => ({
   name: 'Test Candidate',
@@ -53,7 +56,7 @@ test('a hollowed-out rewrite is rejected, with the lost terms named so the retry
     'Handled day-to-day bookkeeping, financial reporting, and budget tracking for a manufacturing firm.',
   ]);
   const hollow = modelWith([
-    'Executed comprehensive financial administration, optimizing operational efficiency for stakeholders.',
+    'Executed comprehensive administration, optimizing operational efficiency for stakeholders.',
   ]);
 
   const result = validateTailoredModel(original, hollow);
@@ -101,6 +104,37 @@ test('the summary is exempt: rewriting it wholesale is the legitimate core of ta
     summary: 'Completely different positioning statement aimed squarely at the target role and its stated priorities.',
   };
   assert.deepEqual(validateTailoredModel(original, rewritten).errors, []);
+});
+
+test('a NEAR miss on retention warns instead of costing another call', () => {
+  // A retry is a whole resume call -- 13-25 seconds, measured -- so spending
+  // one to move a role from 40% to 45% is a poor trade when the shortfall is
+  // reported either way and the document ships regardless. Observed on a real
+  // run that burned a second call for exactly that.
+  const original = modelWith([
+    'Supported daily hotel operations across front desk, housekeeping, and food and beverage, coordinating a team of 15+ staff.',
+  ]);
+  const nearMiss = modelWith([
+    'Coordinated 15+ staff across hotel front desk operations, prioritising guest service throughput.',
+  ]);
+
+  const result = validateTailoredModel(original, nearMiss);
+  const inBand = result.warnings.some((w) => /specific vocabulary/.test(w));
+  const escalated = result.errors.some((e) => /specific vocabulary/.test(e));
+  assert.ok(inBand || !escalated, 'a near miss should not be an error');
+  assert.ok(RETRY_BULLET_CONCEPT_RETENTION < MIN_BULLET_CONCEPT_RETENTION);
+});
+
+test('a real hollowing-out still earns another call', () => {
+  const original = modelWith([
+    'Handled day-to-day bookkeeping, financial reporting, and budget tracking for a manufacturing firm.',
+  ]);
+  const hollow = modelWith([
+    'Executed comprehensive administration, optimizing operational efficiency for stakeholders.',
+  ]);
+  const result = validateTailoredModel(original, hollow);
+  assert.equal(result.passed, false, 'a severe loss must still fail and retry');
+  assert.ok(result.errors.some((e) => /specific vocabulary/.test(e)));
 });
 
 // --- the opposite failure: echoing the input back ---------------------------

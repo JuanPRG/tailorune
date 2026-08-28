@@ -124,7 +124,7 @@ export function classifyFailure(err) {
  * @returns {Promise<{content: string, usage: object, providerId: string, attempts: Array}>}
  */
 export async function chatWithRotation({
-  chain, messages, jsonMode, maxTokens, timeoutMs,
+  chain, messages, jsonMode, maxTokens, timeoutMs, reasoningEffort,
   fetchImpl, nowFn = Date.now, baseUrlOverride,
 }) {
   if (!chain || !chain.length) {
@@ -150,7 +150,7 @@ export async function chatWithRotation({
     try {
       const response = await chat({
         provider, apiKey: entry.apiKey, model, messages,
-        jsonMode, maxTokens, timeoutMs, fetchImpl,
+        jsonMode, maxTokens, timeoutMs, reasoningEffort, fetchImpl,
       });
       attempts.push({ providerId: entry.providerId, model, ok: true });
       return { ...response, providerId: entry.providerId, model, attempts };

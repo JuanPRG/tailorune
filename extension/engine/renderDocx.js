@@ -32,8 +32,16 @@ const BODY_SIZE = 20; // half-points: 10pt
 // Asymmetric on purpose. A wide top margin wastes the most valuable space on
 // the page; the sides are what actually control how much fits per line.
 const MARGIN_TOP = 432; // 0.30in
-const MARGIN_SIDE = 1080; // 0.75in
-const MARGIN_BOTTOM = 864; // 0.60in
+const MARGIN_SIDE = 864; // 0.60in
+const MARGIN_BOTTOM = 720; // 0.50in
+
+// Measured, not assumed: a LibreOffice page-count sweep put the one-page
+// boundary at 522 words for BOTH 0.30/0.75/0.60 and this tighter geometry.
+// Page breaks land on line boundaries, so extra width adds no lines to
+// bullet-shaped content, and 0.10in of vertical gain is less than one 10pt
+// line. The change is cosmetic, and ONE_PAGE_WORD_BUDGET is unaffected -- but
+// that is a fact about this specific pair of geometries, not a general rule.
+// Any further change needs the sweep re-run.
 
 // Letter width (12240 twips) less both side margins: where a right-aligned
 // tab stop has to sit for dates to land flush with the right edge.

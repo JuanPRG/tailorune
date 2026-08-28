@@ -52,9 +52,9 @@ test('margins are asymmetric: a narrow top, sides that control line length', asy
   const tag = (await docxXml()).match(/<w:pgMar[^>]*>/)[0];
   const twips = (k) => Number(tag.match(new RegExp(`w:${k}="(\\d+)"`))[1]);
   assert.equal(twips('top'), 432, 'top should be 0.30in');
-  assert.equal(twips('left'), 1080, 'sides should be 0.75in');
-  assert.equal(twips('right'), 1080);
-  assert.equal(twips('bottom'), 864, 'bottom should be 0.60in');
+  assert.equal(twips('left'), 864, 'sides should be 0.60in');
+  assert.equal(twips('right'), 864);
+  assert.equal(twips('bottom'), 720, 'bottom should be 0.50in');
 });
 
 test('a role date is right-aligned on a real tab stop, not buried in a subtitle', async () => {

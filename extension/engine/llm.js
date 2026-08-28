@@ -24,6 +24,25 @@ export class LlmError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 45_000;
 
+// (baseUrl::model) pairs that answered a reasoning_effort request with a 400.
+// Session-scoped: a provider's support does not change mid-run, and this
+// keeps the cost of discovering it to exactly one extra request.
+const reasoningEffortRejected = new Set();
+const reasoningKey = (baseUrl, model) => `${baseUrl}::${model}`;
+
+function sendsReasoningEffort(baseUrl, model) {
+  return !reasoningEffortRejected.has(reasoningKey(baseUrl, model));
+}
+
+function markReasoningEffortUnsupported(baseUrl, model) {
+  reasoningEffortRejected.add(reasoningKey(baseUrl, model));
+}
+
+/** Test seam: forget what was learned about provider support. */
+export function resetReasoningEffortSupport() {
+  reasoningEffortRejected.clear();
+}
+
 /**
  * @param {object} opts
  * @param {{baseUrl: string}} opts.provider
@@ -43,6 +62,7 @@ export async function chat({
   jsonMode = false,
   maxTokens = 2048,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  reasoningEffort,
   fetchImpl = fetch,
 }) {
   const controller = new AbortController();
@@ -55,6 +75,14 @@ export async function chat({
     temperature: 0.4,
   };
   if (jsonMode) body.response_format = { type: 'json_object' };
+  // Thinking budget. On a reasoning model max_tokens caps thinking AND output
+  // together, so a long prompt can spend the allowance before emitting usable
+  // JSON -- measured at 13-25s per resume call against ~1s for the smaller
+  // passes, and still truncating at 4096. Sent only where it has not already
+  // been rejected; see sendsReasoningEffort().
+  if (reasoningEffort && sendsReasoningEffort(provider.baseUrl, model)) {
+    body.reasoning_effort = reasoningEffort;
+  }
 
   let resp;
   try {
@@ -79,6 +107,19 @@ export async function chat({
   if (!resp.ok) {
     let preview = '';
     try { preview = (await resp.text()).slice(0, 300); } catch { /* best-effort */ }
+
+    // A provider that does not understand reasoning_effort rejects the whole
+    // request with a 400, which rotation treats as fatal -- so an optimisation
+    // would take the run down with it. Remember the rejection, drop the
+    // parameter, and try once more. Every provider then works, and the ones
+    // that support it still get the benefit.
+    if (resp.status === 400 && body.reasoning_effort && /reason|think|unknown|unsupported|invalid/i.test(preview)) {
+      markReasoningEffortUnsupported(provider.baseUrl, model);
+      return chat({
+        provider, apiKey, model, messages, jsonMode, maxTokens, timeoutMs, fetchImpl,
+      });
+    }
+
     throw new LlmError('http_error', `LLM provider returned HTTP ${resp.status}`, { status: resp.status, preview });
   }
 
