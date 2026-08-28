@@ -204,6 +204,25 @@ test('the trailing-year pattern survives being a regex, not an assembled string'
   assert.match(html, /class="role-date">2015</, 'the year should be split out and right-aligned');
 });
 
+// --- the one-page budget is tied to the geometry ----------------------------
+
+test('the one-page word budget sits under the measured page boundary', async () => {
+  // The budget is not a style preference, it is a property of the TEMPLATE:
+  // font size, line height and margins together decide how many words fit.
+  // 570 was measured at Arial 10.5pt with 0.75in margins all round; the
+  // template has since moved to 10pt with a 0.30in top and 0.60in bottom, and
+  // re-running the same LibreOffice page-count sweep put the real boundary at
+  // 522 words for one page, 543 for two. The old value was letting documents
+  // run onto page two.
+  const { ONE_PAGE_WORD_BUDGET } = await import('../../extension/engine/tailor.js');
+  assert.ok(
+    ONE_PAGE_WORD_BUDGET < 522,
+    `budget ${ONE_PAGE_WORD_BUDGET} is at or above the measured 522-word one-page boundary`,
+  );
+  // And not so low that it needlessly guts a resume.
+  assert.ok(ONE_PAGE_WORD_BUDGET > 450, `budget ${ONE_PAGE_WORD_BUDGET} is unnecessarily tight`);
+});
+
 // --- the HTML exit is the same design, not a second one ---------------------
 
 test('the HTML preview uses one body size and inherits it for headings', () => {

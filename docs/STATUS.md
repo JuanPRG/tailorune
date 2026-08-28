@@ -211,6 +211,40 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## Margins, and the budget they control
+
+Asked whether the margins could safely come down. Measured with the same LibreOffice page-count
+sweep the original spike used, against today's renderer:
+
+| Geometry | One page up to | Two pages at |
+|---|---|---|
+| 0.75in all round (the original spike's) | 465 words | 522 |
+| **0.30 / 0.75 / 0.60 (current)** | **522 words** | 543 |
+| 0.30 / 0.60 / 0.50 (tighter) | 522 words | 543 |
+
+**Tightening the margins further buys nothing.** Page breaks land on line boundaries: extra width
+does not add lines when the content is bullet-shaped, and the 0.10in of vertical gain is less than
+one 10pt line height (~0.19in). Identical threshold, to the word.
+
+Three separate senses of "safe", worth keeping apart:
+
+- **ATS parsing** is indifferent to margins - a parser reads the text stream, not the page box.
+- **Physical printing** has a hardware floor: most office printers cannot print within roughly
+  0.25in of the edge, so a printed copy clips below that. Irrelevant to a PDF, and recruiters do
+  sometimes print.
+- **Readability** is the real constraint, and it argues the other way. At 0.75in sides the measure
+  is already 7.0in, longer than the 45-90 characters that read comfortably. The strongest reference
+  resume uses 1.00in sides - wider, not narrower.
+
+The sweep also caught a live bug. `ONE_PAGE_WORD_BUDGET` was 570, inherited from a measurement taken
+at Arial 10.5pt with 0.75in margins all round - a geometry the template no longer has. Against the
+current template the boundary is 522 words, so 570 was permitting documents that silently ran onto
+page two, breaking the single promise this tool makes about its output. Now 510, with room for
+structural variance, and a test asserting it stays under the measured boundary.
+
+**The budget is a property of the template, not a preference.** Font size, line height and margins
+decide it together, so any change to those invalidates it.
+
 ## Where the time goes
 
 A run is up to **nine sequential model calls**, and none of that is visible from the finished
@@ -396,7 +430,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 230 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 231 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

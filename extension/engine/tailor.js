@@ -27,7 +27,20 @@ import {
   conceptTokens, conceptRetentionRatio, droppedNumbers,
 } from './textUtils.js';
 
-export const ONE_PAGE_WORD_BUDGET = 570; // measured in SPIKE_FINDINGS.md: 571 words -> 1 page, 649 -> 2
+// Re-measured against the CURRENT template, not inherited.
+//
+// SPIKE_FINDINGS.md's 570 was measured at Arial 10.5pt with 0.75in margins all
+// round. The template has since moved to 10pt with a 0.30in top and a 0.60in
+// bottom, and a budget tied to a geometry that no longer exists is not a
+// budget. Re-running the same LibreOffice page-count sweep against today's
+// renderer put the boundary at 522 words for one page and 543 for two -- so
+// 570 was permitting documents that silently ran onto page two, which is the
+// one promise this tool makes about the output.
+//
+// 510 sits under the measured boundary with room for structural variance: the
+// exact threshold depends on how many lines the headings and role rows take,
+// and erring low costs a few words while erring high costs the page.
+export const ONE_PAGE_WORD_BUDGET = 510;
 const JD_MAX_CHARS = 6000; // matches hirepilot_v4/tailor.py:160
 
 /**

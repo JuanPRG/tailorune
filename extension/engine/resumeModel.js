@@ -99,7 +99,7 @@ export function applyTailoredContent(model, tailored) {
  * Replaces hirepilot_v4/render.py's render -> count -> shrink -> re-render
  * loop (render.py:244-280, which can burn 4 real renders and then delete the
  * output on failure) with arithmetic — measured in SPIKE_FINDINGS.md to hold
- * at ~570 words for one page.
+ * at ~510 words for one page (re-measured against the current template).
  */
 export function compactToWordBudget(model, budgetWords, maxIterations = 20) {
   let next = model;
