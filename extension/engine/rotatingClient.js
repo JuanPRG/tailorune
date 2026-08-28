@@ -105,8 +105,32 @@ export function classifyFailure(err) {
     }
     if (status === 401 || status === 403) return { kind: 'config_error', retryable: true };
     if (status >= 500) return { kind: 'transient', retryable: true };
-    // 400 and friends: the request itself is wrong. Rotating to another
-    // provider would just reproduce it, so fail out immediately.
+
+    // 402: out of credit on THIS provider. Another provider's key is unaffected.
+    if (status === 402 || /payment required|billing|insufficient|credit/.test(body)) {
+      return { kind: 'quota_exhausted', retryable: true };
+    }
+    // 413, and the 400s that say it in words: too large for THIS model's
+    // per-minute budget. A property of the model, not a defect in the request,
+    // so the next model in the chain is exactly the right thing to try.
+    if (status === 413 || /too large|reduce your message size|context length/.test(body)) {
+      return { kind: 'rate_limited', retryable: true };
+    }
+    // 404 / 400-with-a-model-complaint: this model is gone or renamed. The
+    // next one in the pool is the answer.
+    if (status === 404 || /model.*(not found|not exist|unavailable|decommission|deprecat)/.test(body)) {
+      return { kind: 'transient', retryable: true };
+    }
+
+    // Everything left is a genuinely malformed request, which every provider
+    // would reject identically -- rotating would only reproduce it.
+    //
+    // The principle, learned the hard way: a status is non-retryable only if
+    // it is a property of the REQUEST. Anything that is a property of the
+    // provider or the model -- quota, credit, rate, size limit, availability,
+    // a bad key for that one provider -- must rotate, because the next entry
+    // in the chain does not share it. Two live runs died on the spot to a 413
+    // and a 402 that both fell through to here.
     return { kind: 'request_error', retryable: false };
   }
   // malformed_response / empty_response: the provider answered, badly.

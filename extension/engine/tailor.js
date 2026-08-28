@@ -205,8 +205,18 @@ export const MAX_BULLET_LENGTH_RATIO = 2.5;
 // max_tokens caps thinking AND output together -- so a hard posting can spend
 // the budget before emitting usable JSON, and the truncated answer then fails
 // to parse. Skills and cover letter ask for far less and keep their 1024.
-export const RESUME_MAX_TOKENS = 8192;
+export const RESUME_MAX_TOKENS = 3072;
 
+// Sized from MEASURED usage, not guessed. A live run reported 1680 prompt
+// tokens and 431 completion tokens, so 3072 is roughly seven times what the
+// answer needs while leaving room for a resume with twice the roles.
+//
+// Bigger is NOT free: max_tokens counts toward a provider's per-minute token
+// budget, so an 8192 ceiling made the request unservable on Groq -- HTTP 413,
+// "Limit 8000, Requested 9855" -- for an answer that was going to be 431
+// tokens. The original 2048 truncated only because thinking was on; with it
+// off, this is generous.
+//
 // This pass rewrites text it is handed; it does not need to reason its way to
 // an answer. Measured against real runs, the resume call took 13-25 SECONDS
 // while the skills and cover-letter calls -- same provider, same key, 1024

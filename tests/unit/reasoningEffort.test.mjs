@@ -103,10 +103,12 @@ test('an unrelated 400 still fails, rather than being swallowed as a parameter p
   assert.equal(seen.length, 1, 'no pointless retry on an unrelated failure');
 });
 
-test('the resume pass asks for no reasoning and a ceiling truncation cannot reach', () => {
+test('the resume ceiling is sized from measured usage, generous but not wasteful', () => {
+  // Measured live: 1680 prompt tokens, 431 completion tokens. Bigger is not
+  // free -- max_tokens counts toward a provider's per-minute budget, and an
+  // 8192 ceiling made the request unservable on Groq (HTTP 413, "Limit 8000,
+  // Requested 9855") for an answer that was going to be 431 tokens.
   assert.equal(RESUME_REASONING_EFFORT, 'none');
-  assert.ok(
-    RESUME_MAX_TOKENS >= 8192,
-    `a run still truncated at 4096; got ${RESUME_MAX_TOKENS}`,
-  );
+  assert.ok(RESUME_MAX_TOKENS >= 2048, `too tight for a longer resume: ${RESUME_MAX_TOKENS}`);
+  assert.ok(RESUME_MAX_TOKENS <= 4096, `oversized ceilings trip per-minute limits: ${RESUME_MAX_TOKENS}`);
 });

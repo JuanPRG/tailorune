@@ -22,6 +22,12 @@ import { parseLlmJson } from './tailor.js';
 import { sanitizeText } from './textUtils.js';
 
 export const MIN_SKILLS_RETENTION_RATIO = 0.20;
+
+// A live run truncated EVERY call in this pass: 1024 tokens with thinking left
+// on is not enough to finish even a short JSON answer, so the pass reported
+// "no_change" while actually failing. Thinking off, and headroom above what
+// the answer needs.
+export const SKILLS_MAX_TOKENS = 2048;
 const JD_MAX_CHARS = 4000; // matches tailor.py:378
 const SKILLS_LABEL_RE = /^([^:]{1,40}:)\s*(.*)$/;
 
@@ -106,9 +112,12 @@ export async function tailorSkills({
     let response;
     try {
       response = callLlm
-        ? await callLlm({ messages, jsonMode: true, maxTokens: 1024 })
+        ? await callLlm({ messages, jsonMode: true, maxTokens: SKILLS_MAX_TOKENS, reasoningEffort: 'none' })
         : await chatWithRetry(
-          { provider, apiKey, model: modelName, messages, jsonMode: true, maxTokens: 1024, fetchImpl, timeoutMs },
+          {
+            provider, apiKey, model: modelName, messages, jsonMode: true,
+            maxTokens: SKILLS_MAX_TOKENS, reasoningEffort: 'none', fetchImpl, timeoutMs,
+          },
           { sleepImpl },
         );
     } catch (err) {

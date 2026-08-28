@@ -16,6 +16,11 @@
 // (kept the least-bad attempt) / `failed_after_retries`. All four survive.
 
 import { chatWithRetry, LlmError } from './llm.js';
+
+// A live run truncated every call in this pass on 1024 tokens with thinking
+// left on -- a 350-word letter is ~500 tokens of output, so the budget was
+// going on reasoning a drafting task does not need.
+export const COVER_LETTER_MAX_TOKENS = 2048;
 import { sanitizeText, tokenize, FABRICATION_WATCHLIST_TERMS, resumeSkillsBoundary, isPlausibleJobTitle } from './textUtils.js';
 import { coverLetterWordRange, buildCoverLetterPreferencesSection, factoryPreferences } from './preferences.js';
 
@@ -113,6 +118,13 @@ export function buildCoverLetterMessages({ model, job, preferences, avoidNotes }
     'Avoid AI-sounding wording, generic templates, cliches, em dashes, and unnecessary hyphens.',
     `The candidate's verified real skills are: ${skills || '(none listed)'}. Do not claim a skill, tool, or certification that is not in that list.`,
     `Target length: ${minWords}-${maxWords} words total across ${MIN_BODY_PARAGRAPHS}-${MAX_BODY_PARAGRAPHS} paragraphs, separated by a blank line.`,
+    // Live runs undershot this every time -- 190 words against a 225 minimum,
+    // on all three attempts, with the shortfall fed back each time. A range
+    // stated once reads as a suggestion; the floor has to be stated as a
+    // requirement, at the point the model is deciding to stop writing.
+    `HARD MINIMUM: ${minWords} words. A letter under ${minWords} words is a failed response and`
+    + ' will be rejected. Count as you write, and if you are short, develop a specific example from'
+    + ' the resume rather than padding with adjectives.',
     buildCoverLetterPreferencesSection(prefs),
   ];
   if (avoidNotes && avoidNotes.length) {
@@ -167,9 +179,12 @@ export async function generateCoverLetter({
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const messages = buildCoverLetterMessages({ model, job, preferences: prefs, avoidNotes });
     const response = callLlm
-      ? await callLlm({ messages, maxTokens: 1024 })
+      ? await callLlm({ messages, maxTokens: COVER_LETTER_MAX_TOKENS, reasoningEffort: 'none' })
       : await chatWithRetry(
-        { provider, apiKey, model: modelName, messages, maxTokens: 1024, fetchImpl, timeoutMs },
+        {
+          provider, apiKey, model: modelName, messages,
+          maxTokens: COVER_LETTER_MAX_TOKENS, reasoningEffort: 'none', fetchImpl, timeoutMs,
+        },
         { sleepImpl },
       );
 

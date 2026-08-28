@@ -100,7 +100,11 @@ export async function judgeTailoredModel({ original, tailored, job, callLlm }) {
     response = await callLlm({
       messages: buildJudgeMessages({ pairs, job }),
       jsonMode: true,
-      maxTokens: 1024,
+      maxTokens: 2048,
+      // Same finding as the other passes: 1024 with thinking on truncated
+      // every call, and this one fails open -- so a truncated judge silently
+      // became "passed" and reviewed nothing.
+      reasoningEffort: 'none',
     });
   } catch (err) {
     // Fail open, deliberately -- see this module's header.

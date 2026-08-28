@@ -280,6 +280,46 @@ The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a r
 and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
 are objective and trivially fixable.
 
+## What the live run found in its first hour
+
+Five real defects, none of which any mock had surfaced:
+
+| Finding | Cause | Fix |
+|---|---|---|
+| resume call 13-25s, still truncating | thinking on a shared token budget | `reasoning_effort: 'none'` |
+| skills and letter truncating on EVERY call | same, on 1024 tokens | thinking off, 2048 |
+| HTTP 413 killed the run | 413 fell through to non-retryable | rotate; 413 is a model property |
+| HTTP 402 killed the run | 402 fell through to non-retryable | rotate; credit is a provider property |
+| letter 190 words vs a 225 minimum, 3 attempts | range stated once, as a suggestion | stated as a HARD MINIMUM at the point of stopping |
+
+Measured before and after, same resume and posting:
+
+| | Before | After |
+|---|---|---|
+| Total | 31.6s | **11.8s** |
+| Calls | 7 | **4** |
+| Truncated | 5 of 7 | **0** |
+| Resume pass | 50.3s / 27.2s | **~5s** |
+| Skills | `no_change` (silently failing) | **`approved`** |
+| Cover letter | `fallback_after_validation` | **`approved`** |
+| Concreteness | 33/28/32/38 originally | **69/69/87/93** |
+
+`RESUME_MAX_TOKENS` also came DOWN, from 8192 to 3072, once usage was measured at 1680 prompt and
+431 completion tokens. Bigger is not free: `max_tokens` counts toward a provider's per-minute budget,
+which is precisely what made the request unservable on Groq.
+
+### The principle behind the classification fix
+
+A status is non-retryable only if it is a property of the **request**. Anything that is a property of
+the provider or the model - quota, credit, rate, size limit, availability, a key that is bad for that
+one provider - must rotate, because the next entry in the chain does not share it. Two live runs died
+to a 413 and a 402 that both fell through to `request_error`.
+
+A later run then survived **four consecutive provider failures** - gemini-2.5-flash, groq, cerebras
+and openrouter all cooling down - and still produced an approved document on `gemini-3.1-flash-lite`.
+Worth noting what that costs: concreteness fell to 47/44/47/67 on the weaker model, against
+69/69/87/93 on `gemini-2.5-flash`. Rotation protects the run, not the quality.
+
 ## The live smoke run
 
 `npm run test:live` — one real run against a real provider. Not part of `npm test`: it costs quota,
@@ -492,7 +532,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 239 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 243 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

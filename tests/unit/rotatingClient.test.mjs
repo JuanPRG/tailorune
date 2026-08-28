@@ -279,3 +279,82 @@ test('cooling down one model leaves its sibling on the same provider usable', as
   assert.ok(state['gemini::gemini-2.5-flash'] > 0, 'throttled model should be cooling');
   assert.equal(state['gemini::gemini-3.1-flash-lite'], undefined, 'its sibling must NOT be cooling');
 });
+
+// --- statuses that killed real runs ----------------------------------------
+//
+// Each of these aborted a live run before it was classified. The principle
+// they share: a status is non-retryable only if it is a property of the
+// REQUEST. Anything that is a property of the provider or the model -- quota,
+// credit, rate, size limit, availability -- must rotate, because the next
+// entry in the chain does not share it.
+
+test('a 413 "request too large for this model" rotates instead of killing the run', async () => {
+  // Live: Groq answered 413 "Limit 8000, Requested 9855" and the whole resume
+  // was lost, because 413 fell through to a non-retryable request_error.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('{"error":{"message":"Request too large for model X on tokens per minute (TPM): Limit 8000, Requested 9855"}}', { status: 413 })
+      : new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+  };
+
+  const response = await chatWithRotation({
+    chain: [{ providerId: 'groq', apiKey: 'a' }, { providerId: 'gemini', apiKey: 'b' }],
+    messages: [], fetchImpl, nowFn: () => 0,
+  });
+  assert.equal(response.content, 'ok');
+  assert.equal(calls, 2, 'it should have rotated rather than failed');
+});
+
+test('a 402 payment-required rotates, and is treated as exhausted quota', async () => {
+  // Live: OpenRouter answered 402 "Payment required to access this resource"
+  // and the run died mid cover letter.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('{"message":"Payment required to access this resource.","code":"payment_required"}', { status: 402 })
+      : new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+  };
+
+  const response = await chatWithRotation({
+    chain: [{ providerId: 'openrouter', apiKey: 'a' }, { providerId: 'gemini', apiKey: 'b' }],
+    messages: [], fetchImpl, nowFn: () => 0,
+  });
+  assert.equal(response.content, 'ok');
+  assert.equal(calls, 2);
+});
+
+test('a retired model rotates to the next in the pool', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response('{"error":{"message":"The model `old-model` does not exist"}}', { status: 404 })
+      : new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+  };
+
+  const response = await chatWithRotation({
+    chain: [{ providerId: 'gemini', apiKey: 'a' }],
+    messages: [], fetchImpl, nowFn: () => 0,
+  });
+  assert.equal(response.content, 'ok');
+  assert.equal(calls, 2, 'the sibling model should have been tried');
+});
+
+test('a genuinely malformed request still fails fast, without walking the chain', async () => {
+  // The other half of the principle: rotating on a bad request just reproduces
+  // it on every provider and wastes the quota of all of them.
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response('{"error":{"message":"Invalid value for messages[0].role"}}', { status: 400 });
+  };
+
+  await assert.rejects(chatWithRotation({
+    chain: [{ providerId: 'gemini', apiKey: 'a' }, { providerId: 'groq', apiKey: 'b' }],
+    messages: [], fetchImpl, nowFn: () => 0,
+  }));
+  assert.equal(calls, 1, 'a bad request must not be retried across providers');
+});

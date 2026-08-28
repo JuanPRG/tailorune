@@ -21,9 +21,12 @@
 //   PowerShell:  $env:GEMINI_API_KEY = "..."   ; npm run test:live
 //   bash:        GEMINI_API_KEY=... npm run test:live
 //
-// A `.env.local` in the repo root is also read, and is gitignored.
+// Read, in order: a gitignored `.env.local` in this repo, then
+// ~/.hirepilot/.env (hirepilot v4's own config). Nothing is copied between
+// them -- the secret stays in the one place already managing it.
 
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Packer } from 'docx';
@@ -42,16 +45,44 @@ import { conceptRetentionRatio } from '../../extension/engine/textUtils.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../..');
 
-/** Read KEY=value pairs from a gitignored .env.local, without printing any of them. */
-function loadEnvLocal() {
-  const file = path.join(ROOT, '.env.local');
-  if (!existsSync(file)) return;
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+// Where a key may live, in order of precedence. Nothing is copied between
+// them: the point is that the secret stays in ONE place the user already
+// manages, so there is no second copy to leak or to go stale.
+//
+// ~/.hirepilot/.env is hirepilot v4's own config. Reading it directly beats
+// duplicating a key into this repo, even into a gitignored file.
+const ENV_FILES = [
+  path.join(ROOT, '.env.local'),
+  path.join(os.homedir(), '.hirepilot', '.env'),
+];
+
+// v4 names two of its provider keys differently. Mapped rather than renamed,
+// so v4's own config is never edited to suit this repo.
+const KEY_ALIASES = {
+  LLM_PROVIDER_CEREBRAS_API_KEY: 'CEREBRAS_API_KEY',
+  LLM_PROVIDER_OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
+};
+
+/** Load KEY=value pairs into the environment, without printing any value. */
+function loadEnvFiles() {
+  const loadedFrom = [];
+  for (const file of ENV_FILES) {
+    if (!existsSync(file)) continue;
+    let used = false;
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+      if (!m) continue;
+      const value = m[2].replace(/^["']|["']$/g, '');
+      if (!value) continue;
+      for (const name of [m[1], KEY_ALIASES[m[1]]].filter(Boolean)) {
+        if (!process.env[name]) { process.env[name] = value; used = true; }
+      }
+    }
+    if (used) loadedFrom.push(file);
   }
+  return loadedFrom;
 }
-loadEnvLocal();
+const envSources = loadEnvFiles();
 
 const PROVIDER_ENV = {
   gemini: 'GEMINI_API_KEY',
@@ -85,6 +116,7 @@ if (!chain.length) {
   );
   process.exit(1);
 }
+if (envSources.length) console.log(`keys read from: ${envSources.join(', ')}`);
 console.log(`providers configured: ${chain.map((c) => c.providerId).join(', ')}\n`);
 
 // --- inputs -----------------------------------------------------------------
@@ -112,13 +144,15 @@ processes is valued for our finance-sector clients.`,
 
 // --- instrumented caller ----------------------------------------------------
 
-const llm = { calls: 0, ms: 0, finishReasons: [], models: [] };
+const llm = { calls: 0, ms: 0, finishReasons: [], models: [], completion: [], prompt: [] };
 const callLlm = async (opts) => {
   const started = Date.now();
   try {
     const response = await chatWithRotation({ chain, baseUrlOverride, ...opts });
     llm.finishReasons.push(response.finishReason || 'stop');
     llm.models.push(response.model);
+    if (response.usage?.completionTokens) llm.completion.push(response.usage.completionTokens);
+    if (response.usage?.promptTokens) llm.prompt.push(response.usage.promptTokens);
     return response;
   } finally {
     llm.calls += 1;
@@ -190,6 +224,11 @@ line('finish reasons', llm.finishReasons.join(', ') || '(none)');
 line('any truncation?', llm.finishReasons.includes('length') ? 'YES — raise the ceiling' : 'no');
 line('models used', [...new Set(llm.models)].join(', '));
 line('cooldowns triggered', Object.keys(cooldownState()).join(', ') || 'none');
+// max_tokens counts toward a provider's per-minute budget, so an oversized
+// ceiling can make a request unservable even when the answer is small. These
+// are the numbers to size it from.
+line('prompt tokens (max)', llm.prompt.length ? Math.max(...llm.prompt) : 'n/a');
+line('completion tokens (max)', llm.completion.length ? Math.max(...llm.completion) : 'n/a');
 
 console.log('\n=== output quality ===');
 line('resume status', resume.report.status);
@@ -206,10 +245,20 @@ line('concreteness retention', before.map((e, i) => {
 }).join(' '));
 
 const issues = [
-  ...(resume.report.validator?.errors || []).map((e) => `ERROR  ${e}`),
-  ...(resume.report.validator?.warnings || []).map((w) => `warn   ${w}`),
-  ...(resume.report.judge?.issues || []).map((j) => `judge  ${j}`),
+  ...(resume.report.validator?.errors || []).map((e) => `resume ERROR  ${e}`),
+  ...(resume.report.validator?.warnings || []).map((w) => `resume warn   ${w}`),
+  ...(resume.report.judge?.issues || []).map((j) => `judge         ${j}`),
+  ...(resume.report.repairs || []).map((r) => `repair        ${r}`),
+  ...(skills.reverted || []).map((r) => `skills revert ${r}`),
+  // The letter was a blind spot: it burned all three attempts on a live run
+  // and the report said only "fallback_after_validation", which is a status,
+  // not a reason.
+  ...(letter.report.validator?.errors || []).map((e) => `letter ERROR  ${e}`),
+  ...(letter.report.validator?.warnings || []).map((w) => `letter warn   ${w}`),
 ];
+if (letter.report.validator?.wordCount) {
+  line('cover letter words', letter.report.validator.wordCount);
+}
 if (issues.length) {
   console.log('\n=== findings ===');
   for (const i of issues) console.log(`  ${i}`);
