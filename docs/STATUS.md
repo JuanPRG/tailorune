@@ -280,6 +280,33 @@ The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a r
 and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
 are objective and trivially fixable.
 
+## The live smoke run
+
+`npm run test:live` — one real run against a real provider. Not part of `npm test`: it costs quota,
+needs a key, and is non-deterministic, so it stays a deliberate separate command.
+
+It exists because three things this session could only be guessed at from mocked runs, and all three
+guesses were wrong:
+
+- whether a byte-identical document meant the model refused to rewrite or the JSON was cut off
+  mid-answer (the latter, misdiagnosed twice);
+- how long the resume pass actually takes (13-25s, against ~1s for the smaller passes on the same
+  provider and key);
+- whether `reasoning_effort` is accepted at all, and what it does to latency when it is.
+
+The report answers exactly those: per-phase timings and call counts, every `finish_reason`, whether
+any call truncated, which models were used, and which cooldowns fired — alongside output quality
+(status, word count, per-role concreteness retention, and every validator, judge and repair
+finding).
+
+**The key never appears in source, in an argument, or in this repo.** It is read from the
+environment or from a gitignored `.env.local`, and never printed. A command argument would be worse
+than an environment variable, since it lands in shell history.
+
+`LIVE_BASE_URL` points every provider at one OpenAI-compatible endpoint, so the harness itself can
+be exercised against a local mock before a real key is involved — which is how it was verified
+rather than shipped untried.
+
 ## Where the time goes
 
 A run is up to **nine sequential model calls**, and none of that is visible from the finished

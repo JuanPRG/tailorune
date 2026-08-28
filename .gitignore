@@ -12,3 +12,9 @@ extension/vendor/pdfjs/
 tests/e2e/.tmp/
 test-results/
 extension/popup/popup.bundle.js
+
+# Live-run secrets and output. The key lives here or in the environment and
+# must never reach a commit; last-run.docx is a real tailored resume.
+.env.local
+.env.*.local
+tests/live/last-run.docx
