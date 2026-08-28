@@ -178,6 +178,13 @@ export const MIN_BULLET_CONCEPT_RETENTION = 0.45;
 // budget that the compactor then has to claw back.
 export const MAX_BULLET_LENGTH_RATIO = 2.5;
 
+// The resume pass emits the largest JSON of the three passes: a summary plus
+// every bullet of every role. It also runs on reasoning models, where
+// max_tokens caps thinking AND output together -- so a hard posting can spend
+// the budget before emitting usable JSON, and the truncated answer then fails
+// to parse. Skills and cover letter ask for far less and keep their 1024.
+export const RESUME_MAX_TOKENS = 4096;
+
 /**
  * Deterministic post-generation checks, ported in spirit from
  * hirepilot_v4/tailor.py's `validate_tailored_blocks`.
@@ -403,6 +410,10 @@ export async function tailorResume({
   const prefs = preferences || factoryPreferences();
   let avoidNotes = [];
   let lastResult = null;
+  // Set when an attempt produced nothing usable, so the final report can say
+  // "the model's answer could not be used" instead of the misleading
+  // "nothing was tailored" -- which reads as a model that declined to work.
+  let malformedReason = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const messages = buildTailorMessages(model, jobDescription, prefs, avoidNotes);
@@ -413,9 +424,12 @@ export async function tailorResume({
       // Without it this falls back to a single provider with retries, which
       // is what the unit tests exercise.
       response = callLlm
-        ? await callLlm({ messages, jsonMode: true })
+        ? await callLlm({ messages, jsonMode: true, maxTokens: RESUME_MAX_TOKENS })
         : await chatWithRetry(
-          { provider, apiKey, model: modelName, messages, jsonMode: true, fetchImpl, timeoutMs },
+          {
+            provider, apiKey, model: modelName, messages, jsonMode: true,
+            maxTokens: RESUME_MAX_TOKENS, fetchImpl, timeoutMs,
+          },
           { maxRetries, sleepImpl },
         );
     } catch (err) {
@@ -424,6 +438,31 @@ export async function tailorResume({
     }
 
     const tailored = parseLlmJson(response.content);
+
+    // An unparseable answer must NOT be applied as an empty patch.
+    //
+    // parseLlmJson returns {} when it cannot salvage an object, and
+    // applyTailoredContent then changes nothing -- producing a document
+    // byte-identical to the upload. That is indistinguishable from a model
+    // choosing to echo its input, and it cost two misdiagnoses: the real
+    // cause was a response truncated mid-JSON, and no amount of prompt
+    // rewording could fix it. The two failures now report differently.
+    const usable = (typeof tailored.summary === 'string' && tailored.summary.trim())
+      || (Array.isArray(tailored.entries) && tailored.entries.length > 0);
+    if (!usable) {
+      const truncated = response.finishReason === 'length';
+      const reason = truncated
+        ? 'the model ran out of output tokens partway through its answer'
+        : 'the model did not return the requested JSON object';
+      malformedReason = reason;
+      avoidNotes = [
+        truncated
+          ? 'Your previous answer was cut off before it finished. Return the complete JSON object and keep bullets short.'
+          : 'Your previous answer could not be parsed. Return ONLY the JSON object described, with no prose around it.',
+      ];
+      continue;
+    }
+    malformedReason = null;
     // sanitizeText on the way in, so em dashes and smart quotes the model
     // produced never reach the rendered document.
     if (typeof tailored.summary === 'string') tailored.summary = sanitizeText(tailored.summary);
@@ -473,6 +512,31 @@ export async function tailorResume({
     if (validation.passed && judgePassed) return lastResult;
     // Feed whichever check failed back into the next attempt.
     avoidNotes = validation.passed ? judgeResult.issues : validation.errors;
+  }
+
+  // Every attempt produced nothing usable. Report that plainly, and hand back
+  // the untouched resume so the run still yields a document -- but never
+  // labelled as though it had been tailored.
+  if (!lastResult) {
+    const { model: compacted, wordCount, iterations } = compactToWordBudget(model, ONE_PAGE_WORD_BUDGET);
+    return {
+      model: compacted,
+      wordCount,
+      compactionIterations: iterations,
+      raw: '',
+      usage: null,
+      report: {
+        status: 'malformed_response',
+        attempts: maxAttempts,
+        validator: {
+          passed: false,
+          errors: [`Your resume was NOT tailored: ${malformedReason || 'the model returned no usable answer'}. The document below is your original. Try again, or switch provider or model.`],
+          warnings: [],
+        },
+        judge: null,
+        repairs: [],
+      },
+    };
   }
 
   // Every attempt failed validation. Return the last one with an honest

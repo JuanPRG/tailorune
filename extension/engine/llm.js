@@ -89,14 +89,28 @@ export async function chat({
     throw new LlmError('malformed_response', 'LLM response was not valid JSON');
   }
 
-  const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  const choice = data && data.choices && data.choices[0];
+  const content = choice && choice.message && choice.message.content;
+  // Truncation is silent otherwise: the content is a non-empty but INCOMPLETE
+  // string, which downstream JSON parsing then fails on with no indication of
+  // why. Reasoning models make this common -- max_tokens caps thinking plus
+  // output together, so a hard prompt can spend the whole budget before
+  // emitting anything usable.
+  const finishReason = (choice && (choice.finish_reason ?? choice.finishReason)) || null;
   if (typeof content !== 'string' || content.trim() === '') {
-    throw new LlmError('empty_response', 'LLM response had no message content');
+    throw new LlmError(
+      'empty_response',
+      finishReason === 'length'
+        ? 'LLM hit its token limit before producing any content'
+        : 'LLM response had no message content',
+      { finishReason },
+    );
   }
 
   const usage = data.usage || {};
   return {
     content,
+    finishReason,
     usage: {
       promptTokens: usage.prompt_tokens ?? null,
       completionTokens: usage.completion_tokens ?? null,

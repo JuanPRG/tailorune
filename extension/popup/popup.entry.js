@@ -324,11 +324,16 @@ async function onReadPageClick() {
     const { text, employer, jobTitle, source, confidence } = response.job;
     if (text) els.jobDescription.value = text;
     if (employer) els.employer.value = employer;
-    if (jobTitle) els.jobTitle.value = jobTitle;
+    // Assigned unconditionally. The extractor blanks a title it does not
+    // trust (a signed-in greeting, a nav label), and leaving the previous
+    // value in place would quietly keep a rejected title alive in the field
+    // and let it reach the cover letter anyway.
+    els.jobTitle.value = jobTitle || '';
 
-    const note = confidence === 'high'
+    const titleNote = jobTitle ? '' : ' No usable job title found on the page — add one below if you want it on the cover letter.';
+    const note = (confidence === 'high'
       ? `Read from ${source}. Looks complete.`
-      : `Read from ${source} (${confidence} confidence) — please check the fields below before tailoring.`;
+      : `Read from ${source} (${confidence} confidence) — please check the fields below before tailoring.`) + titleNote;
     els.extractHint.textContent = note;
   } catch (err) {
     els.extractHint.textContent = `Could not read this page: ${(err && err.message) || err}`;

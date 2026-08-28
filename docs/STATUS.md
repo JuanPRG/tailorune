@@ -211,6 +211,37 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## A parse failure and a model echo look identical
+
+Three runs came back byte-identical to the upload. Two rounds of prompt work went into treating that
+as a model declining to rewrite. It was not.
+
+`parseLlmJson` returns `{}` when it cannot salvage an object. `applyTailoredContent` then applies an
+empty patch, changing nothing, and the rendered document is byte-identical to the input - exactly
+what a model echoing its input produces. One output, two completely different causes, and the
+reported message named the wrong one.
+
+What actually went wrong: the resume pass emits the largest JSON of the three passes and was left on
+the default 2048 `max_tokens`, while skills and cover letter ask for far less on 1024. On reasoning
+models `max_tokens` caps thinking AND output together, so a harder posting spends the budget and the
+answer arrives truncated mid-JSON. The cover letter kept working throughout because it asks for
+prose, and the skills pass because its JSON is small - which is what finally isolated the bullet
+pass as the only failing one.
+
+Three changes, and the first is the one that matters:
+
+- **An unusable answer is never applied as an empty patch.** A response with no summary and no
+  entries is now a distinct `malformed_response` outcome that retries and, if it never recovers,
+  says *"Your resume was NOT tailored: the model ran out of output tokens partway through"* - rather
+  than "nothing was tailored", which reads as the model's fault and sent this down the wrong path
+  twice. The untouched resume is still produced, just never labelled as tailored.
+- **Truncation is visible.** `chat()` surfaces `finish_reason`, so a cut-off answer is diagnosable
+  instead of arriving as an unexplained parse failure.
+- **`RESUME_MAX_TOKENS` is 4096**, sized for the pass that emits the most.
+
+`applyTailoredContent` also coerces the entry index with `Number()`, since a model answering
+`"index": "0"` would miss every lookup and produce the same silent no-op by a different route.
+
 ## Prompt ordering, and the weak-connection case
 
 Two consecutive real runs came back with the summary and every bullet byte-identical to the upload,
@@ -265,7 +296,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 205 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 213 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

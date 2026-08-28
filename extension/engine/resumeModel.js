@@ -72,7 +72,11 @@ export function applyTailoredContent(model, tailored) {
   if (typeof tailored.summary === 'string' && tailored.summary.trim()) {
     next.summary = tailored.summary.trim();
   }
-  const byIndex = new Map((tailored.entries || []).map((e) => [e.index, e]));
+  // Number() on the way in: a model that answers with "index": "0" instead of
+  // 0 would otherwise miss every lookup, applying nothing and producing output
+  // byte-identical to the input -- a silent no-op that looks exactly like a
+  // model refusing to rewrite.
+  const byIndex = new Map((tailored.entries || []).map((e) => [Number(e.index), e]));
   let flatIndex = 0;
   for (const section of next.sections) {
     if (!section.entries) continue;
