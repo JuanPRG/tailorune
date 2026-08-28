@@ -44,7 +44,7 @@ const INLINE_CONTEXT_MAX = 92;
 
 function textParagraph(text, opts = {}) {
   return new Paragraph({
-    alignment: opts.align,
+    alignment: opts.justify ? AlignmentType.JUSTIFIED : opts.align,
     spacing: { before: opts.before ?? 0, after: opts.after ?? 40 },
     border: opts.rule
       ? { bottom: { style: BorderStyle.SINGLE, size: 6, color: '1A1A1A' } }
@@ -61,9 +61,15 @@ function textParagraph(text, opts = {}) {
   });
 }
 
+// Justified: bullets, the summary and the skills lines all run to multiple
+// lines, and a flush right edge is what makes a dense one-page resume read as
+// a block of text rather than a ragged list. Headings, role titles and dated
+// rows stay unjustified -- stretching a short line to the margin looks broken,
+// and a right-aligned date has nothing to justify against.
 function bulletParagraph(text) {
   return new Paragraph({
     bullet: { level: 0 },
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { after: 20 },
     children: [new TextRun({ text, size: BODY_SIZE, font: FONT })],
   });
@@ -82,10 +88,36 @@ function sectionHeading(text) {
 
 /** A source line that already carries a bullet marker, rendered as a real list item. */
 const LEADING_BULLET_RE = /^[-*•▪◦‣]\s+/;
-function lineParagraph(line) {
-  return LEADING_BULLET_RE.test(line)
-    ? bulletParagraph(line.replace(LEADING_BULLET_RE, '').trim())
-    : textParagraph(line);
+
+// A line ending in a year or a date range, separated by real whitespace:
+// "Bachelor of Economics   2015", "Advanced Diploma (CPA)   May 2023 - Apr 2026".
+// Both reference resumes bold this line and push the year to the right margin,
+// exactly as they do for a role -- and both leave the institution line beneath
+// it plain, which is what tells the two apart at a glance.
+// Written as a literal, not assembled from strings. `\s` and `\d` are not
+// valid escapes inside a template literal and collapse to bare `s` and `d`,
+// which turns this pattern into something that matches nothing and fails
+// silently — it did exactly that on the first attempt.
+const TRAILING_YEAR_RE = /^(.*\S)\s{2,}((?:[A-Za-z]{3,9}\.?\s+)?\d{4}(?:\s*[-–—]\s*(?:present|current|(?:[A-Za-z]{3,9}\.?\s+)?\d{4}))?)\s*$/i;
+
+function datedLineParagraph(text, year) {
+  return new Paragraph({
+    spacing: { before: 60, after: 20 },
+    tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH }],
+    children: [
+      new TextRun({ text, bold: true, size: BODY_SIZE, font: FONT }),
+      new TextRun({ children: [new Tab(), year], size: BODY_SIZE, font: FONT }),
+    ],
+  });
+}
+
+function lineParagraph(line, { justify = false } = {}) {
+  if (LEADING_BULLET_RE.test(line)) {
+    return bulletParagraph(line.replace(LEADING_BULLET_RE, '').trim());
+  }
+  const dated = TRAILING_YEAR_RE.exec(line);
+  if (dated) return datedLineParagraph(dated[1].trim(), dated[2].trim());
+  return textParagraph(line, { justify });
 }
 
 /**
@@ -164,24 +196,39 @@ export function buildResumeDocument(model) {
     // one (PROFILE, OBJECTIVE, ABOUT ME), and a neutral default when the
     // summary came from leading prose with no heading at all.
     children.push(sectionHeading(model.summaryHeading || 'SUMMARY'));
-    children.push(textParagraph(model.summary, { after: 140 }));
+    children.push(textParagraph(model.summary, { after: 140, justify: true }));
   }
 
+  // Skills is parsed out of `sections` into its own field, because it has its
+  // own tailoring pass and its own rules -- but that must not decide where it
+  // PRINTS. parseTxt records each block's position, so a resume that ends with
+  // skills comes back ending with skills. Models built by hand (tests, older
+  // callers) carry no order, and fall back to skills-first.
+  const blocks = [];
   if (model.skills && model.skills.lines.length) {
-    children.push(sectionHeading(model.skills.heading || 'SKILLS'));
-    // Real list items, matching the reference resume. Each line is a labelled
-    // group ("Languages: Java, Python"), and a bullet is what tells a reader
-    // -- and a parser -- that these are peers rather than prose.
-    for (const line of model.skills.lines) children.push(lineParagraph(line));
+    blocks.push({
+      order: model.skills.order ?? -1,
+      heading: model.skills.heading || 'SKILLS',
+      // Real list items, matching the reference resume. Each line is a
+      // labelled group ("Languages: Java, Python"), and a bullet is what tells
+      // a reader -- and a parser -- that these are peers rather than prose.
+      render: () => model.skills.lines.map((line) => lineParagraph(line, { justify: true })),
+    });
   }
+  model.sections.forEach((section, i) => {
+    blocks.push({
+      order: section.order ?? i,
+      heading: section.heading,
+      render: () => (section.entries
+        ? renderEntries(section.entries)
+        : section.lines.map((line) => lineParagraph(line, { justify: true }))),
+    });
+  });
 
-  for (const section of model.sections) {
-    children.push(sectionHeading(section.heading));
-    if (section.entries) {
-      children.push(...renderEntries(section.entries));
-    } else {
-      for (const line of section.lines) children.push(lineParagraph(line));
-    }
+  blocks.sort((a, b) => a.order - b.order);
+  for (const block of blocks) {
+    children.push(sectionHeading(block.heading));
+    children.push(...block.render());
   }
 
   return new Document({

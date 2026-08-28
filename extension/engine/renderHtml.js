@@ -35,6 +35,22 @@ function splitMeta(meta) {
   return { date: '', context: parts.join(' · ') };
 }
 
+// Mirrors renderDocx.js. Written as a literal for the same reason it is there:
+// \s and \d are not valid escapes in a template literal and collapse to bare
+// letters, which silently produces a pattern that matches nothing.
+const TRAILING_YEAR_RE = /^(.*\S)\s{2,}((?:[A-Za-z]{3,9}\.?\s+)?\d{4}(?:\s*[-–—]\s*(?:present|current|(?:[A-Za-z]{3,9}\.?\s+)?\d{4}))?)\s*$/i;
+const LEADING_BULLET_RE = /^[-*•▪◦‣]\s+/;
+
+/** A plain section line: a dated row (education) reads like a role. */
+function renderLine(line) {
+  const dated = TRAILING_YEAR_RE.exec(line);
+  if (dated) {
+    return `<div class="role-head"><span class="role-title">${escapeHtml(dated[1].trim())}</span>`
+      + `<span class="role-date">${escapeHtml(dated[2].trim())}</span></div>`;
+  }
+  return `<p class="justified">${escapeHtml(line)}</p>`;
+}
+
 function renderEntries(entries) {
   return entries.map((entry) => {
     const title = entry.title || '(untitled role)';
@@ -55,13 +71,30 @@ function renderEntries(entries) {
 /** @param {import('./resumeModel.js').ResumeModel} model */
 export function renderResumeHtml(model) {
   const contactLine = model.contact ? model.contact.split('\n').join(' | ') : '';
-  const skillsHtml = model.skills && model.skills.lines.length
-    ? `<h2>${escapeHtml(model.skills.heading || 'SKILLS')}</h2><ul>${model.skills.lines.map((l) => `<li>${escapeHtml(l.replace(/^[-*•▪◦‣]\s+/, ''))}</li>`).join('')}</ul>`
-    : '';
-  const sectionsHtml = model.sections.map((section) => `
-    <h2>${escapeHtml(section.heading)}</h2>
-    ${section.entries ? renderEntries(section.entries) : section.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('')}
-  `).join('');
+  // Source order, same as renderDocx: skills is parsed into its own field but
+  // must print where the resume put it.
+  const blocks = [];
+  if (model.skills && model.skills.lines.length) {
+    blocks.push({
+      order: model.skills.order ?? -1,
+      html: `<h2>${escapeHtml(model.skills.heading || 'SKILLS')}</h2><ul>${
+        model.skills.lines.map((l) => `<li>${escapeHtml(l.replace(LEADING_BULLET_RE, ''))}</li>`).join('')}</ul>`,
+    });
+  }
+  model.sections.forEach((section, i) => {
+    blocks.push({
+      order: section.order ?? i,
+      html: `<h2>${escapeHtml(section.heading)}</h2>${
+        section.entries
+          ? renderEntries(section.entries)
+          : section.lines.map((l) => (LEADING_BULLET_RE.test(l)
+            ? `<ul><li>${escapeHtml(l.replace(LEADING_BULLET_RE, ''))}</li></ul>`
+            : renderLine(l))).join('')}`,
+    });
+  });
+  blocks.sort((a, b) => a.order - b.order);
+  const sectionsHtml = blocks.map((b) => b.html).join('');
+  const skillsHtml = '';
 
   return `<!doctype html>
 <html lang="en">
@@ -86,6 +119,11 @@ export function renderResumeHtml(model) {
   .role-title { font-weight: bold; }
   .role-date { white-space: nowrap; }
   .role-context { font-style: italic; margin-bottom: 4px; }
+  /* Justified: bullets, summary and skills all run to multiple lines, and a
+     flush right edge is what makes a dense one-page resume read as a block of
+     text. Headings, titles and dated rows stay ragged -- stretching a short
+     line to the margin looks broken. */
+  .summary, .justified, li { text-align: justify; }
   ul { margin: 0 0 6px; padding-left: 18px; }
   li { margin-bottom: 2px; }
   .print-hint { background: #e0edee; border: 1px solid #0f6e78; border-radius: 4px; padding: 10px 14px; margin-bottom: 16px; font-size: 10pt; }

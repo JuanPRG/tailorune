@@ -110,6 +110,100 @@ test('section headings are capitalised but keep their own wording', async () => 
   assert.ok(!lines.includes('SUMMARY'), 'but never reworded into a different heading');
 });
 
+// --- source section order ---------------------------------------------------
+
+test('a resume that ends with skills comes back ending with skills', async () => {
+  // Skills is parsed out of `sections` into its own field because it has its
+  // own tailoring pass -- but that is an implementation detail and must not
+  // decide where it prints.
+  const { extractDocxText } = await import('../../extension/engine/extractDocxText.js');
+  const model = parseTxt([
+    'Ada Lovelace', 'ada@example.com', '',
+    'WORK EXPERIENCE', 'Analyst  |  Acme  2020 - 2024', '- Did the work.', '',
+    'EDUCATION', 'BA History, UBC', '',
+    'SKILLS', 'Tools: Excel',
+  ].join(String.fromCharCode(10)));
+
+  const lines = (await extractDocxText(await Packer.toBuffer(buildResumeDocument(model))))
+    .split(String.fromCharCode(10)).map((l) => l.trim());
+  const headings = lines.filter((l) => ['WORK EXPERIENCE', 'EDUCATION', 'SKILLS'].includes(l));
+  assert.deepEqual(headings, ['WORK EXPERIENCE', 'EDUCATION', 'SKILLS']);
+});
+
+test('a resume that leads with skills still leads with skills', async () => {
+  const { extractDocxText } = await import('../../extension/engine/extractDocxText.js');
+  const model = parseTxt([
+    'Ada Lovelace', 'ada@example.com', '',
+    'SKILLS', 'Tools: Excel', '',
+    'WORK EXPERIENCE', 'Analyst  |  Acme  2020 - 2024', '- Did the work.',
+  ].join(String.fromCharCode(10)));
+
+  const lines = (await extractDocxText(await Packer.toBuffer(buildResumeDocument(model))))
+    .split(String.fromCharCode(10)).map((l) => l.trim());
+  assert.ok(lines.indexOf('SKILLS') < lines.indexOf('WORK EXPERIENCE'));
+});
+
+test('a hand-built model with no recorded order still renders', () => {
+  // Older callers and tests construct models directly; they must not crash on
+  // a missing order field.
+  const model = {
+    name: 'X', contact: 'x@y.z', summary: null, summaryHeading: null,
+    skills: { heading: 'SKILLS', lines: ['Tools: Excel'] },
+    sections: [{ kind: 'education', heading: 'EDUCATION', lines: ['BA History'] }],
+  };
+  assert.doesNotThrow(() => buildResumeDocument(model));
+});
+
+// --- justification ----------------------------------------------------------
+
+test('bullets, summary and skills are justified; titles and dated rows are not', async () => {
+  const xml = await docxXml();
+  const justified = (xml.match(/w:val="both"/g) || []).length;
+  assert.ok(justified >= 4, `expected justified body paragraphs, got ${justified}`);
+
+  // A role headline carries a right-aligned tab stop; justifying it would
+  // stretch the title across the page against a date that cannot move.
+  const roleParagraphs = (xml.match(/<w:p>(?:(?!<\/w:p>)[\s\S])*?w:val="right"[\s\S]*?<\/w:p>/g) || []);
+  assert.ok(roleParagraphs.length > 0, 'no dated rows found to check');
+  for (const p of roleParagraphs) {
+    assert.doesNotMatch(p, /w:val="both"/, 'a dated row must not be justified');
+  }
+});
+
+// --- education dates --------------------------------------------------------
+
+test('an education line ending in a year gets that year flush right, like a role', async () => {
+  const { extractDocxText } = await import('../../extension/engine/extractDocxText.js');
+  const model = parseTxt([
+    'Ada Lovelace', 'ada@example.com', '',
+    'EDUCATION',
+    'Bachelor of Economics  2015',
+    'Universidad de Ibague — Ibague, Colombia',
+    'Advanced Diploma in Computer Programming (CPA)  May 2023 - Apr 2026',
+  ].join(String.fromCharCode(10)));
+
+  const bytes = await Packer.toBuffer(buildResumeDocument(model));
+  const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml').async('string');
+  // Two dated degree lines, and the institution line between them is not one.
+  assert.equal((xml.match(/w:val="right"/g) || []).length, 2);
+
+  const text = await extractDocxText(bytes);
+  assert.match(text, /Bachelor of Economics\s+2015/);
+  assert.match(text, /May 2023 - Apr 2026/);
+});
+
+test('the trailing-year pattern survives being a regex, not an assembled string', () => {
+  // It did not, at first: \s and \d are invalid escapes inside a template
+  // literal and collapse to bare `s` and `d`, so the assembled pattern matched
+  // nothing and failed silently. This asserts the behaviour that bug removed.
+  const model = parseTxt([
+    'Ada Lovelace', 'ada@example.com', '',
+    'EDUCATION', 'Bachelor of Economics  2015',
+  ].join(String.fromCharCode(10)));
+  const html = renderResumeHtml(model);
+  assert.match(html, /class="role-date">2015</, 'the year should be split out and right-aligned');
+});
+
 // --- the HTML exit is the same design, not a second one ---------------------
 
 test('the HTML preview uses one body size and inherits it for headings', () => {

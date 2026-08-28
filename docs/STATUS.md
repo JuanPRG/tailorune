@@ -263,6 +263,23 @@ one is a rule:
 - **Skills lines are real list items**, and a source line that already carries a bullet marker is
   rendered as a list item rather than printing the marker as literal text.
 - **Headings are upper-cased but never reworded** - a resume that says OBJECTIVE keeps saying it.
+- **Source section order is preserved.** Skills is parsed out of `sections` into its own field
+  because it has its own tailoring pass and its own rules - but that is an implementation detail and
+  must not decide where it prints. `parseTxt` records each block's position; a resume that ends with
+  skills comes back ending with skills.
+- **Body text is justified; titles and dated rows are not.** Bullets, the summary and the skills
+  lines all run to multiple lines, and a flush right edge is what makes a dense one-page resume read
+  as a block of text. Stretching a short heading to the margin looks broken, and a right-aligned
+  date has nothing to justify against.
+- **An education line ending in a year is treated as a dated row**, bold with the year flush right,
+  exactly like a role. Both reference resumes do this, and both leave the institution line beneath
+  it plain - which is what tells the two apart at a glance.
+
+One trap worth recording: the trailing-year pattern is written as a regex **literal**, not assembled
+from strings. `\s` and `\d` are not valid escapes inside a template literal and collapse to bare
+`s` and `d`, so the first attempt produced a pattern that matched nothing and failed silently - no
+error, just education years that never moved. `template.test.mjs` asserts the behaviour that bug
+removed.
 
 One deliberate departure from the reference: it has no summary heading, with the summary as leading
 prose under the contact line. That looks cleaner and parses worse - an unlabelled opening paragraph
@@ -379,7 +396,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 224 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 230 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

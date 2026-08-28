@@ -178,6 +178,12 @@ export function parseTxt(rawText) {
     i++;
   }
 
+  // Position of each block as it appeared in the source. The skills section is
+  // lifted out of `sections` into its own field (it has its own tailoring pass
+  // and its own rules), which loses where it sat -- and a resume that leads
+  // with experience should not come back leading with skills. This is what
+  // lets the renderer put it back.
+  let order = 0;
   let summary = proseLines.length ? proseLines.join(' ') : null;
   // Retained so the renderer can label the summary with the heading the
   // resume actually used -- PROFILE, OBJECTIVE, ABOUT ME -- instead of
@@ -211,16 +217,16 @@ export function parseTxt(rawText) {
       const text = bodyLines.filter(Boolean).join(' ');
       if (text) { summary = text; summaryHeading = heading; }
     } else if (kind === 'skills') {
-      skills = { heading, lines: bodyLines.filter(Boolean) };
+      skills = { heading, lines: bodyLines.filter(Boolean), order: order++ };
     } else if (kind === 'experience' || kind === 'projects') {
       const entries = parseEntries(bodyLines);
-      if (entries.length) sections.push({ kind, heading, entries });
+      if (entries.length) sections.push({ kind, heading, entries, order: order++ });
     } else {
       // education, plus every unrecognised section: kept as verbatim lines.
       // That is also the right handling for credentials -- certifications and
       // awards are facts, and must never be handed to the rewriter.
       const sectionLines = bodyLines.filter(Boolean);
-      if (sectionLines.length) sections.push({ kind, heading, lines: sectionLines });
+      if (sectionLines.length) sections.push({ kind, heading, lines: sectionLines, order: order++ });
     }
   }
 
