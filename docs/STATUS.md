@@ -211,6 +211,28 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## The judge is advisory, and never costs a retry
+
+Ported from v4's `validation_mode: "lenient"` (`tailor.py:494, 508-512`), which accepts a judge
+finding as `approved_with_judge_warning` rather than spending an attempt on it.
+
+The judge never blocked the document - both files were always produced. What it did do was feed its
+findings back as avoid-notes for the next attempt, and that is the problem: "this reframing drifted
+from the original" asks the model to be MORE literal next time. The check meant to protect the
+resume was quietly sanding down the aggressive tailoring the tool exists to do.
+
+So the split is now by *kind of failure*, not by severity:
+
+- **The deterministic validator earns a retry.** Its failures are objective and fixable - a dropped
+  quantity, hollowed-out vocabulary, an answer returned unchanged - so naming them gives the model
+  something concrete to correct.
+- **The judge reports and stops there.** Whether an aggressive reframing is acceptable is a
+  judgement call about the candidate's own history, made by the person whose name is on the
+  application. Surfacing the finding respects that; overriding it does not.
+
+The findings still appear in the popup, labelled "advisory - nothing was changed", and the
+`Review tailoring for accuracy` checkbox still turns the whole pass off to save the call.
+
 ## A parse failure and a model echo look identical
 
 Three runs came back byte-identical to the upload. Two rounds of prompt work went into treating that
@@ -296,7 +318,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 213 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 214 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

@@ -134,30 +134,35 @@ test('judgeTailoredModel skips the call entirely when nothing changed', async ()
 
 // --- integration with the retry loop ---
 
-test('tailorResume retries when the judge flags drift, and feeds its issues back as avoid-notes', async () => {
+test('a judge finding does NOT cost a retry — it is reported and accepted', async () => {
+  // v4's validation_mode "lenient" (tailor.py:494, 508-512). Retrying on a
+  // judge finding feeds "you drifted from the original" back into the next
+  // prompt, which asks the model to be MORE literal — the opposite of the
+  // aggressive tailoring this tool exists to do. The check meant to protect
+  // the resume was quietly sanding down its main feature.
   const model = parseTxt(fixture('juan-rivera-full.txt'));
-  const good = JSON.stringify({ summary: 'A perfectly reasonable rewritten professional summary here.', entries: [] });
-  const fetchImpl = async () => new Response(JSON.stringify({ choices: [{ message: { content: good } }] }), { status: 200 });
-
-  const seenPrompts = [];
-  let judgeCall = 0;
-  const judge = async () => {
-    judgeCall += 1;
-    return judgeCall === 1
-      ? { passed: false, issues: ['ROLE 1: different activity than the original'] }
-      : { passed: true, issues: [] };
+  const body = JSON.stringify({ summary: 'A perfectly reasonable rewritten professional summary here.', entries: [] });
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ choices: [{ message: { content: body } }] }), { status: 200 });
   };
+  const judge = async () => ({ passed: false, issues: ['ROLE 1: different activity than the original'] });
 
   const result = await tailorResume({
     model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl, judge, job: JOB,
   });
 
-  assert.equal(result.report.attempts, 2, 'a judge failure should trigger a retry');
-  assert.equal(result.report.status, 'approved');
-  assert.equal(result.report.judge.passed, true);
+  assert.equal(calls, 1, 'a judge finding must not trigger another tailoring call');
+  assert.equal(result.report.attempts, 1);
+  assert.equal(result.report.status, 'approved_with_judge_warning', 'v4 reports this status by name');
+  assert.equal(result.report.judge.passed, false, 'the finding is still reported, not suppressed');
+  assert.deepEqual(result.report.judge.issues, ['ROLE 1: different activity than the original']);
 });
 
-test('tailorResume reports fallback_after_validation when the judge keeps flagging drift', async () => {
+test('a judge finding never withholds the document', async () => {
+  // Whether an aggressive reframing is acceptable is the candidate's call.
+  // Surfacing the finding respects that; withholding the file would not.
   const model = parseTxt(fixture('juan-rivera-full.txt'));
   const body = JSON.stringify({ summary: 'A perfectly reasonable rewritten professional summary here.', entries: [] });
   const fetchImpl = async () => new Response(JSON.stringify({ choices: [{ message: { content: body } }] }), { status: 200 });
@@ -167,10 +172,33 @@ test('tailorResume reports fallback_after_validation when the judge keeps flaggi
     model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl, judge, job: JOB,
   });
 
-  assert.equal(result.report.status, 'fallback_after_validation');
-  assert.equal(result.report.judge.passed, false);
-  // The document is still produced -- the judge is advisory, not a gate.
   assert.ok(result.model, 'a flagged run must still return a usable document');
+  assert.match(result.model.summary, /rewritten professional summary/, 'the aggressive rewrite is kept, not reverted');
+  assert.ok(result.wordCount > 0);
+});
+
+test('the deterministic validator DOES still earn a retry', async () => {
+  // The distinction that matters: validator failures are objective and
+  // fixable (a dropped quantity, hollowed-out vocabulary, an unchanged
+  // answer), so naming them gives the model something concrete to correct.
+  const model = parseTxt(fixture('juan-rivera-full.txt'));
+  const bad = JSON.stringify({ summary: 'Product Manager owning the roadmap across several teams.', entries: [] });
+  const good = JSON.stringify({ summary: 'A perfectly reasonable rewritten professional summary here.', entries: [] });
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: calls === 1 ? bad : good } }] }),
+      { status: 200 },
+    );
+  };
+
+  const result = await tailorResume({
+    model, jobDescription: 'x', provider, apiKey: 'k', modelName: 'm', fetchImpl, job: JOB,
+  });
+
+  assert.equal(calls, 2, 'a validator failure should still trigger a retry');
+  assert.equal(result.report.status, 'approved');
 });
 
 test('tailorResume does not call the judge when the deterministic validator already failed', async () => {

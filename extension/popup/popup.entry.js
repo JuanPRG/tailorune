@@ -458,7 +458,10 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
   // The judge is advisory: its findings are shown so the user can decide,
   // never used to withhold the document.
   if (resumeJudge && !resumeJudge.passed && resumeJudge.issues && resumeJudge.issues.length) {
-    blocks.push(`<strong>Accuracy review flagged:</strong><ul>${resumeJudge.issues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+    blocks.push(
+      '<strong>Accuracy review (advisory — nothing was changed):</strong>'
+      + `<ul>${resumeJudge.issues.map((i) => `<li>${i}</li>`).join('')}</ul>`,
+    );
   }
   if (resumeJudge && resumeJudge.judgeError) {
     blocks.push(`<strong>Accuracy review skipped:</strong><ul><li>${resumeJudge.judgeError}</li></ul>`);
@@ -473,7 +476,10 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
   // tailored.
   const resumeIssues = [...(resumeErrors || []), ...(resumeWarnings || [])];
   if (resumeIssues.length) {
-    const label = resumeStatus && resumeStatus !== 'approved' ? `Resume (${resumeStatus})` : 'Resume';
+    // approved_with_judge_warning is an approved outcome -- the judge is
+    // advisory -- so it must not be labelled as though something went wrong.
+    const approved = !resumeStatus || resumeStatus.startsWith('approved');
+    const label = approved ? 'Resume' : `Resume (${resumeStatus})`;
     blocks.push(`<strong>${label}:</strong><ul>${resumeIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
   }
   if (coverLetter) {

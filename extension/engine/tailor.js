@@ -490,6 +490,21 @@ export async function tailorResume({
     }
 
     const { model: compacted, wordCount, iterations } = compactToWordBudget(repair.model, ONE_PAGE_WORD_BUDGET);
+    // The judge is ADVISORY: it reports, it never gates and never retries.
+    //
+    // This is v4's `validation_mode: "lenient"` (tailor.py:494, 508-512),
+    // where a judge failure returns immediately as
+    // "approved_with_judge_warning" instead of costing an attempt. It is the
+    // right default for this tool because of what a judge failure actually
+    // means: not "this is wrong" but "this reframing drifted from the
+    // original". Feeding that back as an avoid-note asks the model to be more
+    // literal on the next pass, which is the opposite of aggressive
+    // tailoring -- so the check meant to protect the resume was quietly
+    // sanding down the thing the user wants most.
+    //
+    // Whether an aggressive reframing is acceptable is the candidate's call,
+    // not the tool's. It is their resume and their name on the application.
+    // Surfacing the finding respects that; overriding it does not.
     const judgePassed = !judgeResult || judgeResult.passed;
 
     lastResult = {
@@ -499,7 +514,9 @@ export async function tailorResume({
       raw: response.content,
       usage: response.usage,
       report: {
-        status: validation.passed && judgePassed ? 'approved' : 'pending',
+        status: validation.passed
+          ? (judgePassed ? 'approved' : 'approved_with_judge_warning')
+          : 'pending',
         attempts: attempt,
         validator: validation,
         judge: judgeResult,
@@ -509,9 +526,13 @@ export async function tailorResume({
       },
     };
 
-    if (validation.passed && judgePassed) return lastResult;
-    // Feed whichever check failed back into the next attempt.
-    avoidNotes = validation.passed ? judgeResult.issues : validation.errors;
+    // Only the deterministic validator earns another attempt. Its failures are
+    // objective and fixable — a dropped quantity, hollowed-out vocabulary, an
+    // answer returned unchanged — so naming them gives the model something
+    // concrete to correct. A judge finding is a judgement call, and retrying
+    // on one just asks for a more literal rewrite.
+    if (validation.passed) return lastResult;
+    avoidNotes = validation.errors;
   }
 
   // Every attempt produced nothing usable. Report that plainly, and hand back
