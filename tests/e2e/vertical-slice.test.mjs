@@ -79,6 +79,14 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
 
   const resultJson = JSON.parse(await page.textContent('#result'));
   assert.equal(resultJson.ok, true, `expected ok:true, got ${JSON.stringify(resultJson)}`);
+
+  // Timing has to survive the offscreen -> service worker -> popup hops, or
+  // the breakdown silently becomes an empty string and nobody notices until
+  // the next "why was that slow".
+  assert.ok(resultJson.llm, 'no llm timing reached the popup');
+  assert.ok(resultJson.llm.calls > 0, 'call count should be recorded');
+  assert.ok(resultJson.timings && resultJson.timings.resume, 'no per-phase timing reached the popup');
+  assert.equal(typeof resultJson.timings.resume.ms, 'number');
   assert.ok(Array.isArray(resultJson.downloads) && resultJson.downloads.length >= 1, 'expected at least one download in the response');
   const resumeDownload = resultJson.downloads.find((d) => d.kind === 'resume');
   assert.ok(resumeDownload && resumeDownload.downloadId !== undefined, 'expected a real chrome.downloads id for the resume');

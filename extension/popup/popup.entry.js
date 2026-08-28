@@ -452,6 +452,30 @@ function setStatus(text) {
   els.status.textContent = text;
 }
 
+/**
+ * A compact timing line, because "it felt slow" is not actionable.
+ *
+ * The run is up to nine SEQUENTIAL model calls -- resume (2 attempts, each
+ * able to trigger a judge call), skills (2), cover letter (3) -- and none of
+ * that is visible from the finished document. Showing where the seconds went,
+ * and how many calls it took, is what turns "why was that slow" into a
+ * question with an answer.
+ */
+function formatTimings({ timings, llm }) {
+  if (!timings || !llm) return '';
+  const order = ['resume', 'skills', 'coverLetter', 'render'];
+  const parts = order
+    .filter((key) => timings[key])
+    .map((key) => {
+      const { ms, calls } = timings[key];
+      const label = key === 'coverLetter' ? 'letter' : key;
+      return `${label} ${(ms / 1000).toFixed(1)}s${calls ? ` (${calls} call${calls === 1 ? '' : 's'})` : ''}`;
+    });
+  if (!parts.length) return '';
+  return `
+${(llm.ms / 1000).toFixed(0)}s in ${llm.calls} AI call${llm.calls === 1 ? '' : 's'} — ${parts.join(', ')}.`;
+}
+
 /** Surface validation findings honestly instead of only reporting success. */
 function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudge, coverLetter, skills }) {
   const blocks = [];
@@ -544,7 +568,10 @@ async function onTailorClick() {
 
     if (response && response.ok) {
       const files = (response.downloads || []).length;
-      setStatus(`Done — ${response.wordCount} words, ${files} file${files === 1 ? '' : 's'} in Downloads.`);
+      setStatus(
+        `Done — ${response.wordCount} words, ${files} file${files === 1 ? '' : 's'} in Downloads.`
+        + formatTimings(response),
+      );
       renderFindings(response);
       lastResumeHtml = response.htmlPreview || null;
       lastCoverLetterHtml = response.coverLetter ? response.coverLetter.htmlPreview : null;

@@ -146,6 +146,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           skills: result.skills,
           coverLetter: result.coverLetter,
           cooldowns: result.cooldowns,
+          timings: result.timings,
+          llm: result.llm,
         });
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });

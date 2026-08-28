@@ -78,9 +78,34 @@ async function runTailor(payload) {
   // One rotating caller shared by every stage, so a provider that just got
   // rate-limited during the resume pass is already cooling down by the time
   // the skills and cover-letter passes run.
-  const callLlm = ({ messages, jsonMode, maxTokens }) => chatWithRotation({
-    chain, messages, jsonMode, maxTokens, baseUrlOverride,
-  });
+  // Timing, because "it felt slow" is not something you can act on.
+  //
+  // The pipeline is up to nine SEQUENTIAL model calls -- resume (2 attempts,
+  // each able to trigger a judge call), skills (2), cover letter (3) -- and
+  // any of them can rotate across the provider chain on failure. Which of
+  // those actually ran is invisible from the finished document, so it is
+  // recorded here and reported alongside the word count.
+  const llm = { calls: 0, ms: 0 };
+  const callLlm = async ({ messages, jsonMode, maxTokens }) => {
+    const started = Date.now();
+    try {
+      return await chatWithRotation({ chain, messages, jsonMode, maxTokens, baseUrlOverride });
+    } finally {
+      llm.calls += 1;
+      llm.ms += Date.now() - started;
+    }
+  };
+
+  const timings = {};
+  const timed = async (label, fn) => {
+    const started = Date.now();
+    const before = llm.calls;
+    try {
+      return await fn();
+    } finally {
+      timings[label] = { ms: Date.now() - started, calls: llm.calls - before };
+    }
+  };
 
   const job = { title: payload.jobTitle, company: payload.employer, description: jobDescription };
 
@@ -90,25 +115,25 @@ async function runTailor(payload) {
   const useJudge = payload.useJudge !== false;
   const judge = useJudge ? (args) => judgeTailoredModel({ ...args, callLlm }) : undefined;
 
-  const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await tailorResume({
+  const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await timed('resume', () => tailorResume({
     model,
     jobDescription,
     preferences,
     callLlm,
     judge,
     job,
-  });
+  }));
 
   // Skills are a separate pass with their own rules (adding plausible
   // adjacent skills is allowed here, unlike for bullets) and their own
   // deterministic retention guard -- see tailorSkills.js.
   let skillsReport = { status: 'no_change', attempts: 0, reverted: [] };
   if (tailoredModel.skills && tailoredModel.skills.lines.length) {
-    const { lines, report } = await tailorSkills({
+    const { lines, report } = await timed('skills', () => tailorSkills({
       skillsLines: tailoredModel.skills.lines,
       job,
       callLlm,
-    });
+    }));
     tailoredModel.skills = { ...tailoredModel.skills, lines };
     skillsReport = report;
   }
@@ -116,7 +141,7 @@ async function runTailor(payload) {
   const slug = slugify(model.name);
   const outputs = [];
 
-  const resumeDocx = await renderResumeDocx(tailoredModel);
+  const resumeDocx = await timed('render', () => renderResumeDocx(tailoredModel));
   outputs.push({
     kind: 'resume',
     filename: `${slug}_tailored_resume.docx`,
@@ -132,12 +157,12 @@ async function runTailor(payload) {
 
   let coverLetter = null;
   if (payload.includeCoverLetter) {
-    const { paragraphs, report } = await generateCoverLetter({
+    const { paragraphs, report } = await timed('coverLetter', () => generateCoverLetter({
       model: tailoredModel,
       job,
       preferences,
       callLlm,
-    });
+    }));
     const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
     outputs.push({
       kind: 'cover_letter',
@@ -166,6 +191,8 @@ async function runTailor(payload) {
     skills: skillsReport,
     coverLetter,
     cooldowns: cooldownState(),
+    timings,
+    llm,
   };
 }
 

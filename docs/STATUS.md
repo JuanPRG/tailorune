@@ -211,6 +211,37 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## Where the time goes
+
+A run is up to **nine sequential model calls**, and none of that is visible from the finished
+document:
+
+| Pass | Attempts | Tokens | Notes |
+|---|---|---|---|
+| Resume | 2 | 4096 | each passing attempt can trigger a judge call |
+| Judge | 1 per passing resume attempt | 1024 | opt-out via the checkbox |
+| Skills | 2 | 1024 | |
+| Cover letter | 3 | 1024 | v4 parity (`max_retries: 3`) |
+
+Every one of those can also rotate across the provider chain on failure - two entries for a single
+Gemini key, since the model pool expands to `gemini-2.5-flash` and `gemini-3.1-flash-lite`. Rotation
+does not sleep between entries, so a failover costs a round trip rather than a backoff, but each
+request carries a 45s timeout.
+
+`offscreen.entry.js` now records per-phase wall time and a call count, and the popup prints a
+breakdown under the word count: `62s in 5 AI calls - resume 31.0s (3 calls), skills 12.4s (1 call),
+letter 18.1s (1 call)`. A vertical-slice e2e assertion keeps it alive through the offscreen ->
+service worker -> popup hops, since a silently-empty breakdown would be invisible until the next
+time somebody asked why a run was slow.
+
+Two things worth knowing when reading a slow run:
+
+- **`RESUME_MAX_TOKENS` was raised from 2048 to 4096** to fix truncated JSON. On a reasoning model
+  the cap covers thinking as well as output, so a larger budget permits more thinking - the fix for
+  one problem is a plausible cause of another, and the breakdown is what tells them apart.
+- **The judge is a whole extra call per passing attempt.** Turning it off is the single biggest
+  saving available from the UI.
+
 ## The output template
 
 Derived from the strongest of the user's own resumes rather than invented. The rules, and why each
