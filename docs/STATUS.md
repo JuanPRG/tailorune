@@ -280,6 +280,45 @@ The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a r
 and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
 are objective and trivially fixable.
 
+## Shipping a rotation change to users
+
+Worth knowing before it is urgent: **model config changes on a different clock than software
+releases.** The .env already carries a "Retired unavailable OpenRouter route" comment, so models
+disappearing is routine, while a Chrome Web Store release is gated on review.
+
+What each kind of change actually costs today:
+
+| Change | Cost |
+|---|---|
+| Reorder models, or add one to a provider already listed | edit `providers.js`, `npm run build`, package, upload, **store review** |
+| Add a NEW provider host | the above **plus** a `host_permissions` change - users may see a permission prompt and Chrome can disable the extension until they accept |
+| A model is retired upstream | **nothing.** 404 / "model not found" is classified retryable, so rotation walks past it |
+
+That last row matters most: a retired model degrades rather than breaks, which is what keeps a
+rotation change a routine release instead of an emergency.
+
+`manifestHosts.test.mjs` guards the failure mode that would otherwise survive review: a provider
+added to the registry whose host is not in `host_permissions`. MV3 blocks the request, and it
+surfaces as a network error rather than a missing permission, so the code looks right and the break
+only appears once a user's rotation reaches that provider. The test also catches a stale permission
+no provider uses, and a task policy naming a model that is in no pool - a preferred model that can
+never be selected.
+
+### If instant rotation updates are wanted
+
+Three options, in increasing cost and risk:
+
+1. **A release script** - one command to validate registry against manifest, bump the version, build
+   and produce a store-ready zip. Does not remove the review, but makes the release repeatable.
+   There is no packaging tooling today.
+2. **A user-editable rotation** in the popup's advanced section, stored in `chrome.storage`,
+   overriding the defaults. No release, no server, no new permissions. Publish a snippet when a model
+   changes and power users apply it immediately.
+3. **Remote config** - fetch the rotation from a URL. Instant and central, and the option with a real
+   cost: whoever controls that URL controls which endpoints users' resumes and API keys are sent to.
+   That is a supply-chain risk on a document full of personal data, and it needs its own host
+   permission. Worth it only with that understood.
+
 ## Providers and models: the .env is the authority
 
 `~/.hirepilot/.env` holds the **battle-tested** rotation - maintained by hand as free tiers and model
@@ -593,7 +632,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 252 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 256 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
