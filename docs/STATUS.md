@@ -280,6 +280,45 @@ The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a r
 and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
 are objective and trivially fixable.
 
+## Providers and models: the .env is the authority
+
+`~/.hirepilot/.env` holds the **battle-tested** rotation - maintained by hand as free tiers and model
+availability shift. `providers.js` used to be a guess, and the guess cost a debugging session:
+
+| | Guessed (before) | Aligned to the .env |
+|---|---|---|
+| gemini | `gemini-2.5-flash`, `gemini-3.1-flash-lite` | **`gemini-3.1-flash-lite`**, `gemini-2.5-flash` |
+| groq | `openai/gpt-oss-120b`, `openai/gpt-oss-20b` | **`qwen/qwen3.6-27b`**, `openai/gpt-oss-120b` |
+| cerebras | `gpt-oss-120b`, `zai-glm-4.7` | `gpt-oss-120b` |
+| openrouter | `openai/gpt-oss-20b:free` **(excluded upstream)** | **`inclusionai/ling-3.0-flash:free`** |
+
+Three concrete errors the .env would have prevented:
+
+- `gemini-2.5-flash` was **first**; the .env has it **last**. It is a thinking model, and live runs
+  spent 13-25s per resume call on it and truncated mid-JSON. That ordering already encoded the
+  finding this session spent hours rediscovering.
+- `openai/gpt-oss-20b:free` was the only OpenRouter route, and it sits on
+  `LLM_RESUME_JSON_EXCLUDED_MODELS`. A live run used it.
+- `qwen/qwen3.6-27b` was absent, though the .env ranks it second for resumes and first for the judge.
+
+### The gap that remains
+
+The .env defines **per-task** chains, which one shared pool cannot express:
+
+| Task | Preferred, in order |
+|---|---|
+| resume JSON | `gemini-3.1-flash-lite`, `qwen/qwen3.6-27b`, `openai/gpt-oss-120b`, `gpt-oss-120b`, `inclusionai/ling-3.0-flash:free`, `gemini-2.5-flash` |
+| cover letter | `gemma-4-31b`, `qwen/qwen3.6-27b`, `gemini-3.1-flash-lite` |
+| judge | `qwen/qwen3.6-27b`, `gemma-4-31b`, `gemini-3.1-flash-lite` |
+
+`gemma-4-31b` is the sharpest case: **excluded** for resume JSON, **preferred** for cover letters.
+It is therefore absent from the shared pool, because a pool would let the resume pass reach it.
+`TASK_PREFERRED_MODELS` and `RESUME_EXCLUDED_MODELS` record all of this in `providers.js`; rotation
+does not consult them yet. Wiring per-task chains in is the known next step.
+
+Chain-length assertions in the tests are now **derived** from the registry rather than hardcoded, so
+a future edit to the pools does not require chasing literals through the suite.
+
 ## What the live run found in its first hour
 
 Five real defects, none of which any mock had surfaced:

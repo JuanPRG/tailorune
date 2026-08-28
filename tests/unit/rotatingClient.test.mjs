@@ -5,12 +5,25 @@ import {
   buildChainEntries,
 } from '../../extension/engine/rotatingClient.js';
 import { LlmError } from '../../extension/engine/llm.js';
+import { getProvider } from '../../extension/engine/providers.js';
 
 const CHAIN = [
   { providerId: 'gemini', apiKey: 'k1' },
   { providerId: 'groq', apiKey: 'k2' },
   { providerId: 'cerebras', apiKey: 'k3' },
 ];
+
+/**
+ * Total chain entries for a set of providers: one per model in each pool.
+ *
+ * Derived rather than hardcoded, because the model pools track the
+ * battle-tested rotation in the user's own .env and move whenever that does.
+ * A literal here needed chasing the moment Cerebras dropped from two models
+ * to one.
+ */
+function expectedChainLength(providerIds) {
+  return providerIds.reduce((n, id) => n + getProvider(id).models.length, 0);
+}
 
 function ok(content = 'ok') {
   return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -112,8 +125,8 @@ test('chatWithRotation throws a providers_unavailable error listing every attemp
     chatWithRotation({ chain: CHAIN, messages: [], fetchImpl }),
     (err) => {
       assert.equal(err.kind, 'providers_unavailable');
-      // 3 providers expanded across their model pools: 2 + 2 + 2.
-      assert.equal(err.detail.attempts.length, 6);
+      // 3 providers expanded across their model pools, whatever those currently are.
+      assert.equal(err.detail.attempts.length, expectedChainLength(['gemini', 'groq', 'cerebras']));
       assert.match(err.message, /gemini\/gemini-2\.5-flash: transient/);
       assert.match(err.message, /cerebras\/gpt-oss-120b: transient/);
       return true;
@@ -144,12 +157,12 @@ test('a rate-limited (provider, model) pair is skipped on the next call while it
   };
 
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl });
-  assert.deepEqual(bodies, ['gemini-2.5-flash', 'openai/gpt-oss-120b'],
+  assert.deepEqual(bodies, ['gemini-3.1-flash-lite', 'qwen/qwen3.6-27b'],
     'should try the best gemini model, then fail over to the next provider');
 
   bodies.length = 0;
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl });
-  assert.ok(!bodies.includes('gemini-2.5-flash'),
+  assert.ok(!bodies.includes('gemini-3.1-flash-lite'),
     'the cooling-down model must be skipped on the next call');
 });
 
@@ -165,7 +178,7 @@ test('a cooldown expires, and the provider is used again afterwards', async (t) 
   };
 
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl, nowFn });
-  assert.ok(cooldownState(clock)['gemini::gemini-2.5-flash'] > 0, 'the throttled model should be cooling down');
+  assert.ok(cooldownState(clock)['gemini::gemini-3.1-flash-lite'] > 0, 'the throttled model should be cooling down');
 
   clock += COOLDOWN_MS.rate_limited + 1;
   geminiShouldFail = false;
@@ -181,7 +194,7 @@ test('a quota failure earns a much longer cooldown than a plain rate limit', asy
     'generativelanguage.googleapis.com': () => new Response('insufficient_quota', { status: 429 }),
   });
   await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl, nowFn: () => clock });
-  const remainingSecs = cooldownState(clock)['gemini::gemini-2.5-flash'];
+  const remainingSecs = cooldownState(clock)['gemini::gemini-3.1-flash-lite'];
   assert.ok(remainingSecs > COOLDOWN_MS.rate_limited / 1000, `expected a long cooldown, got ${remainingSecs}s`);
 });
 
@@ -194,7 +207,7 @@ test('when every provider is cooling down, the chain is still tried rather than 
     chain: CHAIN, messages: [], fetchImpl: async () => new Response('down', { status: 503 }), nowFn: () => clock,
   }));
   // One cooldown per (provider, model) pair, not per provider.
-  assert.equal(Object.keys(cooldownState(clock)).length, 6);
+  assert.equal(Object.keys(cooldownState(clock)).length, expectedChainLength(['gemini', 'groq', 'cerebras']));
 
   // A stale cooldown must not be able to block the user entirely.
   const result = await chatWithRotation({ chain: CHAIN, messages: [], fetchImpl: async () => ok('recovered'), nowFn: () => clock });
@@ -213,7 +226,7 @@ test('chatWithRotation rejects an empty chain with a clear configuration error',
 
 test('buildChainEntries expands each provider into one entry per model', () => {
   const entries = buildChainEntries([{ providerId: 'gemini', apiKey: 'k' }]);
-  assert.deepEqual(entries.map((e) => e.model), ['gemini-2.5-flash', 'gemini-3.1-flash-lite']);
+  assert.deepEqual(entries.map((e) => e.model), ['gemini-3.1-flash-lite', 'gemini-2.5-flash']);
   assert.ok(entries.every((e) => e.apiKey === 'k'));
 });
 
@@ -225,10 +238,10 @@ test('buildChainEntries interleaves round-robin by model index, not provider by 
   // Every provider's BEST model first, then every provider's second model --
   // so a user with two keys gets two strong attempts before any fallback.
   assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
+    'gemini/gemini-3.1-flash-lite',
+    'groq/qwen/qwen3.6-27b',
     'gemini/gemini-2.5-flash',
     'groq/openai/gpt-oss-120b',
-    'gemini/gemini-3.1-flash-lite',
-    'groq/openai/gpt-oss-20b',
   ]);
 });
 
@@ -243,9 +256,9 @@ test('buildChainEntries handles providers with unequal pool sizes without leavin
     { providerId: 'openrouter', apiKey: 'b' },  // 1 model
   ]);
   assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
-    'gemini/gemini-2.5-flash',
-    'openrouter/openai/gpt-oss-20b:free',
     'gemini/gemini-3.1-flash-lite',
+    'openrouter/inclusionai/ling-3.0-flash:free',
+    'gemini/gemini-2.5-flash',
   ]);
 });
 
@@ -256,12 +269,12 @@ test('a throttled model falls over to the next model on the same provider when n
   const fetchImpl = async (_url, init) => {
     const { model } = JSON.parse(init.body);
     tried.push(model);
-    if (model === 'gemini-2.5-flash') return new Response('Too many requests', { status: 429 });
+    if (model === 'gemini-3.1-flash-lite') return new Response('Too many requests', { status: 429 });
     return ok('from the lighter model');
   };
   const result = await chatWithRotation({ chain: [{ providerId: 'gemini', apiKey: 'k' }], messages: [], fetchImpl });
-  assert.deepEqual(tried, ['gemini-2.5-flash', 'gemini-3.1-flash-lite']);
-  assert.equal(result.model, 'gemini-3.1-flash-lite');
+  assert.deepEqual(tried, ['gemini-3.1-flash-lite', 'gemini-2.5-flash']);
+  assert.equal(result.model, 'gemini-2.5-flash');
   assert.equal(result.content, 'from the lighter model');
 });
 
@@ -271,13 +284,13 @@ test('cooling down one model leaves its sibling on the same provider usable', as
   const clock = 3_000_000;
   const fetchImpl = async (_url, init) => {
     const { model } = JSON.parse(init.body);
-    if (model === 'gemini-2.5-flash') return new Response('Too many requests', { status: 429 });
+    if (model === 'gemini-3.1-flash-lite') return new Response('Too many requests', { status: 429 });
     return ok();
   };
   await chatWithRotation({ chain: [{ providerId: 'gemini', apiKey: 'k' }], messages: [], fetchImpl, nowFn: () => clock });
   const state = cooldownState(clock);
-  assert.ok(state['gemini::gemini-2.5-flash'] > 0, 'throttled model should be cooling');
-  assert.equal(state['gemini::gemini-3.1-flash-lite'], undefined, 'its sibling must NOT be cooling');
+  assert.ok(state['gemini::gemini-3.1-flash-lite'] > 0, 'throttled model should be cooling');
+  assert.equal(state['gemini::gemini-2.5-flash'], undefined, 'its sibling must NOT be cooling');
 });
 
 // --- statuses that killed real runs ----------------------------------------

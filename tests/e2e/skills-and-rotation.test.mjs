@@ -172,6 +172,9 @@ test('a rate-limited primary provider fails over to a fallback key instead of fa
   const cooling = Object.keys(result.cooldowns || {});
   assert.ok(cooling.some((k) => k.startsWith('gemini::')),
     `expected a gemini model cooldown, got ${JSON.stringify(result.cooldowns)}`);
-  assert.ok(!cooling.includes('gemini::gemini-3.1-flash-lite'),
+  // The untried sibling is gemini-2.5-flash: the registry now leads with
+  // flash-lite, matching the battle-tested rotation, so it is flash-lite that
+  // gets throttled first and 2.5-flash that stays untouched.
+  assert.ok(!cooling.includes('gemini::gemini-2.5-flash'),
     'the untried sibling model must not be cooling down');
 });
