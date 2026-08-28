@@ -112,7 +112,13 @@ export async function tailorSkills({
     let response;
     try {
       response = callLlm
-        ? await callLlm({ messages, jsonMode: true, maxTokens: SKILLS_MAX_TOKENS, reasoningEffort: 'none' })
+        ? await callLlm({
+          messages, jsonMode: true, maxTokens: SKILLS_MAX_TOKENS,
+          reasoningEffort: 'none',
+          // The other strict-JSON pass, so it shares the resume policy: same
+          // shape of work, same failure when a model cannot hold a schema.
+          task: 'skills',
+        })
         : await chatWithRetry(
           {
             provider, apiKey, model: modelName, messages, jsonMode: true,

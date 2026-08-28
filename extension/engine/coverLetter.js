@@ -179,7 +179,12 @@ export async function generateCoverLetter({
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const messages = buildCoverLetterMessages({ model, job, preferences: prefs, avoidNotes });
     const response = callLlm
-      ? await callLlm({ messages, maxTokens: COVER_LETTER_MAX_TOKENS, reasoningEffort: 'none' })
+      ? await callLlm({
+        messages, maxTokens: COVER_LETTER_MAX_TOKENS, reasoningEffort: 'none',
+        // Prose, not JSON: the .env leads this chain with gemma-4-31b, the
+        // very model it excludes from resume JSON.
+        task: 'coverLetter',
+      })
       : await chatWithRetry(
         {
           provider, apiKey, model: modelName, messages,

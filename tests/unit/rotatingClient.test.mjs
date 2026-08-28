@@ -371,3 +371,92 @@ test('a genuinely malformed request still fails fast, without walking the chain'
   }));
   assert.equal(calls, 1, 'a bad request must not be retried across providers');
 });
+
+// --- per-task model policy --------------------------------------------------
+//
+// Mirrored from the battle-tested chains in ~/.hirepilot/.env. The point of
+// per-task policy is that one shared ordering cannot express what that file
+// knows: gemma-4-31b is EXCLUDED for resume JSON and PREFERRED for cover
+// letters. A single chain either denies the letter its best model or hands the
+// resume pass a model already found unfit for structured output.
+
+const ALL_FOUR = [
+  { providerId: 'gemini', apiKey: 'a' },
+  { providerId: 'groq', apiKey: 'b' },
+  { providerId: 'cerebras', apiKey: 'c' },
+  { providerId: 'openrouter', apiKey: 'd' },
+];
+const orderFor = (task) => buildChainEntries(ALL_FOUR, { task }).map((e) => e.model);
+
+test('the resume chain matches LLM_RESUME_JSON_PREFERRED_MODELS exactly', () => {
+  assert.deepEqual(orderFor('resume'), [
+    'gemini-3.1-flash-lite',
+    'qwen/qwen3.6-27b',
+    'openai/gpt-oss-120b',
+    'gpt-oss-120b',
+    'inclusionai/ling-3.0-flash:free',
+    'gemini-2.5-flash',
+  ]);
+});
+
+test('the resume chain EXCLUDES gemma-4-31b, which the .env rules out for JSON', () => {
+  assert.ok(!orderFor('resume').includes('gemma-4-31b'));
+  assert.ok(!orderFor('skills').includes('gemma-4-31b'), 'skills is the other JSON pass');
+});
+
+test('the cover letter chain LEADS with gemma-4-31b, the model resume excludes', () => {
+  // The whole reason per-task policy exists.
+  const order = orderFor('coverLetter');
+  assert.equal(order[0], 'gemma-4-31b');
+  assert.deepEqual(order.slice(0, 3), ['gemma-4-31b', 'qwen/qwen3.6-27b', 'gemini-3.1-flash-lite']);
+});
+
+test('the judge chain leads with qwen3.6, per LLM_JUDGE_PREFERRED_MODELS', () => {
+  assert.deepEqual(orderFor('judge').slice(0, 3), [
+    'qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite',
+  ]);
+});
+
+test('skills shares the resume policy, being the other strict-JSON pass', () => {
+  assert.deepEqual(orderFor('skills'), orderFor('resume'));
+});
+
+test('an unranked model is still usable, just last -- only exclusion is a veto', () => {
+  // Being absent from a preferred list is not a ban. The letter chain ranks
+  // three models and still reaches the rest afterwards.
+  const order = orderFor('coverLetter');
+  assert.ok(order.length > 3, 'unranked models should remain in the chain');
+  assert.ok(order.includes('openai/gpt-oss-120b'));
+});
+
+test('no task means every model stays eligible, in interleaved order', () => {
+  const order = orderFor(undefined);
+  assert.ok(order.includes('gemma-4-31b'), 'a caller with no opinion gets no filtering');
+});
+
+test('a pinned model is exempt from task policy, even an excluded one', () => {
+  // The user chose it explicitly. Substituting something this table prefers
+  // would be overriding a deliberate decision.
+  const entries = buildChainEntries(
+    [{ providerId: 'cerebras', apiKey: 'c', model: 'gemma-4-31b' }],
+    { task: 'resume' },
+  );
+  assert.deepEqual(entries.map((e) => e.model), ['gemma-4-31b']);
+});
+
+test('chatWithRotation honours the task when picking which model to call first', async (t) => {
+  resetCooldowns();
+  t.after(resetCooldowns);
+  const tried = [];
+  const fetchImpl = async (url, init) => {
+    tried.push(JSON.parse(init.body).model);
+    return ok();
+  };
+
+  await chatWithRotation({ chain: ALL_FOUR, messages: [], fetchImpl, task: 'coverLetter' });
+  assert.deepEqual(tried, ['gemma-4-31b'], 'the letter should start on its preferred model');
+
+  tried.length = 0;
+  await chatWithRotation({ chain: ALL_FOUR, messages: [], fetchImpl, task: 'resume' });
+  assert.deepEqual(tried, ['gemini-3.1-flash-lite'], 'the resume should start on its own');
+});

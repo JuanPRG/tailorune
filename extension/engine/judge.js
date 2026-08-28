@@ -105,6 +105,8 @@ export async function judgeTailoredModel({ original, tailored, job, callLlm }) {
       // every call, and this one fails open -- so a truncated judge silently
       // became "passed" and reviewed nothing.
       reasoningEffort: 'none',
+      // LLM_JUDGE_PREFERRED_MODELS leads with qwen3.6, not the resume model.
+      task: 'judge',
     });
   } catch (err) {
     // Fail open, deliberately -- see this module's header.

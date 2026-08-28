@@ -167,7 +167,14 @@ async function timed(label, fn) {
   try {
     return await fn();
   } finally {
-    timings[label] = { ms: Date.now() - started, calls: llm.calls - before };
+    timings[label] = {
+      ms: Date.now() - started,
+      calls: llm.calls - before,
+      // Which models this phase actually landed on -- the only way to see
+      // per-task policy working, since the whole point is that different
+      // passes prefer different models.
+      models: [...new Set(llm.models.slice(before))],
+    };
   }
 }
 
@@ -216,7 +223,8 @@ console.log('=== timing ===');
 line('total', `${(totalMs / 1000).toFixed(1)}s`);
 line('in LLM calls', `${(llm.ms / 1000).toFixed(1)}s across ${llm.calls} calls`);
 for (const [k, v] of Object.entries(timings)) {
-  line(k, `${(v.ms / 1000).toFixed(1)}s (${v.calls} call${v.calls === 1 ? '' : 's'})`);
+  const models = v.models?.length ? ` on ${v.models.join(', ')}` : '';
+  line(k, `${(v.ms / 1000).toFixed(1)}s (${v.calls} call${v.calls === 1 ? '' : 's'})${models}`);
 }
 
 console.log('\n=== the questions mocks could not answer ===');

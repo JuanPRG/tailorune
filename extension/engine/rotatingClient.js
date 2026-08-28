@@ -27,7 +27,7 @@
 // made from it — the same practical lifetime v4's process-global dicts had.
 
 import { chat, LlmError } from './llm.js';
-import { getProvider } from './providers.js';
+import { getProvider, taskPolicy } from './providers.js';
 
 // Durations ported from llm.py:261-264.
 export const COOLDOWN_MS = {
@@ -66,12 +66,25 @@ function isAvailable(providerId, model, now) {
  * Expand {providerId, apiKey, model?} entries into one entry per model, then
  * interleave round-robin by model index. An explicit `model` pins that entry
  * to just that model -- an explicit choice is never silently widened.
+ *
+ * @param {Array} chain
+ * @param {object} [opts]
+ * @param {string} [opts.task] - 'resume' | 'skills' | 'coverLetter' | 'judge'.
+ *   Applies that task's model policy: excluded models are dropped, preferred
+ *   ones are tried first. Omitted, every model is eligible in interleaved
+ *   order, which is the right default for a caller with no opinion.
  */
-export function buildChainEntries(chain) {
+export function buildChainEntries(chain, { task } = {}) {
   const perProvider = chain.map((entry) => {
     const provider = getProvider(entry.providerId);
-    const models = entry.model ? [entry.model] : provider.models;
-    return models.map((model) => ({ providerId: entry.providerId, apiKey: entry.apiKey, model }));
+    // A pinned model is a deliberate choice by the user and is exempt from
+    // task policy: they asked for that model, so honour it rather than
+    // silently substituting one this table prefers.
+    const pinned = Boolean(entry.model);
+    const models = pinned ? [entry.model] : provider.models;
+    return models.map((model) => ({
+      providerId: entry.providerId, apiKey: entry.apiKey, model, pinned,
+    }));
   });
 
   const interleaved = [];
@@ -81,7 +94,20 @@ export function buildChainEntries(chain) {
       if (list[modelIndex]) interleaved.push(list[modelIndex]);
     }
   }
-  return interleaved;
+
+  const policy = taskPolicy(task);
+  if (!policy) return interleaved;
+
+  const eligible = interleaved.filter((e) => e.pinned || !policy.excluded.includes(e.model));
+
+  // Rank by the task's preference; anything unranked keeps its interleaved
+  // position behind the ranked ones. Array.prototype.sort is stable, so the
+  // round-robin fallback order survives intact.
+  const rank = (model) => {
+    const i = policy.preferred.indexOf(model);
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return [...eligible].sort((a, b) => rank(a.model) - rank(b.model));
 }
 
 /**
@@ -148,14 +174,14 @@ export function classifyFailure(err) {
  * @returns {Promise<{content: string, usage: object, providerId: string, attempts: Array}>}
  */
 export async function chatWithRotation({
-  chain, messages, jsonMode, maxTokens, timeoutMs, reasoningEffort,
+  chain, messages, jsonMode, maxTokens, timeoutMs, reasoningEffort, task,
   fetchImpl, nowFn = Date.now, baseUrlOverride,
 }) {
   if (!chain || !chain.length) {
     throw new LlmError('provider_configuration_error', 'No providers configured.');
   }
 
-  const entries = buildChainEntries(chain);
+  const entries = buildChainEntries(chain, { task });
   const now = nowFn();
   const available = entries.filter((entry) => isAvailable(entry.providerId, entry.model, now));
   // If everything is cooling down, still try the whole chain rather than

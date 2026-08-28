@@ -311,10 +311,32 @@ The .env defines **per-task** chains, which one shared pool cannot express:
 | cover letter | `gemma-4-31b`, `qwen/qwen3.6-27b`, `gemini-3.1-flash-lite` |
 | judge | `qwen/qwen3.6-27b`, `gemma-4-31b`, `gemini-3.1-flash-lite` |
 
-`gemma-4-31b` is the sharpest case: **excluded** for resume JSON, **preferred** for cover letters.
-It is therefore absent from the shared pool, because a pool would let the resume pass reach it.
-`TASK_PREFERRED_MODELS` and `RESUME_EXCLUDED_MODELS` record all of this in `providers.js`; rotation
-does not consult them yet. Wiring per-task chains in is the known next step.
+`gemma-4-31b` is the sharpest case: **excluded** for resume JSON, **preferred** for cover letters. One
+shared ordering cannot say both - it either denies the letter its best model or hands the resume pass
+a model already found unfit for structured output.
+
+So rotation now takes a `task`. `TASK_MODEL_POLICY` in `providers.js` holds a `preferred` order and
+an `excluded` list per task; `buildChainEntries(chain, { task })` drops the excluded and ranks by the
+preferred, and each pass names its own task. Two rules keep it predictable:
+
+- **Unranked is not banned.** A model absent from a `preferred` list still gets used, just last -
+  only `excluded` is a veto. The letter chain ranks three models and reaches the rest afterwards.
+- **A pinned model is exempt.** If the user picked a specific model, it is honoured even when the
+  task policy excludes it. Substituting one this table prefers would override a deliberate choice.
+
+Verified live, and the chains walk in the .env's exact order:
+
+```
+resume / skills   gemini-3.1-flash-lite -> qwen/qwen3.6-27b -> openai/gpt-oss-120b
+                  -> gpt-oss-120b -> ling-3.0-flash:free -> gemini-2.5-flash   (no gemma)
+coverLetter       gemma-4-31b -> qwen/qwen3.6-27b -> gemini-3.1-flash-lite -> ...
+judge             qwen/qwen3.6-27b -> gemma-4-31b -> gemini-3.1-flash-lite -> ...
+```
+
+A live run had the letter start on `gemma-4-31b`, fail over to `qwen/qwen3.6-27b`, then land on
+`gemini-3.1-flash-lite` - the cover-letter chain in order, with cooldowns recorded for the two it
+passed through. The live harness now prints the models each phase used, since a per-task chain is
+otherwise invisible from the output.
 
 Chain-length assertions in the tests are now **derived** from the registry rather than hardcoded, so
 a future edit to the pools does not require chasing literals through the suite.
@@ -571,7 +593,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 243 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 252 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text

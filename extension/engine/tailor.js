@@ -469,6 +469,10 @@ export async function tailorResume({
         ? await callLlm({
           messages, jsonMode: true, maxTokens: RESUME_MAX_TOKENS,
           reasoningEffort: RESUME_REASONING_EFFORT,
+          // Selects the .env's resume-JSON model policy: its preferred order,
+          // and its exclusions -- models real usage found unfit for holding a
+          // schema, gemma-4-31b among them.
+          task: 'resume',
         })
         : await chatWithRetry(
           {

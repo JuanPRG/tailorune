@@ -50,10 +50,11 @@ export const PROVIDERS = {
   cerebras: {
     label: 'Cerebras',
     baseUrl: 'https://api.cerebras.ai/v1',
-    // gemma-4-31b is deliberately absent: the .env EXCLUDES it for resume
-    // JSON while PREFERRING it for cover letters, and a single shared pool
-    // cannot express that. See TASK_PREFERRED_MODELS below.
-    models: ['gpt-oss-120b'],
+    // gemma-4-31b is in the pool but EXCLUDED for the JSON passes -- see
+    // TASK_MODEL_POLICY. The .env prefers it for cover letters and rules it
+    // out for resume JSON, which is exactly why per-task policy exists rather
+    // than one shared order.
+    models: ['gpt-oss-120b', 'gemma-4-31b'],
   },
   openrouter: {
     label: 'OpenRouter',
@@ -62,34 +63,50 @@ export const PROVIDERS = {
   },
 };
 
-// The knowledge a shared pool cannot hold: which model suits which TASK.
-//
-// Recorded from the .env's per-task chains rather than acted on yet -- the
-// rotation here is still one shared chain for every pass. `gemma-4-31b` is the
-// clearest case: excluded for resume JSON, preferred for cover letters. Wiring
-// this in is the next step; until then it is documentation of a real gap, not
-// dead config.
-export const TASK_PREFERRED_MODELS = {
-  // LLM_RESUME_JSON_PREFERRED_MODELS
-  resume: [
-    'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b',
-    'gpt-oss-120b', 'inclusionai/ling-3.0-flash:free', 'gemini-2.5-flash',
-  ],
-  // LLM_COVER_LETTER_PREFERRED_MODELS
-  coverLetter: ['gemma-4-31b', 'qwen/qwen3.6-27b', 'gemini-3.1-flash-lite'],
-  // LLM_JUDGE_PREFERRED_MODELS
-  judge: ['qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
-};
-
-// LLM_RESUME_JSON_EXCLUDED_MODELS -- kept so a future edit here can be checked
-// against what real usage already ruled out.
-export const RESUME_EXCLUDED_MODELS = [
+// LLM_RESUME_JSON_EXCLUDED_MODELS. Models real usage has ruled out for strict
+// JSON work -- kept verbatim so a future edit can be checked against what was
+// already learned the hard way.
+const JSON_EXCLUDED_MODELS = [
   'gemini-3.5-flash',
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'openai/gpt-oss-20b:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
   'gemma-4-31b',
 ];
+
+// LLM_RESUME_JSON_PREFERRED_MODELS.
+const JSON_PREFERRED_MODELS = [
+  'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b',
+  'gpt-oss-120b', 'inclusionai/ling-3.0-flash:free', 'gemini-2.5-flash',
+];
+
+/**
+ * Which model suits which TASK — the knowledge a single shared pool cannot
+ * hold, mirrored from the .env's per-task chains.
+ *
+ * `gemma-4-31b` is why this exists: the .env EXCLUDES it for resume JSON and
+ * PREFERS it for cover letters. One ordering cannot say both, so a shared
+ * chain either denies the letter its best model or hands the resume pass a
+ * model already found unfit for structured output.
+ *
+ * `preferred` reorders; `excluded` removes. A model absent from `preferred` is
+ * still usable, just last — being unranked is not a veto, only `excluded` is.
+ */
+export const TASK_MODEL_POLICY = {
+  // Both JSON passes share the resume policy: same shape of work, same
+  // failure mode when a model cannot hold a schema.
+  resume: { preferred: JSON_PREFERRED_MODELS, excluded: JSON_EXCLUDED_MODELS },
+  skills: { preferred: JSON_PREFERRED_MODELS, excluded: JSON_EXCLUDED_MODELS },
+  // LLM_COVER_LETTER_PREFERRED_MODELS — prose, so gemma leads.
+  coverLetter: { preferred: ['gemma-4-31b', 'qwen/qwen3.6-27b', 'gemini-3.1-flash-lite'], excluded: [] },
+  // LLM_JUDGE_PREFERRED_MODELS
+  judge: { preferred: ['qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'], excluded: [] },
+};
+
+/** @returns {{preferred: string[], excluded: string[]}|null} */
+export function taskPolicy(task) {
+  return (task && TASK_MODEL_POLICY[task]) || null;
+}
 
 /** The model used when the user hasn't named one. */
 export function defaultModelFor(providerId) {
