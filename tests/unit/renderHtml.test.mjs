@@ -37,9 +37,11 @@ test('renderResumeHtml includes the headers-and-footers print hint', () => {
   assert.match(html, /Headers and footers/);
 });
 
-test('renderResumeHtml sets @page margin to 0.75in, matching the verified DOCX/print template', () => {
+test('renderResumeHtml uses the same asymmetric margins as the DOCX template', () => {
+  // 0.30in top / 0.75in sides / 0.60in bottom. A wide top margin spends the
+  // most valuable space on the page; the sides are what control line length.
   const html = renderResumeHtml(sampleModel());
-  assert.match(html, /@page\s*\{\s*size:\s*letter;\s*margin:\s*0\.75in/);
+  assert.match(html, /@page\s*\{\s*size:\s*letter;\s*margin:\s*0\.30in 0\.75in 0\.60in/);
 });
 
 test('renderResumeHtml omits the skills block entirely when there are no skills', () => {

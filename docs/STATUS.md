@@ -211,6 +211,36 @@ the prompt now names copying as a failure alongside hollowing out.
 The summary is deliberately exempt — rewriting it wholesale for a specific job is the legitimate
 core of tailoring. The same run scored 15% there, and that was the right outcome.
 
+## The output template
+
+Derived from the strongest of the user's own resumes rather than invented. The rules, and why each
+one is a rule:
+
+- **Two type sizes for the whole page** - 18pt name, 10pt everything else. Hierarchy comes from
+  bold, capitals and rules. This is the single thing separating a resume that reads as designed from
+  one that reads as assembled, and it is the rule most likely to erode: an earlier version of this
+  template reached FIVE sizes, including an 8.5pt contact line smaller than anything on a real
+  resume, with every individual step defensible at the time. `template.test.mjs` asserts the count.
+- **Asymmetric margins** - 0.30in top, 0.75in sides, 0.60in bottom. A wide top margin spends the
+  most valuable space on the page; the sides are what actually control how much fits per line.
+- **Dates flush right on a real tab stop.** Titles down the left edge, chronology down the right, is
+  what a reader scans fastest, and it is what both reference resumes do. The previous template put
+  the date at the *start* of a small italic line under the title - burying the field a recruiter
+  looks for first, and costing an extra line per role.
+- **Short context joins the title line; long context drops to its own.** "Toronto, ON" fits beside a
+  title and a date; "Colombia (Remote, Manufacturing and Distribution)" does not.
+- **Skills lines are real list items**, and a source line that already carries a bullet marker is
+  rendered as a list item rather than printing the marker as literal text.
+- **Headings are upper-cased but never reworded** - a resume that says OBJECTIVE keeps saying it.
+
+One deliberate departure from the reference: it has no summary heading, with the summary as leading
+prose under the contact line. That looks cleaner and parses worse - an unlabelled opening paragraph
+is an orphan to anything segmenting by heading - so the heading stays.
+
+The HTML preview carries the same rules. They are one design with two exits, so a change to how a
+role reads has to land in both, and `template.test.mjs` checks they agree on which context is
+inline.
+
 ## The judge is advisory, and never costs a retry
 
 Ported from v4's `validation_mode: "lenient"` (`tailor.py:494, 508-512`), which accepts a judge
@@ -318,7 +348,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
 
 ## Test coverage
 
-- `npm run test:unit` - 214 tests, pure logic, no browser: parser heuristics against 3 real TXT
+- `npm run test:unit` - 224 tests, pure logic, no browser: parser heuristics against 3 real TXT
   resumes (a full one, a standard one, and a deliberately sparse edge case with zero section
   headers), the LLM client's error taxonomy and retry/backoff behavior via injected-fetch and
   injected-sleep mocking, the word-budget compactor, prompt-construction leak checks, DOCX text
