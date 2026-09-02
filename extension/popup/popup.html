@@ -154,10 +154,10 @@
             <div>
               <label for="provider">Provider</label>
               <select id="provider">
-                <option value="gemini">Gemini</option>
-                <option value="groq">Groq</option>
-                <option value="cerebras">Cerebras</option>
-                <option value="openrouter">OpenRouter</option>
+                <option value="gemini">Gemini — free</option>
+                <option value="groq">Groq — free</option>
+                <option value="openrouter">OpenRouter — free tier</option>
+                <option value="cerebras">Cerebras — paid</option>
               </select>
             </div>
             <div>
@@ -168,8 +168,13 @@
           <label for="apiKey">API key</label>
           <input id="apiKey" type="password" placeholder="stored locally only" />
           <div class="hint">
+            Gemini and Groq have free tiers that need no card. OpenRouter's free models share an
+            upstream pool, so they work but can be busy. Cerebras ended its no-card free tier on
+            17&nbsp;August&nbsp;2026 — a key without billing returns &ldquo;payment required&rdquo;.
+          </div>
+          <div class="hint">
             Optional fallback keys. If your main provider is rate-limited mid-run, the next one with
-            a key here is used instead.
+            a key here is used instead — more keys means a run is less likely to stall.
           </div>
           <label for="fallbackGemini" class="subtle-label">Gemini</label>
           <input id="fallbackGemini" type="password" placeholder="optional" />
