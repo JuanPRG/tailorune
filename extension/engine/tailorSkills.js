@@ -84,7 +84,7 @@ export function buildSkillsMessages({ lines, indices, job, avoidNotes }) {
  */
 export async function tailorSkills({
   skillsLines, job, provider, apiKey, modelName,
-  maxAttempts = 2, fetchImpl, timeoutMs, sleepImpl,
+  maxAttempts = 2, demoteLast, fetchImpl, timeoutMs, sleepImpl,
   callLlm,
 }) {
   if (!skillsLines || !skillsLines.length) {
@@ -158,6 +158,9 @@ export async function tailorSkills({
     }
 
     remaining = stillUnresolved;
+    if (reverted.length && attempt < maxAttempts && demoteLast) {
+      demoteLast(`skills reverted: ${reverted.length} line(s)`);
+    }
     avoidNotes = reverted;
   }
 

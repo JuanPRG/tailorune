@@ -445,7 +445,7 @@ export function validateTailoredModel(original, tailored) {
  */
 export async function tailorResume({
   model, jobDescription, provider, apiKey, modelName,
-  preferences, maxAttempts = 2,
+  preferences, maxAttempts = 2, demoteLast,
   fetchImpl, timeoutMs, maxRetries, sleepImpl,
   callLlm, judge, job,
 }) {
@@ -505,6 +505,10 @@ export async function tailorResume({
         ? 'the model ran out of output tokens partway through its answer'
         : 'the model did not return the requested JSON object';
       malformedReason = reason;
+      // Unparseable or truncated output is exactly the case where a different
+      // model is the answer -- the failure is about this model's ability to
+      // hold the schema, not about how the request was worded.
+      if (attempt < maxAttempts && demoteLast) demoteLast(`resume JSON unusable: ${reason}`);
       avoidNotes = [
         truncated
           ? 'Your previous answer was cut off before it finished. Return the complete JSON object and keep bullets short.'
@@ -582,6 +586,9 @@ export async function tailorResume({
     // concrete to correct. A judge finding is a judgement call, and retrying
     // on one just asks for a more literal rewrite.
     if (validation.passed) return lastResult;
+    if (attempt < maxAttempts && demoteLast) {
+      demoteLast(`resume validation failed: ${validation.errors.join('; ')}`);
+    }
     avoidNotes = validation.errors;
   }
 

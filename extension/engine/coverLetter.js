@@ -166,6 +166,7 @@ export async function generateCoverLetter({
   timeoutMs,
   sleepImpl,
   callLlm,
+  demoteLast,
 }) {
   const prefs = preferences || factoryPreferences();
   const [minWords, maxWords] = coverLetterWordRange(prefs);
@@ -214,6 +215,12 @@ export async function generateCoverLetter({
     }
 
     if (paragraphs.length) failedAttempts.push({ attempt, paragraphs, validation });
+    // v4's cover_letter.py:232 does exactly this: a syntactically fine
+    // response can still be an unusable letter, so the next attempt should
+    // land on a different model rather than re-asking this one.
+    if (attempt < maxAttempts && demoteLast) {
+      demoteLast(`cover letter validation failed: ${validation.errors.join('; ')}`);
+    }
     avoidNotes = validation.errors;
   }
 

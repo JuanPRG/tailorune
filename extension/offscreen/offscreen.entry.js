@@ -13,7 +13,9 @@ import { renderResumeHtml } from '../engine/renderHtml.js';
 import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
 import { tailorSkills } from '../engine/tailorSkills.js';
 import { judgeTailoredModel } from '../engine/judge.js';
-import { chatWithRotation, cooldownState } from '../engine/rotatingClient.js';
+import {
+  chatWithRotation, cooldownState, demoteModel, describeChain,
+} from '../engine/rotatingClient.js';
 import { validatePreferences } from '../engine/preferences.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
@@ -85,17 +87,49 @@ async function runTailor(payload) {
   // any of them can rotate across the provider chain on failure. Which of
   // those actually ran is invisible from the finished document, so it is
   // recorded here and reported alongside the word count.
-  const llm = { calls: 0, ms: 0 };
-  const callLlm = async ({ messages, jsonMode, maxTokens, reasoningEffort }) => {
+  const llm = { calls: 0, ms: 0, demotions: [] };
+
+  // The model that answered most recently, so a caller whose VALIDATION failed
+  // can rotate away from it -- see demoteLast below.
+  let lastCall = null;
+
+  const callLlm = async ({ messages, jsonMode, maxTokens, reasoningEffort, task }) => {
     const started = Date.now();
     try {
-      return await chatWithRotation({
-        chain, messages, jsonMode, maxTokens, reasoningEffort, baseUrlOverride,
+      const response = await chatWithRotation({
+        chain, messages, jsonMode, maxTokens, reasoningEffort, task, baseUrlOverride,
       });
+      lastCall = {
+        providerId: response.providerId,
+        model: response.model,
+        mode: response.mode,
+        task,
+        chainLength: describeChain(chain, task).length,
+      };
+      return response;
     } finally {
       llm.calls += 1;
       llm.ms += Date.now() - started;
     }
+  };
+
+  /**
+   * llm.py:1441 `cooldown_last_provider`, wired to the pipeline's retry
+   * points. A model can answer perfectly well and still produce output the
+   * task cannot use -- a bullet that dropped a quantity, a letter under the
+   * word floor. Asking the SAME model again, only with a longer list of
+   * complaints, is the least likely thing to work.
+   *
+   * The hold is task-scoped and 30 seconds, so it shapes this run's retries
+   * without sidelining the model for the rest of the session. It no-ops on a
+   * one-entry chain, where demotion would just leave the retry nowhere to go.
+   */
+  const demoteLast = (reason) => {
+    if (!lastCall) return false;
+    const apiKey = (chain.find((c) => c.providerId === lastCall.providerId) || {}).apiKey;
+    const demoted = demoteModel({ ...lastCall, apiKey, reason });
+    if (demoted) llm.demotions.push({ model: lastCall.model, task: lastCall.task, reason });
+    return demoted;
   };
 
   const timings = {};
@@ -122,6 +156,7 @@ async function runTailor(payload) {
     jobDescription,
     preferences,
     callLlm,
+    demoteLast,
     judge,
     job,
   }));
@@ -135,6 +170,7 @@ async function runTailor(payload) {
       skillsLines: tailoredModel.skills.lines,
       job,
       callLlm,
+      demoteLast,
     }));
     tailoredModel.skills = { ...tailoredModel.skills, lines };
     skillsReport = report;
@@ -164,6 +200,7 @@ async function runTailor(payload) {
       job,
       preferences,
       callLlm,
+      demoteLast,
     }));
     const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
     outputs.push({

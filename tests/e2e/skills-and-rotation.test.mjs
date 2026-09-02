@@ -166,15 +166,23 @@ test('a rate-limited primary provider fails over to a fallback key instead of fa
   assert.ok(fallbackCall, `no call used the fallback key: ${JSON.stringify(calls.map((c) => c.auth))}`);
   assert.equal(fallbackCall.status, 200);
 
-  // And the rate-limited (provider, model) pair is recorded as cooling down.
-  // Cooldowns are keyed per model, not per provider, so a throttled
-  // gemini-2.5-flash does not take its lighter sibling down with it.
-  const cooling = Object.keys(result.cooldowns || {});
-  assert.ok(cooling.some((k) => k.startsWith('gemini::')),
-    `expected a gemini model cooldown, got ${JSON.stringify(result.cooldowns)}`);
-  // The untried sibling is gemini-2.5-flash: the registry now leads with
-  // flash-lite, matching the battle-tested rotation, so it is flash-lite that
-  // gets throttled first and 2.5-flash that stays untouched.
-  assert.ok(!cooling.includes('gemini::gemini-2.5-flash'),
-    'the untried sibling model must not be cooling down');
+  // The throttled model is recorded as cooling, on the SHARED scope -- a rate
+  // limit is a fact about that credential everywhere, not just for this task.
+  //
+  // Asserted on the recorded values rather than the key string: the key is an
+  // internal (baseUrl, model, apiKey) triple, and an earlier version of this
+  // test broke on its shape while the behaviour was entirely correct.
+  const cooldowns = result.cooldowns || {};
+  const throttled = Object.entries(cooldowns)
+    .find(([key]) => key.includes('gemini-3.1-flash-lite'));
+  assert.ok(throttled, `expected the gemini model to be cooling, got ${JSON.stringify(cooldowns)}`);
+  assert.equal(throttled[1].failureType, 'rate_limited');
+  assert.equal(throttled[1].scope, 'shared');
+
+  // No entry is held for a provider that never failed. The fallback answered,
+  // so nothing about Groq should be on the SHARED scope -- a task-scoped hold
+  // from a validation retry is a different thing and is allowed here.
+  const groqShared = Object.entries(cooldowns)
+    .filter(([key, v]) => key.includes('api.groq.com') && v.scope === 'shared');
+  assert.deepEqual(groqShared, [], 'a provider that answered must not be sidelined');
 });

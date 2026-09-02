@@ -20,7 +20,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { PROVIDERS, TASK_MODEL_POLICY } from '../../extension/engine/providers.js';
+import {
+  PROVIDERS, TASK_MODEL_POLICY, ROUTES, DEPRECATED_MODEL_IDS, modelsForProvider,
+} from '../../extension/engine/providers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(
@@ -65,17 +67,46 @@ test('no host permission is granted that no provider uses', () => {
   assert.deepEqual(unused, [], `unused host permissions should be removed: ${unused.join(', ')}`);
 });
 
-test('every model named in a task policy exists in some provider pool', () => {
-  // A preferred model that is in no pool is silently unreachable: the policy
-  // ranks it first and rotation never has an entry to rank. This is the shape
-  // of typo that produces "why is it not using the model I chose".
-  const pooled = new Set(Object.values(PROVIDERS).flatMap((p) => p.models));
+test('every model named in a task policy is reachable through some route', () => {
+  // A preferred model that no route can reach is silently unreachable: the
+  // policy ranks it first and rotation never has an entry to rank. This is the
+  // shape of typo that produces "why is it not using the model I chose".
+  //
+  // Two legitimate exceptions, and they are the reason this is not a strict
+  // membership check:
+  //
+  //   - a RETIRED model. The .env still ranks ling-3.0-flash:free, and v4
+  //     drops it at load. Ranking a model that never appears is harmless.
+  //   - a model reachable in principle but not named by the task's own chain.
+  //     `gemini-2.5-flash` is ranked last for JSON and is in no chain, which
+  //     is the .env recording a preference order, not a promise of presence.
+  //
+  // What would be a real bug is a preferred model that is a TYPO -- reachable
+  // through no route at all and not deliberately retired.
+  const routable = new Set(Object.keys(PROVIDERS).flatMap((id) => modelsForProvider(id)));
+  const knownUnreachable = new Set([
+    ...DEPRECATED_MODEL_IDS,
+    'gemini-2.5-flash', // ranked by the .env, named by no chain
+  ]);
 
   for (const [task, policy] of Object.entries(TASK_MODEL_POLICY)) {
     for (const model of policy.preferred) {
       assert.ok(
-        pooled.has(model),
-        `${task} prefers "${model}", which is in no provider's pool — it can never be selected`,
+        routable.has(model) || knownUnreachable.has(model),
+        `${task} prefers "${model}", which no route can reach and which is not a known-retired id — likely a typo`,
+      );
+    }
+  }
+});
+
+test('every route model is reachable via its provider, so ROUTES and PROVIDERS agree', () => {
+  for (const [name, route] of Object.entries(ROUTES)) {
+    const reachable = modelsForProvider(route.providerId);
+    for (const model of route.models) {
+      if (DEPRECATED_MODEL_IDS.has(model)) continue;
+      assert.ok(
+        reachable.includes(model),
+        `route "${name}" names ${model}, which modelsForProvider('${route.providerId}') does not report`,
       );
     }
   }
