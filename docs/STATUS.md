@@ -282,42 +282,31 @@ are objective and trivially fixable.
 
 ## Replacing HirePilot's listing
 
-Decided: Tailorune takes over HirePilot's Chrome Web Store listing rather than launching beside it.
-Existing users auto-update into it without choosing to, which sets the bar for what has to be handled.
+Tailorune takes over HirePilot's Chrome Web Store listing. **There are no existing installs**, which
+removes most of what a listing replacement usually costs:
 
-**Version had to jump 0.1.0 -> 2.3.0.** Chrome requires strictly greater than the published 2.2.5;
-0.1.0 would be rejected at upload, after review time had been spent. `npm run package` refuses to
-build a zip that would be rejected - verified by trying it.
+- No one auto-updates into it, so nobody is interrupted.
+- The permission delta (four LLM hosts and `offscreen` added; `contextMenus` and the local backend
+  host dropped) is just the list a new user sees at install. A disable-until-accepted prompt only
+  happens when an EXISTING install gains permissions.
+- No migration path to build. An earlier version of this section described a one-time in-popup notice
+  explaining the missing API key, the now-idle backend and the absent autofill. It was written, tested
+  and then **deleted** — it had an audience of zero, and code that implies a user base is worse than
+  no code.
 
-**The permission delta interrupts every user, unavoidably:**
+**The version bump stands regardless.** Chrome requires a version strictly greater than the published
+2.2.5, and install count has nothing to do with that rule, so 0.1.0 -> 2.3.0. `npm run package`
+refuses to build a zip that would be rejected — verified by trying to package 0.1.0.
 
-| | |
-|---|---|
-| added | `offscreen`, and four LLM hosts |
-| removed | `contextMenus`, `http://127.0.0.1:7321/*` (the local backend) |
+**Autofill is deferred, not dropped**, and it will not disturb the permission list when it lands.
+HirePilot's autofill ran on `activeTab` + `scripting` via `chrome.scripting.executeScript`, with no
+`content_scripts` and no broad host permissions. Tailorune already declares both — the JD reader uses
+the identical mechanism. So autofill is a pure code addition later, with no permission prompt for the
+users who exist by then.
 
-Added host permissions mean Chrome **disables the extension** until each user accepts. There is no
-way around that for this change, so it is planned for rather than avoided.
-
-**Three things change under a migrating user, and none are self-evident:**
-
-1. **Their API key does not come across.** HirePilot collected one and handed it to the local
-   backend, which wrote it to `~/.hirepilot/.env` — a file no extension can read. They own a key;
-   they just have to paste it once. Softer than it first looked: they have done this before.
-2. **The backend is now dead weight.** Nothing breaks if it stays installed, but it does nothing.
-3. **Autofill is gone.** The one feature deliberately out of scope. A user who relied on it should
-   hear it from the extension, not discover it.
-
-`onInstalled` records a migration flag when the previous version was a 1.x or 2.2.x, and the popup
-shows a one-time notice covering all three, auto-opening the section holding the API-key field since
-that is the only actionable one. Dismissed for good on acknowledgement — a banner that returns reads
-as a bug. Two real-popup e2e tests cover it: a migrating user sees it once, a fresh install never
-does.
-
-**`npm run package`** produces the store zip and refuses three mistakes that would otherwise reach
-users: a version that cannot be published, a missing build (the bundles are gitignored, so a clean
-checkout has none and the zip would install and do nothing), and a provider whose host is absent from
-`host_permissions`.
+`npm run package` produces the store zip and refuses three mistakes: a version that cannot be
+published, a missing build (the bundles are gitignored, so a clean checkout would zip an extension
+that installs and does nothing), and a provider whose host is absent from `host_permissions`.
 
 ## Shipping a rotation change to users
 
@@ -685,7 +674,7 @@ the word budget stops an aggregate that is merely long. A resume can breach eith
   chain), the semantic judge (that it fails open on error, malformed output, and a missing `passed`
   field; that it skips the call when nothing changed; and that it is not called when the
   deterministic validator already failed), and per-model chain expansion and interleaving.
-- `npm run test:e2e` — 24 tests, real Chromium, real unpacked extension load, real
+- `npm run test:e2e` - 22 tests, real Chromium, real unpacked extension load, real
   `chrome.downloads` calls: pasted-text vertical slice (DOCX download + HTML preview tab, both
   checked), real `.docx` upload, real `.pdf` upload, and the resume library round trip — a `.docx`
   uploaded once, the popup closed, then reopened and tailored with the saved resume and no second

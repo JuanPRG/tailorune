@@ -51,8 +51,6 @@ const els = {
   tailorBtn: $('tailorBtn'),
   previewBtn: $('previewBtn'),
   previewClBtn: $('previewClBtn'),
-  migrationNotice: $('migrationNotice'),
-  dismissMigration: $('dismissMigration'),
   status: $('status'),
   warnings: $('warnings'),
   result: $('result'),
@@ -607,30 +605,7 @@ for (const id of PERSIST_ON_CHANGE) {
   el.addEventListener('change', schedulePersist);
 }
 
-/**
- * Show the HirePilot -> Tailorune notice once, to users who were carried into
- * this listing by an auto-update rather than choosing to install it.
- *
- * Written by the service worker's onInstalled handler; dismissed for good on
- * acknowledgement, because a banner that reappears reads as a bug.
- */
-const MIGRATION_NOTICE_KEY = 'tailorune_migration_notice_v1';
-
-async function showMigrationNoticeIfDue() {
-  const stored = (await chrome.storage.local.get(MIGRATION_NOTICE_KEY))[MIGRATION_NOTICE_KEY];
-  if (!stored || stored.seen) return;
-  els.migrationNotice.style.display = 'block';
-  // The key is the thing they must act on, so open the section holding it.
-  els.providerDetails.open = true;
-}
-
-els.dismissMigration.addEventListener('click', async () => {
-  els.migrationNotice.style.display = 'none';
-  await chrome.storage.local.set({ [MIGRATION_NOTICE_KEY]: { seen: true } });
-});
-
 restoreSettings();
-showMigrationNoticeIfDue();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.
 refreshLibrary({ loadText: true });

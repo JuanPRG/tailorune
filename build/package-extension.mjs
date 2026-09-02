@@ -117,6 +117,10 @@ console.log(`\npackaged ${path.relative(ROOT, outFile)}`);
 note(`${count} files, ${(statSync(outFile).size / 1024).toFixed(0)} KB`);
 note(`version ${manifest.version} (replacing ${PUBLISHED_VERSION})`);
 note(`providers: ${Object.keys(PROVIDERS).join(', ')}`);
-console.log('\nThis update ADDS host permissions, so Chrome will disable the extension');
-console.log('for existing users until each one accepts. That is expected for this');
-console.log('release; the in-popup notice explains it once they re-enable.');
+// A disable-until-accepted prompt only happens when an EXISTING install gains
+// permissions. With no installs, nobody is interrupted -- new users just see
+// the permission list at install time, like any extension. Worth stating,
+// because assuming otherwise drove a chunk of work that had no audience.
+console.log('\nNo existing installs, so there is no permission prompt to plan around.');
+console.log('Autofill lands later on activeTab + scripting, both already declared,');
+console.log('so that feature will not change this permission list either.');
