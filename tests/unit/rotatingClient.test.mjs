@@ -148,14 +148,37 @@ test('408 and 425 are rate limits; 5xx is provider unavailability', () => {
   }
 });
 
-test('402 and 413 fall through to provider_error, exactly as in v4', () => {
-  // Neither is in v4's status table, so both land on the default branch with a
-  // task-scoped 30s hold. Both rotate, which is the part that matters -- two
-  // live runs previously died on the spot to a 413 and a 402.
-  for (const status of [402, 413]) {
-    assert.equal(classifyFailure(new LlmError('http_error', 'x', { status })), 'provider_error');
-    assert.equal(cooldownPolicy(classifyFailure(new LlmError('http_error', 'x', { status }))).scope, 'task');
-  }
+test('413 falls through to provider_error, exactly as in v4', () => {
+  // Not in v4's status table, so it lands on the default branch with a
+  // task-scoped 30s hold. It rotates, which is the part that matters -- a live
+  // run once died on the spot to a 413.
+  assert.equal(classifyFailure(new LlmError('http_error', 'x', { status: 413 })), 'provider_error');
+  assert.equal(cooldownPolicy('provider_error').scope, 'task');
+});
+
+test('402 is quota exhaustion, a DELIBERATE deviation from v4', () => {
+  // v4 does not enumerate 402; it falls through to provider_error and a
+  // 30-second task hold. Measured against a real Cerebras key with no credit,
+  // that means every run burns a wasted call on a credential that cannot
+  // succeed today -- the 402 is persistent and says so:
+  //   {"message":"Payment required...","type":"payment_required_error",
+  //    "param":"quota","code":"payment_required"}
+  //
+  // Filling the gap the way v4's own scope principle implies: infrastructure
+  // faults are shared, and "no money" is a fact about the credential for every
+  // task, for a long time.
+  assert.equal(classifyFailure(new LlmError('http_error', 'x', { status: 402 })), 'quota_exhausted');
+  assert.equal(cooldownPolicy('quota_exhausted').scope, 'shared');
+  assert.equal(cooldownPolicy('quota_exhausted').ms, COOLDOWN_MS.quota_exhausted);
+});
+
+test('a payment-required body is caught even behind a different status', () => {
+  // Providers are inconsistent about the status they attach to an empty
+  // wallet; the body is the reliable signal.
+  assert.equal(
+    classifyFailure(new LlmError('http_error', 'x', { status: 400, preview: 'Payment required to access this resource.' })),
+    'quota_exhausted',
+  );
 });
 
 test('transport, timeout and empty responses map to their own types', () => {

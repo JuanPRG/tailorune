@@ -297,6 +297,21 @@ export function classifyFailure(err) {
     return quota ? 'quota_exhausted' : 'rate_limited';
   }
   if (status === 401 || status === 403) return 'provider_configuration_error';
+  // 402, or any body that names payment or quota. v4 does NOT enumerate 402 --
+  // it falls through to `provider_error` with a task-scoped 30-second hold --
+  // and that is a gap rather than a decision, so this fills it rather than
+  // contradicting it.
+  //
+  // Measured live: a Cerebras key with no credit answers every request with
+  // 402 {"code":"payment_required","param":"quota"}, persistently. Under a
+  // 30-second task hold, every run burns one wasted call on a credential that
+  // cannot possibly succeed today. v4's own principle -- infrastructure faults
+  // are shared-scope, quality faults are task-scoped -- puts this squarely in
+  // the first group: no money is a fact about the credential everywhere, for
+  // every task, for a long time.
+  if (status === 402 || /payment required|payment_required|insufficient credit|insufficient_quota/.test(body)) {
+    return 'quota_exhausted';
+  }
   if (status === 400 || status === 409 || status === 422) return 'request_incompatible';
   if (status === 404) return 'provider_configuration_error';
   if (status === 408 || status === 425) return 'rate_limited';
