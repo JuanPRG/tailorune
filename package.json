@@ -10,6 +10,7 @@
     "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs",
     "test": "npm run test:unit && npm run test:e2e",
     "test:live": "node tests/live/smoke.mjs",
+    "test:live:rotation": "node tests/live/rotation.mjs",
     "package": "npm run build && node build/package-extension.mjs"
   },
   "devDependencies": {

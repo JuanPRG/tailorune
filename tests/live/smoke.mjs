@@ -25,10 +25,8 @@
 // ~/.hirepilot/.env (hirepilot v4's own config). Nothing is copied between
 // them -- the secret stays in the one place already managing it.
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Packer } from 'docx';
 
 import { parseTxt } from '../../extension/engine/parseTxt.js';
@@ -41,59 +39,14 @@ import { judgeTailoredModel } from '../../extension/engine/judge.js';
 import { chatWithRotation, cooldownState } from '../../extension/engine/rotatingClient.js';
 import { buildResumeDocument } from '../../extension/engine/renderDocx.js';
 import { conceptRetentionRatio } from '../../extension/engine/textUtils.js';
+import { loadEnvFiles, buildChain, NO_KEYS_MESSAGE, ROOT } from './liveEnv.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '../..');
 
-// Where a key may live, in order of precedence. Nothing is copied between
-// them: the point is that the secret stays in ONE place the user already
-// manages, so there is no second copy to leak or to go stale.
-//
-// ~/.hirepilot/.env is hirepilot v4's own config. Reading it directly beats
-// duplicating a key into this repo, even into a gitignored file.
-const ENV_FILES = [
-  path.join(ROOT, '.env.local'),
-  path.join(os.homedir(), '.hirepilot', '.env'),
-];
-
-// v4 names two of its provider keys differently. Mapped rather than renamed,
-// so v4's own config is never edited to suit this repo.
-const KEY_ALIASES = {
-  LLM_PROVIDER_CEREBRAS_API_KEY: 'CEREBRAS_API_KEY',
-  LLM_PROVIDER_OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
-};
-
-/** Load KEY=value pairs into the environment, without printing any value. */
-function loadEnvFiles() {
-  const loadedFrom = [];
-  for (const file of ENV_FILES) {
-    if (!existsSync(file)) continue;
-    let used = false;
-    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-      const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-      if (!m) continue;
-      const value = m[2].replace(/^["']|["']$/g, '');
-      if (!value) continue;
-      for (const name of [m[1], KEY_ALIASES[m[1]]].filter(Boolean)) {
-        if (!process.env[name]) { process.env[name] = value; used = true; }
-      }
-    }
-    if (used) loadedFrom.push(file);
-  }
-  return loadedFrom;
-}
+// Key loading lives in liveEnv.mjs, shared with rotation.mjs, so the "never
+// print a key" rule has exactly one home. See that file for precedence and
+// for why nothing is copied between the two locations.
 const envSources = loadEnvFiles();
-
-const PROVIDER_ENV = {
-  gemini: 'GEMINI_API_KEY',
-  groq: 'GROQ_API_KEY',
-  cerebras: 'CEREBRAS_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-};
-
-const chain = Object.entries(PROVIDER_ENV)
-  .filter(([, envName]) => (process.env[envName] || '').trim())
-  .map(([providerId, envName]) => ({ providerId, apiKey: process.env[envName].trim() }));
+const chain = buildChain();
 
 // LIVE_BASE_URL points every provider at one OpenAI-compatible endpoint. Its
 // purpose is to exercise THIS SCRIPT against a local mock, so the harness is
@@ -106,14 +59,7 @@ if (baseUrlOverride) {
 }
 
 if (!chain.length) {
-  console.error(
-    'No provider key found in the environment.\n\n'
-    + '  PowerShell:  $env:GEMINI_API_KEY = "your-key"; npm run test:live\n'
-    + '  bash:        GEMINI_API_KEY=your-key npm run test:live\n\n'
-    + `Or put GEMINI_API_KEY=your-key in ${path.join(ROOT, '.env.local')} (gitignored).\n`
-    + 'The key is read from the environment only — never from a command argument,\n'
-    + 'which would put it in your shell history.',
-  );
+  console.error(NO_KEYS_MESSAGE);
   process.exit(1);
 }
 if (envSources.length) console.log(`keys read from: ${envSources.join(', ')}`);
