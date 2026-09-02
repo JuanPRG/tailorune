@@ -9,7 +9,8 @@
     "test:unit": "node --test tests/unit/*.test.mjs",
     "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:live": "node tests/live/smoke.mjs"
+    "test:live": "node tests/live/smoke.mjs",
+    "package": "npm run build && node build/package-extension.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

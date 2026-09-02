@@ -18,3 +18,4 @@ extension/popup/popup.bundle.js
 .env.local
 .env.*.local
 tests/live/last-run.docx
+dist/

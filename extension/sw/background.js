@@ -107,6 +107,35 @@ async function extractJobFromActiveTab() {
   return injected.result;
 }
 
+// An install/update of a REPLACEMENT, not a fresh product.
+//
+// This listing continues HirePilot's: existing users auto-update into it and
+// arrive with three things changed out from under them.
+//
+//   1. Their API key does not come with them. HirePilot collected one but
+//      handed it to the local backend, which wrote it to ~/.hirepilot/.env --
+//      a file a Chrome extension cannot read. They own a key; they just have
+//      to paste it here once.
+//   2. The local backend is now unused. Nothing breaks if they leave it
+//      installed, but it is dead weight and they should be told.
+//   3. Autofill is gone. It is the one feature deliberately out of scope, and
+//      a user who relied on it deserves to hear that from the extension
+//      rather than discover it.
+//
+// Chrome will already have disabled the extension pending the new host
+// permissions, so by the time this fires the user has actively re-enabled it
+// and is looking for an explanation.
+const MIGRATION_NOTICE_KEY = 'tailorune_migration_notice_v1';
+
+chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
+  if (reason !== 'update' || !previousVersion) return;
+  // Only the HirePilot -> Tailorune crossing, not every later update.
+  if (!/^[01]\./.test(previousVersion) && !previousVersion.startsWith('2.2')) return;
+  await chrome.storage.local.set({
+    [MIGRATION_NOTICE_KEY]: { fromVersion: previousVersion, seen: false },
+  });
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'sw') return undefined;
 

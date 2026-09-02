@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tailorune",
-  "version": "0.1.0",
+  "version": "2.3.0",
   "description": "Tailor your resume and cover letter to a job description, entirely inside Chrome. No backend to install.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -23,5 +23,6 @@
   },
   "action": {
     "default_popup": "popup/popup.html"
-  }
+  },
+  "version_name": "2.3.0 (Tailorune)"
 }

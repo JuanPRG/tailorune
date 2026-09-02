@@ -28,10 +28,27 @@
     .check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-weight: 600; }
     .check input { width: auto; }
     .hint { font-size: 11px; color: #64777d; font-weight: 400; margin-top: 2px; }
+    #migrationNotice { background: #fdf6ec; border: 1px solid #c9a227; border-radius: 4px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
+    #migrationNotice ul { margin: 6px 0 8px; padding-left: 18px; }
+    #migrationNotice li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
   <h1>Tailorune</h1>
+
+  <div id="migrationNotice" style="display:none;">
+    <strong>HirePilot is now Tailorune.</strong>
+    <ul>
+      <li><strong>Paste your API key below.</strong> HirePilot kept it in the local backend, which
+        this version no longer uses — so it could not be carried over.</li>
+      <li><strong>The HirePilot backend is no longer needed.</strong> Nothing breaks if you leave it
+        installed, but it does nothing now and you can uninstall it.</li>
+      <li><strong>Autofill is not part of this version.</strong> Resume tailoring and cover letters
+        only.</li>
+    </ul>
+    <button id="dismissMigration" type="button" class="inline secondary">Got it</button>
+  </div>
+
 
   <label for="savedResumes">Saved resumes</label>
   <div class="row">

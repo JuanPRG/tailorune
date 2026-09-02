@@ -106,3 +106,58 @@ test('real popup: settings persist as you type, without needing a tailor run', a
   const settings = await waitForStorage(sw, 'tailorune_settings_v1', (v) => Boolean(v && v.apiKey));
   assert.equal(settings.apiKey, 'popup-context-key');
 });
+
+// --- the HirePilot -> Tailorune migration -----------------------------------
+
+test('real popup: a user carried in by auto-update sees what changed, once', async (t) => {
+  // This listing replaces HirePilot's, so existing users arrive without
+  // choosing to. Three things changed under them: their key did not come
+  // across (HirePilot gave it to the local backend, which wrote it to a file
+  // an extension cannot read), the backend is now dead weight, and autofill is
+  // gone. Discovering that by trial is a bad first impression of a product
+  // they already trusted.
+  const { popup, sw } = await openRealPopup(t);
+
+  await sw.evaluate(async () => {
+    await chrome.storage.local.set({
+      tailorune_migration_notice_v1: { fromVersion: '2.2.5', seen: false },
+    });
+  });
+  await popup.reload();
+
+  await popup.waitForFunction(
+    () => document.getElementById('migrationNotice')?.style.display === 'block',
+    { timeout: 5000 },
+  );
+  const text = await popup.textContent('#migrationNotice');
+  assert.match(text, /Paste your API key/i, 'the actionable step must be stated');
+  assert.match(text, /backend is no longer needed/i);
+  assert.match(text, /Autofill is not part of this version/i, 'a removed feature must be named');
+
+  // The key field is what they have to act on, so it should not be buried.
+  assert.equal(await popup.evaluate(() => document.getElementById('providerDetails').open), true);
+
+  // Dismissed for good: a banner that returns reads as a bug.
+  await popup.click('#dismissMigration');
+  await popup.waitForFunction(
+    () => document.getElementById('migrationNotice')?.style.display === 'none',
+  );
+  await popup.reload();
+  await popup.waitForFunction(() => Boolean(document.getElementById('migrationNotice')));
+  assert.equal(
+    await popup.evaluate(() => document.getElementById('migrationNotice').style.display),
+    'none',
+    'the notice must stay dismissed across reopens',
+  );
+});
+
+test('real popup: a fresh install never sees the migration notice', async (t) => {
+  // Someone installing Tailorune for the first time has no HirePilot to be
+  // told about.
+  const { popup } = await openRealPopup(t);
+  await popup.waitForFunction(() => Boolean(document.getElementById('migrationNotice')));
+  assert.equal(
+    await popup.evaluate(() => document.getElementById('migrationNotice').style.display),
+    'none',
+  );
+});
