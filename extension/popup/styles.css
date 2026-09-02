@@ -1,0 +1,524 @@
+/* styles.css — Tailorune's popup, adapted from HirePilot's visual language.
+ *
+ * The design system is HirePilot's, deliberately: Tailorune replaces it, so
+ * inheriting the identity keeps the product recognisable rather than making a
+ * returning user learn a new surface. Tokens, card treatment, micro-labels,
+ * the gradient CTA and the chip pattern are all carried over at their measured
+ * values (hirepilot/extension/popup/styles.css).
+ *
+ * What is NOT carried over, and why:
+ *
+ *   - The 3-step stepper (Job / Documents / Autofill). It shows STATE, and
+ *     driving it needs JS this popup does not have. A stepper permanently
+ *     stuck on step 1 is worse than none, so the ordering it communicated is
+ *     expressed by numbering the cards instead -- same rhythm, and it encodes
+ *     something true without pretending to track progress.
+ *   - The "Connected" indicator, which described a backend. Tailorune has
+ *     none; the honest analogue is whether an API key is present, so the pill
+ *     reports that.
+ *   - Autofill, connection-recovery and resume-manager styling: no such
+ *     features here, and dead CSS is how a stylesheet becomes unmaintainable.
+ *
+ * Checkboxes are styled with `appearance: none` rather than being hidden
+ * behind a fake box. A hidden input is not hit-testable, and the e2e suite
+ * drives these with page.uncheck() -- so hiding them would pass every unit
+ * test and break the real popup, which is the exact failure mode this project
+ * has already been bitten by once.
+ */
+
+:root {
+  --background: #111826;
+  --surface: #151d2b;
+  --surface-strong: #1a2435;
+  --surface-soft: rgba(255, 255, 255, 0.045);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text-primary: #f8fafc;
+  --text-secondary: #9aa6b8;
+  --text-muted: #687589;
+  --brand: #8b5cf6;
+  --brand-2: #ec5faa;
+  --success: #55d58f;
+  --success-soft: rgba(85, 213, 143, 0.13);
+  --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.14);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.13);
+  --info: #67e8f9;
+  --info-soft: rgba(103, 232, 249, 0.12);
+  --accent-gradient: linear-gradient(135deg, #7868ff 0%, #ec5faa 100%);
+  --radius-card: 12px;
+  --radius-field: 9px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 420px;
+  height: 600px;
+  overflow: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The ambient glow from HirePilot: two soft radials, fixed so they do not
+   travel with the scrolling content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(620px 300px at 84% -8%, rgba(139, 92, 246, 0.20), transparent 70%),
+    radial-gradient(520px 260px at 6% 104%, rgba(236, 95, 170, 0.14), transparent 72%);
+}
+
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- header ---------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  color: #fff;
+  border-radius: 9px;
+  background: var(--accent-gradient);
+  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.28);
+}
+.brand-mark svg { width: 16px; height: 16px; }
+
+.brand h1 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1;
+  font-weight: 750;
+  background: linear-gradient(90deg, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-pill[data-state="ready"] { color: var(--success); border-color: rgba(85, 213, 143, 0.3); background: var(--success-soft); }
+.status-pill[data-state="ready"]::before { background: var(--success); }
+.status-pill[data-state="missing"] { color: var(--warning); border-color: rgba(251, 191, 36, 0.3); background: var(--warning-soft); }
+.status-pill[data-state="missing"]::before { background: var(--warning); }
+
+/* ---------- scroll region ---------- */
+
+.scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* Flex children shrink by default, which crushed the collapsed <details>
+   panels into 2px slivers once the cards above filled the column. Nothing
+   inside this scroller should ever be compressed -- it scrolls instead. */
+.scroll > * { flex: 0 0 auto; }
+
+.scroll::-webkit-scrollbar { width: 9px; }
+.scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ---------- cards ---------- */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 12px 13px 13px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* The step number replaces HirePilot's stepper: same ordered rhythm, no
+   pretence of tracking state. */
+.step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  color: #c4b5fd;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* ---------- fields ---------- */
+
+label {
+  display: block;
+  margin: 9px 0 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+label:first-child { margin-top: 0; }
+
+input[type="text"], input[type="password"], input:not([type]), textarea, select {
+  width: 100%;
+  font: inherit;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  padding: 7px 9px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+textarea { resize: vertical; line-height: 1.5; }
+#jobDescription { height: 72px; }
+#resumeText { height: 78px; }
+
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+}
+select option { background: var(--surface-strong); color: var(--text-primary); }
+
+input[type="file"] {
+  width: 100%;
+  padding: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-field);
+}
+input[type="file"]::file-selector-button {
+  font: inherit;
+  font-weight: 700;
+  margin-right: 9px;
+  padding: 4px 10px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { border-color: var(--border-strong); }
+
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; min-width: 0; }
+.row.tight { margin-top: 6px; }
+
+.hint {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.45;
+}
+
+/* ---------- chips (checkboxes) ---------- */
+
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px 7px 9px;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.chip:has(input:checked) {
+  color: var(--text-primary);
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.13);
+}
+
+/* `appearance: none` and NOT `display: none` -- see the file header. The input
+   stays visible and hit-testable, it just stops looking like an OS widget. */
+.chip input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.chip input[type="checkbox"]:checked {
+  background: var(--accent-gradient);
+  border-color: transparent;
+}
+.chip input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg);
+}
+.chip input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
+}
+
+/* ---------- buttons ---------- */
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-field);
+}
+
+.primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--accent-gradient);
+  box-shadow: 0 10px 26px rgba(139, 92, 246, 0.26);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+.primary-btn:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 12px 30px rgba(139, 92, 246, 0.34); }
+.primary-btn:active:not(:disabled) { transform: translateY(1px); }
+.primary-btn:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.primary-btn svg { width: 15px; height: 15px; flex: 0 0 auto; }
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--border);
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+.secondary-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.09);
+}
+.secondary-btn:disabled { opacity: 0.5; cursor: default; }
+
+.mini-btn {
+  padding: 7px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- collapsibles ---------- */
+
+details.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+details.panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  list-style: none;
+}
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::after {
+  content: "";
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border: solid var(--text-muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.18s ease;
+}
+details.panel[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+details.panel > summary:hover { color: var(--text-primary); }
+details.panel .body { padding: 2px 13px 13px; }
+details.panel .body > label:first-child { margin-top: 0; }
+
+.subtle-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+/* ---------- footer ---------- */
+
+.app-footer {
+  flex: 0 0 auto;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(17, 24, 38, 0.86);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+#status {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  white-space: pre-line;
+  max-height: 54px;
+  overflow-y: auto;
+}
+#status:empty { display: none; }
+
+#warnings {
+  font-size: 11.5px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid rgba(251, 191, 36, 0.26);
+  border-radius: var(--radius-field);
+  padding: 8px 10px;
+}
+#warnings:empty { display: none; }
+#warnings ul { margin: 4px 0 0; padding-left: 17px; }
+#warnings li { margin-bottom: 2px; }
+
+#result { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

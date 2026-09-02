@@ -54,6 +54,7 @@ const els = {
   status: $('status'),
   warnings: $('warnings'),
   result: $('result'),
+  keyStatus: $('keyStatus'),
 };
 
 let lastResumeHtml = null;
@@ -421,6 +422,35 @@ const PERSIST_ON_CHANGE = [
   'fallbackGemini', 'fallbackGroq', 'fallbackCerebras', 'fallbackOpenrouter',
 ];
 
+/**
+ * The header pill, which replaced HirePilot's "Connected" backend indicator.
+ *
+ * There is no backend to be connected to, so the equivalent question is
+ * whether this popup can actually make a call: is there a key, and how many
+ * providers can it fall back across. Reported rather than assumed, because
+ * "why did nothing happen" is otherwise answered only by opening a collapsed
+ * <details> and squinting at a password field.
+ */
+function refreshKeyStatus() {
+  if (!els.keyStatus) return;
+  const keys = [
+    els.apiKey.value, els.fallbackGemini.value, els.fallbackGroq.value,
+    els.fallbackCerebras.value, els.fallbackOpenrouter.value,
+  ].filter((k) => String(k || '').trim());
+
+  if (!keys.length) {
+    els.keyStatus.dataset.state = 'missing';
+    els.keyStatus.textContent = 'No key';
+    els.keyStatus.title = 'Add an API key under AI provider to tailor anything.';
+    return;
+  }
+  els.keyStatus.dataset.state = 'ready';
+  els.keyStatus.textContent = keys.length === 1 ? '1 key' : `${keys.length} keys`;
+  els.keyStatus.title = keys.length === 1
+    ? 'One provider configured. Adding a fallback key lets a run survive a rate limit.'
+    : `${keys.length} providers configured, so a run can rotate when one is rate-limited.`;
+}
+
 async function persistSettings() {
   await setSettings(collectSettings());
 }
@@ -428,6 +458,7 @@ async function persistSettings() {
 const PERSIST_DEBOUNCE_MS = 250;
 let persistTimer = null;
 function schedulePersist() {
+  refreshKeyStatus();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => { persistTimer = null; persistSettings(); }, PERSIST_DEBOUNCE_MS);
 }
@@ -446,6 +477,7 @@ async function restoreSettings() {
   if (typeof settings.useJudge === 'boolean') els.useJudge.checked = settings.useJudge;
   applyPreferences(settings.preferences);
   applyProviderKeys(settings.providerKeys);
+  refreshKeyStatus();
 }
 
 function setStatus(text) {
@@ -605,6 +637,7 @@ for (const id of PERSIST_ON_CHANGE) {
   el.addEventListener('change', schedulePersist);
 }
 
+refreshKeyStatus();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.
