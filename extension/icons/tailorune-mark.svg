@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="237 244 1703 1703" role="img" aria-label="Tailorune">
+  <title>Tailorune</title>
+  <!--
+    The Tailorune mark, as supplied. Two filled paths, brand jade #51A68B.
+    `currentColor` so the popup header, the icon renderer and a light-ground
+    variant can each supply their own without forking the file.
+
+    The viewBox is CROPPED from the delivered 0 0 2048 2066 to the art's own
+    bounds plus 6% breathing room. The original wastes 51% of its canvas on
+    padding, which at 16px throws away half the pixels the glyph could have
+    used -- the difference between legible and mush at toolbar size.
+
+    Art bounds in the original coordinate space: x 401..1775, y 335..1855
+    (1374 x 1520, aspect 0.90). Squared here so it drops into a square tile
+    without distortion.
+  -->
+  <g fill="currentColor">
+  <path d="M1388.96,335.59 L1774.60,335.42 L1774.60,769.71 L1579.89,769.71 C1583.97,715.69 1541.58,667.58 1494.08,667.31 L1218.71,667.31 L1218.71,602.75 L1497.92,602.57 C1521.03,602.70 1549.29,613.85 1564.00,621.83 C1596.94,639.71 1620.18,668.78 1634.53,705.14 L1709.78,705.14 L1709.78,539.46 L1644.71,513.89 L1709.27,486.90 L1709.53,399.98 L1404.09,400.00 C1356.37,400.30 1312.17,410.11 1275.46,422.28 C1085.43,485.27 977.05,652.06 961.97,890.51 C961.01,905.80 959.27,923.00 959.24,938.43 L958.86,1737.89 L959.43,1783.07 C1107.04,1748.61 1186.79,1640.22 1211.57,1484.18 C1258.62,1187.92 1076.98,1053.75 1055.55,800.22 C1048.04,694.72 1098.97,612.71 1149.57,562.71 L1141.07,581.42 C1058.64,765.78 1165.81,977.27 1224.17,1113.96 C1271.21,1228.22 1300.76,1359.83 1272.14,1514.95 C1237.74,1701.43 1110.72,1849.47 895.03,1855.31 L894.34,1753.02 L894.39,978.78 C892.44,678.61 996.98,481.79 1196.26,384.03 C1242.62,362.09 1322.38,335.57 1388.96,335.59 Z" fill-rule="nonzero" />
+  <path d="M1143.47,335.17 C1111.27,354.11 1075.22,374.59 1047.65,399.98 L466.35,399.98 L466.35,486.69 L531.25,513.99 L466.35,540.16 L466.35,704.89 L541.22,705.15 C561.14,655.17 600.07,617.12 657.02,605.36 C662.52,604.22 670.31,602.82 676.19,602.77 L895.37,602.75 C885.90,623.14 876.64,644.56 869.83,667.06 L675.18,667.61 C662.07,667.80 641.56,679.36 633.66,685.03 C616.21,697.54 596.24,728.02 596.24,757.83 L596.24,769.71 L401.02,769.71 L401.02,335.42 L1143.47,335.17 Z" fill-rule="nonzero" />
+  </g>
+</svg>
