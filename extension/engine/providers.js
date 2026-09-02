@@ -38,28 +38,34 @@ export const PROVIDERS = {
     label: 'Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     // flash-lite first: measured faster and it does not truncate.
-    models: ['gemini-3.1-flash-lite', 'gemini-2.5-flash'],
+    // gemini-3.5-flash is defined in the .env but sits on its EXCLUDED list,
+    // so it is absent here rather than pooled and filtered.
+    models: ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-flash-lite-latest'],
   },
   groq: {
     label: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
-    // gpt-oss-20b dropped: its :free sibling is excluded upstream, and the
-    // .env ranks qwen3.6 above the oss models for this work.
-    models: ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b'],
+    models: ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
   },
   cerebras: {
     label: 'Cerebras',
     baseUrl: 'https://api.cerebras.ai/v1',
-    // gemma-4-31b is in the pool but EXCLUDED for the JSON passes -- see
+    // gemma-4-31b is pooled but EXCLUDED for the JSON passes -- see
     // TASK_MODEL_POLICY. The .env prefers it for cover letters and rules it
-    // out for resume JSON, which is exactly why per-task policy exists rather
-    // than one shared order.
-    models: ['gpt-oss-120b', 'gemma-4-31b'],
+    // out for resume JSON, which is exactly why per-task policy exists.
+    models: ['gpt-oss-120b', 'gemma-4-31b', 'zai-glm-4.7'],
   },
   openrouter: {
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['inclusionai/ling-3.0-flash:free'],
+    // Only the routes the .env still considers live: its nemotron and
+    // gpt-oss-20b:free entries are on the EXCLUDED list, and its qwen-next
+    // route is commented "Retired unavailable".
+    models: [
+      'inclusionai/ling-3.0-flash:free',
+      'openai/gpt-oss-120b:free',
+      'qwen/qwen3-coder:free',
+    ],
   },
 };
 

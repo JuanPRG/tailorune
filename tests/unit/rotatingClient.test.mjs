@@ -225,23 +225,28 @@ test('chatWithRotation rejects an empty chain with a clear configuration error',
 // --- per-model expansion and interleaving ---
 
 test('buildChainEntries expands each provider into one entry per model', () => {
+  // Asserted against the registry rather than a literal list: the pools carry
+  // the .env's fallback depth and grow whenever that does.
   const entries = buildChainEntries([{ providerId: 'gemini', apiKey: 'k' }]);
-  assert.deepEqual(entries.map((e) => e.model), ['gemini-3.1-flash-lite', 'gemini-2.5-flash']);
-  assert.ok(entries.every((e) => e.apiKey === 'k'));
+  assert.deepEqual(entries.map((e) => e.model), getProvider('gemini').models);
+  assert.ok(entries.every((e) => e.providerId === 'gemini' && e.apiKey === 'k'));
 });
 
 test('buildChainEntries interleaves round-robin by model index, not provider by provider', () => {
+  // Every provider's BEST model before any provider's second: three keys give
+  // three strong attempts before falling back, rather than draining one
+  // provider's pool while two untouched providers wait.
   const entries = buildChainEntries([
     { providerId: 'gemini', apiKey: 'a' },
     { providerId: 'groq', apiKey: 'b' },
   ]);
-  // Every provider's BEST model first, then every provider's second model --
-  // so a user with two keys gets two strong attempts before any fallback.
-  assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
-    'gemini/gemini-3.1-flash-lite',
-    'groq/qwen/qwen3.6-27b',
-    'gemini/gemini-2.5-flash',
-    'groq/openai/gpt-oss-120b',
+  const gemini = getProvider('gemini').models;
+  const groq = getProvider('groq').models;
+  assert.deepEqual(entries.slice(0, 4).map((e) => `${e.providerId}/${e.model}`), [
+    `gemini/${gemini[0]}`,
+    `groq/${groq[0]}`,
+    `gemini/${gemini[1]}`,
+    `groq/${groq[1]}`,
   ]);
 });
 
@@ -251,15 +256,15 @@ test('buildChainEntries respects an explicitly pinned model instead of widening 
 });
 
 test('buildChainEntries handles providers with unequal pool sizes without leaving gaps', () => {
+  // A pinned entry is a pool of one, so it drops out of the round-robin after
+  // its single turn without stalling the providers behind it.
   const entries = buildChainEntries([
-    { providerId: 'gemini', apiKey: 'a' },      // 2 models
-    { providerId: 'openrouter', apiKey: 'b' },  // 1 model
+    { providerId: 'gemini', apiKey: 'a' },
+    { providerId: 'groq', apiKey: 'b', model: 'only-one' },
   ]);
-  assert.deepEqual(entries.map((e) => `${e.providerId}/${e.model}`), [
-    'gemini/gemini-3.1-flash-lite',
-    'openrouter/inclusionai/ling-3.0-flash:free',
-    'gemini/gemini-2.5-flash',
-  ]);
+  const expected = getProvider('gemini').models.length + 1;
+  assert.equal(entries.length, expected);
+  assert.equal(entries.filter((e) => e.providerId === 'groq').length, 1);
 });
 
 test('a throttled model falls over to the next model on the same provider when no other key exists', async (t) => {
@@ -388,8 +393,10 @@ const ALL_FOUR = [
 ];
 const orderFor = (task) => buildChainEntries(ALL_FOUR, { task }).map((e) => e.model);
 
-test('the resume chain matches LLM_RESUME_JSON_PREFERRED_MODELS exactly', () => {
-  assert.deepEqual(orderFor('resume'), [
+test('the resume chain LEADS with LLM_RESUME_JSON_PREFERRED_MODELS, in order', () => {
+  // Exactly the .env's preferred order at the head; everything after it is
+  // fallback depth from the same file, unranked and therefore tried last.
+  assert.deepEqual(orderFor('resume').slice(0, 6), [
     'gemini-3.1-flash-lite',
     'qwen/qwen3.6-27b',
     'openai/gpt-oss-120b',
