@@ -3,23 +3,31 @@
 // These are not chosen numbers. They were MEASURED by loading the user's
 // ~/.hirepilot/.env into os.environ and calling v4's own reporting function,
 // `describe_provider_chain(task=...)` (hirepilot_v4/llm.py:2313), then
-// dropping the terminal `local` entry that Tailorune deliberately does not
-// ship:
+// dropping the terminal `local` entry Tailorune deliberately does not ship.
 //
-//   resume_json   gemini-3.1-flash-lite, qwen/qwen3.6-27b,
-//                 openai/gpt-oss-120b, gpt-oss-120b, [local]
-//   cover_letter  gemma-4-31b, qwen/qwen3.6-27b, gemini-3.1-flash-lite, [local]
-//   judge         qwen/qwen3.6-27b, gemma-4-31b, gemini-3.1-flash-lite, [local]
+// v4 HAS TWO CHAIN PATHS, and Tailorune uses one for each kind of task,
+// because measurement showed each is better where it is used:
 //
-// This file exists because a previous "alignment" of the rotation drifted from
-// 4 entries to 11 without any test noticing. Every extra entry was a real
-// route from the .env, which is exactly why it looked correct -- but no v4
-// task chain contains them, so they had never been exercised for the task they
-// were being handed. A count assertion alone would not have caught it either;
-// the ORDER is the battle-tested part, so the order is what gets pinned.
+//   THE CURATED PATH — the task names its own LLM_<TASK>_PROVIDER_CHAIN, and
+//   v4 resolves it and applies that task's policy. Used here for coverLetter
+//   and judge.
 //
-// If a chain legitimately changes, re-measure against v4 and update the
-// constant. Do not relax the assertion.
+//   THE DEFAULT PATH — the task names no chain, so v4 falls back to
+//   LLM_PROVIDER_CHAIN (whose plain provider names expand to whole *_MODELS
+//   lists) and then applies the task's policy. Used here for resume and
+//   skills, giving 7 eligible entries instead of 4.
+//
+// Why not the default path for prose too: `_task_specs` (llm.py:2299) returns
+// None for any NON-resume task with no chain, so the caller falls back to the
+// plain default client with NO POLICY APPLIED. Measured, the letter and judge
+// chains then come back with twelve UNFILTERED entries reaching
+// openai/gpt-oss-120b, gpt-oss-20b and nemotron -- precisely the models
+// LLM_COVER_LETTER_EXCLUDED_MODELS rules out. Not deeper; just unfiltered.
+//
+// This file exists because a previous "alignment" drifted from 4 entries to
+// 11 with no test noticing. The ORDER is the battle-tested part, so the order
+// is what gets pinned. If a chain legitimately changes, re-measure against v4
+// and update the constant -- do not relax the assertion.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,11 +40,26 @@ import {
 const ALL_KEYS = Object.keys(PROVIDERS).map((providerId) => ({ providerId, apiKey: `key-${providerId}` }));
 
 const V4_CHAINS = {
-  resume: ['gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b'],
-  skills: ['gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b'],
+  // v4, default path + resume_json policy. Its 8th entry was `local`.
+  resume: [
+    'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b',
+    'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
+  ],
+  skills: [
+    'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b',
+    'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
+  ],
+  // v4, curated path. Its 4th entry was `local`.
   coverLetter: ['gemma-4-31b', 'qwen/qwen3.6-27b', 'gemini-3.1-flash-lite'],
   judge: ['qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
 };
+
+// The four models the curated resume chain names, which must stay at the FRONT
+// of the deepened chain -- depth is added behind measured quality, never in
+// place of it.
+const MEASURED_RESUME_FOUR = [
+  'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b',
+];
 
 const modelsOf = (entries) => entries.map((e) => e.model);
 
@@ -67,8 +90,36 @@ test('no chain reaches a retired model', () => {
 test('a route whose provider has no key is skipped, not an error', () => {
   // llm.py:2088 logs and continues. A user with one key is a normal case, not
   // a misconfiguration, so it must not raise.
+  //
+  // And this is what the deepened chain buys: a Gemini-only user gets TWO
+  // models rather than one, so a single throttled model no longer ends the
+  // run. gemini-3.5-flash is absent because it is on the JSON exclusion list.
   const geminiOnly = [{ providerId: 'gemini', apiKey: 'k' }];
-  assert.deepEqual(modelsOf(buildChainEntries(geminiOnly, { task: 'resume' })), ['gemini-3.1-flash-lite']);
+  assert.deepEqual(
+    modelsOf(buildChainEntries(geminiOnly, { task: 'resume' })),
+    ['gemini-3.1-flash-lite', 'gemini-2.5-flash'],
+  );
+});
+
+test('the deepened resume chain still LEADS with the measured four, in order', () => {
+  // The guarantee that makes the extra depth safe: the added models are
+  // ranked strictly behind the curated ones by
+  // LLM_RESUME_JSON_PREFERRED_MODELS, so they are reached only after the
+  // measured models have actually failed.
+  const models = modelsOf(buildChainEntries(ALL_KEYS, { task: 'resume' }));
+  assert.deepEqual(models.slice(0, 4), MEASURED_RESUME_FOUR);
+});
+
+test('the prose chains are NOT deepened, because the default path drops their policy', () => {
+  // Guards the asymmetry described in this file's header. If someone points
+  // coverLetter or judge at DEFAULT_CHAIN, the exclusions silently stop
+  // applying and prose starts landing on gpt-oss models.
+  for (const task of ['coverLetter', 'judge']) {
+    assert.equal(
+      buildChainEntries(ALL_KEYS, { task }).length, 3,
+      `${task} should stay curated at 3 entries`,
+    );
+  }
 });
 
 test('OpenRouter alone cannot do resumes, and says so — the cliff created by dropping local', () => {

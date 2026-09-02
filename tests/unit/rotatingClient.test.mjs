@@ -35,8 +35,13 @@ const CHAIN = [
 ];
 
 // The resume chain, in v4's order. Kept here as a local expectation so a
-// failure in this file points at failover, not at chain construction.
-const RESUME_ORDER = ['gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b'];
+// failure in this file points at failover, not at chain construction (which
+// chainParity.test.mjs owns). Seven entries: the resume tasks take v4's
+// default chain filtered by the resume policy.
+const RESUME_ORDER = [
+  'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b',
+  'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
+];
 
 function fresh() {
   resetCooldowns();
@@ -219,7 +224,7 @@ test('the whole chain is walked, and the last entry can still save the run', asy
   });
   const res = await run({ chain: CHAIN, messages: [], task: 'resume', fetchImpl: impl });
   assert.equal(res.model, RESUME_ORDER[3]);
-  assert.deepEqual(seen, RESUME_ORDER);
+  assert.deepEqual(seen, RESUME_ORDER.slice(0, 4), 'it should stop at the first success');
 });
 
 test('when everything fails, the error names every attempt and its reason', async () => {
@@ -255,9 +260,7 @@ test('a mixed set of failures reports the generic code, not a misleading specifi
   fresh();
   const { impl } = modelRoutedFetch({
     [RESUME_ORDER[0]]: () => fail(429, 'You exceeded your current quota'),
-    [RESUME_ORDER[1]]: () => fail(500),
-    [RESUME_ORDER[2]]: () => fail(500),
-    [RESUME_ORDER[3]]: () => fail(500),
+    ...Object.fromEntries(RESUME_ORDER.slice(1).map((m) => [m, () => fail(500)])),
   });
   await assert.rejects(
     run({ chain: CHAIN, messages: [], task: 'resume', fetchImpl: impl }),

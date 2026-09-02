@@ -26,7 +26,7 @@
 
 import { chat, LlmError, strictJsonDisabled, markStrictJsonUnsupported, isStrictJsonRejection } from './llm.js';
 import {
-  getProvider, taskPolicy, taskChain, ROUTES, TASK_CHAINS,
+  getProvider, taskPolicy, taskChain, ROUTES, TASK_CHAINS, DEFAULT_CHAIN,
   DEPRECATED_MODEL_IDS, STRICT_EXCLUSION_TASKS,
 } from './providers.js';
 import {
@@ -196,10 +196,11 @@ export function buildChainEntries(chain, { task } = {}) {
   }
   if (pins.length) return pins;
 
-  // No task, or an unknown one, walks every route in declaration order --
-  // the LLM_PROVIDER_CHAIN analogue for a caller with no opinion.
+  // No task, or an unknown one, walks LLM_PROVIDER_CHAIN -- v4's behaviour for
+  // a caller with no opinion. Not every route in ROUTES: the pinned aliases
+  // and the pool routes overlap, so that would attempt some models twice.
   const routeNames = taskChain(task);
-  const names = routeNames.length ? routeNames : Object.keys(ROUTES);
+  const names = routeNames.length ? routeNames : DEFAULT_CHAIN;
 
   // Group per route, dropping retired models (llm.py:1804) and routes whose
   // provider the user has no key for (llm.py:2088 logs and skips; an
