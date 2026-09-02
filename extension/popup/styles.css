@@ -376,6 +376,32 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-2); 
   line-height: 1.45;
 }
 
+/* ---------- empty state ---------- */
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-field);
+  background: var(--raised);
+}
+.empty[hidden] { display: none; }
+
+/* The artwork is transparent, so it needs no matte on either theme. Sized by
+   height rather than width: the scene is 1.58:1 and letting it drive the
+   width would push the card past the popup's budget. */
+.empty-art { height: 62px; width: auto; flex: 0 0 auto; display: block; }
+
+.empty-copy {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 /* ---------- chips ---------- */
 
 .chips { display: flex; flex-wrap: wrap; gap: 7px; }

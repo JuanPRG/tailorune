@@ -55,6 +55,7 @@ const els = {
   result: $('result'),
   keyStatus: $('keyStatus'),
   themeToggle: $('themeToggle'),
+  resumeEmpty: $('resumeEmpty'),
 };
 
 let lastResumeHtml = null;
@@ -102,7 +103,7 @@ async function refreshLibrary({ selectId, loadText = false } = {}) {
   const match = library.resumes.find((r) => r.id === chosen);
   els.savedResumes.value = match ? match.id : '';
   if (match) els.resumeName.value = match.name;
-  if (match && loadText) els.resumeText.value = match.text;
+  if (match && loadText) { els.resumeText.value = match.text; refreshEmptyState(); }
   return library;
 }
 
@@ -116,6 +117,7 @@ async function onSelectResume() {
   const match = library.resumes.find((r) => r.id === id);
   if (!match) return;
   els.resumeText.value = match.text;
+  refreshEmptyState();
   els.resumeName.value = match.name;
   // Clear any staged upload: the textarea is now the source of truth, and
   // leaving a file selected would silently override the resume just chosen.
@@ -249,6 +251,7 @@ async function extractSelectedFile({ renameFromFile = false } = {}) {
         throw new Error('that file contained no readable text.');
       }
       els.resumeText.value = text;
+      refreshEmptyState();
       els.savedResumes.value = '';
       if (renameFromFile || !els.resumeName.value.trim()) {
         els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
@@ -452,6 +455,18 @@ function applyTheme(theme) {
   els.themeToggle.title = `${label} — click to change`;
 }
 
+/**
+ * Show the mascot only while there is no resume.
+ *
+ * Driven from the textarea rather than from the library, because a resume can
+ * arrive four ways -- typed, pasted, uploaded, or loaded from the library --
+ * and the textarea is the one place all four converge.
+ */
+function refreshEmptyState() {
+  if (!els.resumeEmpty) return;
+  els.resumeEmpty.hidden = Boolean(els.resumeText.value.trim());
+}
+
 function currentTheme() {
   return document.documentElement.dataset.theme || 'system';
 }
@@ -484,6 +499,7 @@ const PERSIST_DEBOUNCE_MS = 250;
 let persistTimer = null;
 function schedulePersist() {
   refreshKeyStatus();
+  refreshEmptyState();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => { persistTimer = null; persistSettings(); }, PERSIST_DEBOUNCE_MS);
 }
@@ -673,6 +689,8 @@ if (els.themeToggle) {
 
 applyTheme('system');
 refreshKeyStatus();
+refreshEmptyState();
+els.resumeText.addEventListener('input', refreshEmptyState);
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.

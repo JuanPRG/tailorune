@@ -37,9 +37,20 @@ const PUBLISHED_VERSION = publishedArg !== -1 ? process.argv[publishedArg + 1] :
 /** Files and directories never shipped: sources, tests, maps. */
 const EXCLUDE = [/\.map$/, /(^|[\\/])\./, /(^|[\\/])node_modules([\\/]|$)/];
 
-// Bundled entry points: their source stays out of the package, since the
-// bundle already contains it and shipping both doubles the review surface.
-const BUNDLED_SOURCES = ['popup/popup.entry.js', 'offscreen/offscreen.entry.js'];
+// Source that is already inside a shipped artifact. Shipping it twice doubles
+// the review surface and, for the mascot, wastes a quarter of a megabyte.
+//
+//   *.entry.js    -- their bundles contain them
+//   *-mark.svg    -- inlined in popup.html, and rasterised to PNG at build
+//                    time by build/make-icons.mjs
+//   *-raccoon.svg -- inlined in popup.html's empty state, and used by
+//                    build/make-store-assets.mjs for the listing artwork
+const BUNDLED_SOURCES = [
+  'popup/popup.entry.js',
+  'offscreen/offscreen.entry.js',
+  'icons/tailorune-mark.svg',
+  'icons/tailorune-raccoon.svg',
+];
 
 const problems = [];
 const note = (msg) => console.log(`  ${msg}`);
