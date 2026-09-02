@@ -200,15 +200,61 @@ const RETENTION_STOPWORDS = new Set([
   'multiple', 'daily', 'regular', 'regularly', 'consistently', 'successfully',
 ]);
 
+// Unit suffixes that are part of a METRIC rather than a name: "$1.2M", "40k",
+// "3x". Any other letter touching the digits means the token is an identifier.
+const METRIC_SUFFIX = /^[%+kmbx]+\+?$/;
+
 /**
  * Numbers and metrics: "20+", "40%", "15", "$1.2M", "200+".
  *
  * Dropping one is never a stylistic choice — a quantified claim is strictly
  * more useful to a reader and a screener than the same claim unquantified.
+ *
+ * BUT A DIGIT IS NOT AUTOMATICALLY A METRIC, and treating it as one was a real
+ * bug. The earlier version matched any digit run anywhere, so "COVID-19"
+ * contributed "19" — and because the tailored bullet reasonably dropped the
+ * pandemic reference, EVERY run failed validation with "Role 1 dropped
+ * quantities: 19", burned a retry, and finished as
+ * `fallback_after_validation`. The check meant to catch a model quietly
+ * dropping "reduced costs by 30%" was instead policing a disease name.
+ *
+ * It generalises badly, which is what makes it worth a rule rather than a
+ * special case: 401(k), Log4j, HTML5, S3, Windows 10, K-12, ISO 9001, Section
+ * 508 are all names that happen to contain digits. Demanding a rewrite carry
+ * them over is both wrong and expensive.
+ *
+ * The rule: a digit run counts only when the whitespace-delimited token around
+ * it carries no letters other than a unit suffix. Numbers standing alone
+ * ("19 staff") still count, so the guard keeps its teeth.
  */
 export function numericTokens(text) {
-  const found = String(text || '').match(/\$?\d[\d,.]*\s?[%+kKmMbB]?\+?/g) || [];
-  return new Set(found.map((t) => t.replace(/[\s,]/g, '').toLowerCase().replace(/\.$/, '')));
+  const tokens = String(text || '').split(/\s+/).filter(Boolean);
+  const out = new Set();
+
+  for (const raw of tokens) {
+    // Trim sentence punctuation, but keep $ % + . , which can be part of a
+    // number, and keep - so a leading minus or an internal hyphen is visible.
+    const token = raw.replace(/^[^\w$+-]+/, '').replace(/[^\w%+.]+$/, '');
+    if (!/\d/.test(token)) continue;
+
+    // Every letter in the token must belong to a unit suffix. "COVID-19" fails
+    // here (COVID is not a suffix); "$1.2M" passes; "19" has no letters.
+    const letters = token.replace(/[^A-Za-z]/g, '');
+    if (letters && !METRIC_SUFFIX.test(letters.toLowerCase())) continue;
+
+    // A hyphen joining a word to the digits marks a compound name, even when
+    // the word half was stripped above -- "K-12", "F-15", "COVID-19".
+    if (/[A-Za-z]-\d|\d-[A-Za-z]/.test(raw)) continue;
+
+    // A bracket straight after the digits is a named thing, not a unit:
+    // "401(k)", "Section 8(a)". Without this, "401(k)" reads as "401k".
+    if (/\d\s*[([]/.test(raw)) continue;
+
+    const match = token.match(/\$?\d[\d,.]*\s?[%+kKmMbBxX]?\+?/);
+    if (!match) continue;
+    out.add(match[0].replace(/[\s,]/g, '').toLowerCase().replace(/\.$/, ''));
+  }
+  return out;
 }
 
 /** Concrete, matchable vocabulary: content words minus stopwords and filler. */
