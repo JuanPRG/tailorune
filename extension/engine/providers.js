@@ -63,6 +63,12 @@ export const PROVIDERS = {
 export const DEPRECATED_MODEL_IDS = new Set([
   'inclusionai/ling-3.0-flash',
   'inclusionai/ling-3.0-flash:free',
+  // Groq deprecated this 2026-09-02 and decommissions it 2026-09-14, routing
+  // it to qwen3.8-27b afterwards. Retired here rather than left to 404,
+  // because it sat SECOND in the resume chain and FIRST in the judge chain --
+  // and because benchmarking found the replacement strictly better: 1.1s
+  // against 25-39s, at equal or better concreteness.
+  'qwen/qwen3.6-27b',
 ]);
 
 /**
@@ -78,8 +84,8 @@ export const ROUTES = {
   // LLM_PROVIDER_GEMINI31_FLASH_LITE_* — ".env: passed the real resume JSON
   // probe quickly and is pinned."
   gemini31_flash_lite: { providerId: 'gemini', models: ['gemini-3.1-flash-lite'] },
-  // LLM_PROVIDER_GROQ_QWEN36_*
-  groq_qwen36: { providerId: 'groq', models: ['qwen/qwen3.6-27b'] },
+  // LLM_PROVIDER_GROQ_QWEN36_*, now pointing at the successor model.
+  groq_qwen: { providerId: 'groq', models: ['qwen/qwen3.8-27b'] },
   // LLM_PROVIDER_GROQ_OSS120_*
   groq_oss120: { providerId: 'groq', models: ['openai/gpt-oss-120b'] },
   // LLM_PROVIDER_CEREBRAS_OSS120_*
@@ -93,15 +99,22 @@ export const ROUTES = {
   // is what gives the default chain its depth. llm.py:2003 reads _MODELS in
   // preference to a single _MODEL when both exist.
 
-  // GEMINI_MODELS
+  // GEMINI_MODELS, plus gemini-3.5-flash-lite which the benchmark added: it
+  // kept 90% of the original concreteness against the incumbent leader's 63%,
+  // over three runs. It is NOT the leader, because one of those three came
+  // back as unparseable JSON -- so it is ranked second, where a malformed
+  // answer costs a rotation rather than the run.
   gemini: {
     providerId: 'gemini',
-    models: ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'],
+    models: [
+      'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite',
+      'gemini-3.5-flash', 'gemini-2.5-flash',
+    ],
   },
   // GROQ_MODELS
   groq: {
     providerId: 'groq',
-    models: ['qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+    models: ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
   },
   // LLM_PROVIDER_CEREBRAS_MODELS
   cerebras: {
@@ -117,6 +130,13 @@ export const ROUTES = {
   openrouter: {
     providerId: 'openrouter',
     models: [
+      // The one live free route, and the reason OpenRouter is no longer dead
+      // weight. Every previously configured OpenRouter model is retired,
+      // excluded or 404 -- an OpenRouter-only user could not tailor at all.
+      // Benchmarked at the HIGHEST concreteness of any candidate (92% over
+      // three runs) but also the slowest (10-19s), so it earns a place as
+      // depth rather than as anyone's leader.
+      'minimax/minimax-m2.7:free',
       'inclusionai/ling-3.0-flash:free',
       'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
@@ -167,9 +187,9 @@ export const TASK_CHAINS = {
   // simply unfiltered, which is why the .env configures them explicitly.
   //
   // LLM_COVER_LETTER_PROVIDER_CHAIN
-  coverLetter: ['cerebras_gemma', 'groq_qwen36', 'gemini31_flash_lite'],
+  coverLetter: ['cerebras_gemma', 'groq_qwen', 'gemini31_flash_lite'],
   // LLM_JUDGE_PROVIDER_CHAIN
-  judge: ['groq_qwen36', 'cerebras_gemma', 'gemini31_flash_lite'],
+  judge: ['groq_qwen', 'cerebras_gemma', 'gemini31_flash_lite'],
 };
 
 /** LLM_RESUME_JSON_EXCLUDED_MODELS — ruled out for strict JSON work. */
@@ -183,8 +203,25 @@ const JSON_EXCLUDED_MODELS = [
 
 /** LLM_RESUME_JSON_PREFERRED_MODELS. */
 const JSON_PREFERRED_MODELS = [
-  'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b',
-  'gpt-oss-120b', 'inclusionai/ling-3.0-flash:free', 'gemini-2.5-flash',
+  // Order re-measured 2026-09-02 with tests/live/modelBench.mjs: three real
+  // tailoring passes per model, ranked by concreteness kept.
+  //
+  //   gemini-3.1-flash-lite   63%  2.8s   3/3 approved  <- most reliable
+  //   gemini-3.5-flash-lite   90%  6.1s   2/3           <- best quality
+  //   qwen/qwen3.8-27b        75%  1.1s   2/3           <- fastest by far
+  //   openai/gpt-oss-20b      75%  6.6s   1/3
+  //   minimax-m2.7:free       92%  9.9s   1/3           <- best, and slowest
+  //
+  // flash-lite keeps the lead on reliability rather than score: it is the only
+  // candidate that returned a usable resume every time, and the leader is the
+  // position where a malformed answer costs a retry the user waits through.
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'qwen/qwen3.8-27b',
+  'openai/gpt-oss-120b',
+  'gpt-oss-120b',
+  'minimax/minimax-m2.7:free',
+  'gemini-2.5-flash',
 ];
 
 // LLM_COVER_LETTER_EXCLUDED_MODELS and LLM_JUDGE_EXCLUDED_MODELS are the same
@@ -223,12 +260,12 @@ export const TASK_MODEL_POLICY = {
   skills: { preferred: JSON_PREFERRED_MODELS, excluded: JSON_EXCLUDED_MODELS },
   // LLM_COVER_LETTER_PREFERRED_MODELS — prose, so gemma leads.
   coverLetter: {
-    preferred: ['gemma-4-31b', 'qwen/qwen3.6-27b', 'gemini-3.1-flash-lite'],
+    preferred: ['gemma-4-31b', 'qwen/qwen3.8-27b', 'gemini-3.1-flash-lite'],
     excluded: PROSE_JUDGE_EXCLUDED_MODELS,
   },
   // LLM_JUDGE_PREFERRED_MODELS
   judge: {
-    preferred: ['qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
+    preferred: ['qwen/qwen3.8-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
     excluded: PROSE_JUDGE_EXCLUDED_MODELS,
   },
 };

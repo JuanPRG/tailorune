@@ -34,14 +34,13 @@ const CHAIN = [
   { providerId: 'openrouter', apiKey: 'k4' },
 ];
 
-// The resume chain, in v4's order. Kept here as a local expectation so a
-// failure in this file points at failover, not at chain construction (which
-// chainParity.test.mjs owns). Seven entries: the resume tasks take v4's
-// default chain filtered by the resume policy.
-const RESUME_ORDER = [
-  'gemini-3.1-flash-lite', 'qwen/qwen3.6-27b', 'openai/gpt-oss-120b', 'gpt-oss-120b',
-  'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
-];
+// The resume chain, DERIVED rather than restated.
+//
+// chainParity.test.mjs owns the chain's shape and pins it against the
+// benchmark. This file only cares what happens when calls FAIL, so restating
+// the model list here would duplicate the pin and break on every model change
+// -- which it did, the day Groq deprecated qwen3.6-27b.
+const RESUME_ORDER = describeChain(CHAIN, 'resume').map((e) => e.model);
 
 function fresh() {
   resetCooldowns();
@@ -368,7 +367,7 @@ test('a QUALITY failure on one task leaves the same model usable for another', a
   // gemini-3.1-flash-lite is 3rd in the letter chain; confirm it is not held.
   const letter = modelRoutedFetch({
     'gemma-4-31b': () => fail(500),
-    'qwen/qwen3.6-27b': () => fail(500),
+    'qwen/qwen3.8-27b': () => fail(500),
   });
   const res = await run({
     chain: CHAIN, messages: [], task: 'coverLetter', jsonMode: true, fetchImpl: letter.impl,
@@ -378,17 +377,20 @@ test('a QUALITY failure on one task leaves the same model usable for another', a
 
 test('an INFRASTRUCTURE failure on one task holds the model for every task', async () => {
   fresh();
+  // Everything AHEAD of the shared model in the resume chain has to fail for
+  // it to be reached at all -- derived, not hardcoded, because the chain gains
+  // and loses entries as models come and go. 503 is shared-scope too, but on
+  // different models, so it does not confound what this checks.
+  const SHARED = 'qwen/qwen3.8-27b';
+  const ahead = RESUME_ORDER.slice(0, RESUME_ORDER.indexOf(SHARED));
   const { impl } = modelRoutedFetch({
-    // gemini leads the resume chain, so it has to fail for Groq to be reached
-    // at all. Transport error -> shared, but on a DIFFERENT model, so it does
-    // not confound what this test is checking.
-    [RESUME_ORDER[0]]: () => fail(503),
-    'qwen/qwen3.6-27b': () => fail(429, 'You exceeded your current quota'),
+    ...Object.fromEntries(ahead.map((m) => [m, () => fail(503)])),
+    [SHARED]: () => fail(429, 'You exceeded your current quota'),
   });
   await run({ chain: CHAIN, messages: [], task: 'resume', fetchImpl: impl });
 
-  // qwen3.6-27b leads the judge chain. A quota is a fact about the model, so
-  // the judge must skip it too.
+  // That model also LEADS the judge chain. A quota is a fact about the model
+  // everywhere, so the judge must skip it too.
   const judge = modelRoutedFetch({});
   const res = await run({ chain: CHAIN, messages: [], task: 'judge', fetchImpl: judge.impl });
   assert.equal(res.model, 'gemma-4-31b', 'a shared hold should apply across tasks');
@@ -504,7 +506,7 @@ test('a request over the local TPM budget is skipped without a cooldown', async 
     chain: CHAIN, messages: huge, maxTokens: 3072, task: 'resume', fetchImpl: impl,
   });
   assert.equal(res.model, RESUME_ORDER[0], 'gemini has no configured TPM cap, so it serves');
-  assert.ok(!seen.includes('qwen/qwen3.6-27b'), 'the Groq entries should not have been reached');
+  assert.ok(!seen.includes('qwen/qwen3.8-27b'), 'the Groq entries should not have been reached');
   assert.deepEqual(cooldownState(), {}, 'declining to send is not a failure and must not set a hold');
 });
 
@@ -531,6 +533,6 @@ test('describeChain reports the resolved order without making a call', () => {
   fresh();
   assert.deepEqual(
     describeChain(CHAIN, 'judge').map((e) => e.model),
-    ['qwen/qwen3.6-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
+    ['qwen/qwen3.8-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
   );
 });
