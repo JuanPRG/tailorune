@@ -1,54 +1,113 @@
-/* styles.css — Tailorune's popup, adapted from HirePilot's visual language.
+/* styles.css — Tailorune's popup.
  *
- * The design system is HirePilot's, deliberately: Tailorune replaces it, so
- * inheriting the identity keeps the product recognisable rather than making a
- * returning user learn a new surface. Tokens, card treatment, micro-labels,
- * the gradient CTA and the chip pattern are all carried over at their measured
- * values (hirepilot/extension/popup/styles.css).
+ * Built from the brand assets: the mark's jade (#51A68B, taken from the
+ * vector's own fill) and the mascot poster's canvas and sage. It replaces an
+ * inherited purple-to-pink scheme which was, accurately, "AI-looking" -- a
+ * violet gradient on near-black is one of the most generated-looking
+ * combinations there is.
  *
- * What is NOT carried over, and why:
+ * THE IDEA. The mascot poster is already a design system: a sage surround, a
+ * framed panel, canvas inside it, content on the canvas. That maps onto this
+ * popup with actual meaning -- the shell is the TOOL and the cards are the
+ * PAPER. A resume builder whose content sits on something paper-coloured is
+ * saying something true about itself.
  *
- *   - The 3-step stepper (Job / Documents / Autofill). It shows STATE, and
- *     driving it needs JS this popup does not have. A stepper permanently
- *     stuck on step 1 is worse than none, so the ordering it communicated is
- *     expressed by numbering the cards instead -- same rhythm, and it encodes
- *     something true without pretending to track progress.
- *   - The "Connected" indicator, which described a backend. Tailorune has
- *     none; the honest analogue is whether an API key is present, so the pill
- *     reports that.
- *   - Autofill, connection-recovery and resume-manager styling: no such
- *     features here, and dead CSS is how a stylesheet becomes unmaintainable.
+ * TWO THEMES, BOTH DESIGNED. Dark is the default because the mark was
+ * delivered on charcoal; light is canvas, from the poster. Neither is an
+ * inversion of the other -- the light theme uses a DEEPER jade (#2F7A63) for
+ * text and borders because brand jade on canvas measures 2.62:1, nowhere near
+ * readable. Every pair below was checked; the numbers are in the comments so
+ * the next person changing a colour knows what the budget was.
  *
- * Checkboxes are styled with `appearance: none` rather than being hidden
- * behind a fake box. A hidden input is not hit-testable, and the e2e suite
- * drives these with page.uncheck() -- so hiding them would pass every unit
- * test and break the real popup, which is the exact failure mode this project
- * has already been bitten by once.
+ * NO GRADIENTS, ANYWHERE. Not on the CTA, not behind the header, not on the
+ * wordmark. The poster is flat colour and so is this.
  */
 
+/* ---------- dark: the default, matching the mark's own ground ---------- */
+
 :root {
-  --background: #111826;
-  --surface: #151d2b;
-  --surface-strong: #1a2435;
-  --surface-soft: rgba(255, 255, 255, 0.045);
-  --border: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --text-primary: #f8fafc;
-  --text-secondary: #9aa6b8;
-  --text-muted: #687589;
-  --brand: #8b5cf6;
-  --brand-2: #ec5faa;
-  --success: #55d58f;
-  --success-soft: rgba(85, 213, 143, 0.13);
-  --error: #f87171;
-  --error-soft: rgba(248, 113, 113, 0.14);
-  --warning: #fbbf24;
-  --warning-soft: rgba(251, 191, 36, 0.13);
-  --info: #67e8f9;
-  --info-soft: rgba(103, 232, 249, 0.12);
-  --accent-gradient: linear-gradient(135deg, #7868ff 0%, #ec5faa 100%);
+  --ground:     #121715;
+  --surface:    #1B221F;
+  --surface-2:  #232B27;
+  --raised:     rgba(241, 235, 223, 0.04);
+
+  --text:       #F1EBDF;  /* canvas          15.26:1 on ground */
+  --text-2:     #9FB6AC;  /*                  7.54:1 on surface */
+  --text-3:     #7C9A8D;  /* sage             5.30:1 on surface */
+
+  --accent:     #51A68B;  /* brand jade */
+  --accent-ink: #51A68B;  /* jade as text     5.54:1 on surface */
+  --accent-soft: rgba(81, 166, 139, 0.14);
+
+  --border:     rgba(241, 235, 223, 0.12);
+  --border-2:   rgba(241, 235, 223, 0.22);
+  --field:      rgba(0, 0, 0, 0.26);
+
+  --warn:       #D9A64E;  /*                  7.35:1 on surface */
+  --warn-soft:  rgba(217, 166, 78, 0.13);
+  --error:      #E0796B;  /*                  5.49:1 on surface */
+  --error-soft: rgba(224, 121, 107, 0.13);
+
+  /* The CTA is identical in both themes: charcoal on brand jade measures
+     6.37:1 either way. The primary action is the brand moment, so it should
+     not change character when the theme does. */
+  --cta-bg:     #51A68B;
+  --cta-ink:    #0E1412;
+
   --radius-card: 12px;
   --radius-field: 9px;
+  color-scheme: dark;
+}
+
+/* ---------- light: canvas, from the mascot poster ---------- */
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground:     #EFE8DA;  /* canvas */
+    --surface:    #F7F2E8;  /* paper, a shade above the ground */
+    --surface-2:  #E7DFCF;
+    --raised:     rgba(34, 46, 40, 0.03);
+
+    --text:       #222E28;  /* pine            12.64:1 on surface */
+    --text-2:     #4A5C53;  /*                  6.39:1 on surface */
+    --text-3:     #586A60;  /*                  5.16 card / 4.73 ground */
+
+    --accent:     #51A68B;  /* brand jade, FILLS ONLY on light */
+    --accent-ink: #2F7A63;  /* deepened         4.61:1 -- brand jade is 2.62 */
+    --accent-soft: rgba(81, 166, 139, 0.16);
+
+    --border:     rgba(34, 46, 40, 0.14);
+    --border-2:   rgba(34, 46, 40, 0.26);
+    --field:      #FFFDF8;
+
+    --warn:       #8A5A12;  /*                  5.30:1 on surface */
+    --warn-soft:  rgba(138, 90, 18, 0.10);
+    --error:      #A83A2B;  /*                  5.69:1 on surface */
+    --error-soft: rgba(168, 58, 43, 0.10);
+    color-scheme: light;
+  }
+}
+
+/* Explicit choice wins in both directions. */
+:root[data-theme="light"] {
+  --ground:     #EFE8DA;
+  --surface:    #F7F2E8;
+  --surface-2:  #E7DFCF;
+  --raised:     rgba(34, 46, 40, 0.03);
+  --text:       #222E28;
+  --text-2:     #4A5C53;
+  --text-3:     #586A60;
+  --accent:     #51A68B;
+  --accent-ink: #2F7A63;
+  --accent-soft: rgba(81, 166, 139, 0.16);
+  --border:     rgba(34, 46, 40, 0.14);
+  --border-2:   rgba(34, 46, 40, 0.26);
+  --field:      #FFFDF8;
+  --warn:       #8A5A12;
+  --warn-soft:  rgba(138, 90, 18, 0.10);
+  --error:      #A83A2B;
+  --error-soft: rgba(168, 58, 43, 0.10);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -62,26 +121,13 @@ html, body {
 }
 
 body {
-  background: var(--background);
-  color: var(--text-primary);
+  background: var(--ground);
+  color: var(--text);
   font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* The ambient glow from HirePilot: two soft radials, fixed so they do not
-   travel with the scrolling content. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(620px 300px at 84% -8%, rgba(139, 92, 246, 0.20), transparent 70%),
-    radial-gradient(520px 260px at 6% 104%, rgba(236, 95, 170, 0.14), transparent 72%);
-}
-
 .app {
-  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -94,49 +140,41 @@ body::before {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 16px 8px;
+  padding: 10px 16px 9px;
   border-bottom: 1px solid var(--border);
   flex: 0 0 auto;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
+/* Jade tile, charcoal glyph -- the same treatment as the toolbar icon, and
+   for the same measured reason: the mark is fine line-work and needs a solid
+   ground behind it rather than a dark one around it. */
 .brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 27px;
-  height: 27px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
-  color: #fff;
   border-radius: 9px;
-  background: var(--accent-gradient);
-  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.28);
+  background: var(--accent);
+  color: #0E1412;
 }
-.brand-mark svg { width: 16px; height: 16px; }
+.brand-mark svg { width: 19px; height: 19px; display: block; }
 
+/* Flat, not a gradient fill. Gradient text on a wordmark is exactly the tell
+   this redesign is removing. */
 .brand h1 {
   margin: 0;
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1;
-  font-weight: 750;
-  background: linear-gradient(90deg, #a78bfa, #f472b6);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex: 0 0 auto;
-}
+.header-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 
 .status-pill {
   display: inline-flex;
@@ -145,8 +183,8 @@ body::before {
   padding: 4px 9px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-secondary);
+  background: var(--raised);
+  color: var(--text-2);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -154,15 +192,42 @@ body::before {
 }
 .status-pill::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 6px; height: 6px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--text-3);
 }
-.status-pill[data-state="ready"] { color: var(--success); border-color: rgba(85, 213, 143, 0.3); background: var(--success-soft); }
-.status-pill[data-state="ready"]::before { background: var(--success); }
-.status-pill[data-state="missing"] { color: var(--warning); border-color: rgba(251, 191, 36, 0.3); background: var(--warning-soft); }
-.status-pill[data-state="missing"]::before { background: var(--warning); }
+.status-pill[data-state="ready"] {
+  color: var(--accent-ink);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+.status-pill[data-state="ready"]::before { background: var(--accent); }
+.status-pill[data-state="missing"] {
+  color: var(--warn);
+  border-color: var(--warn-soft);
+  background: var(--warn-soft);
+}
+.status-pill[data-state="missing"]::before { background: var(--warn); }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--border-2); }
+.icon-btn svg { width: 14px; height: 14px; }
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
 
 /* ---------- scroll region ---------- */
 
@@ -176,25 +241,23 @@ body::before {
   gap: 10px;
 }
 /* Flex children shrink by default, which crushed the collapsed <details>
-   panels into 2px slivers once the cards above filled the column. Nothing
-   inside this scroller should ever be compressed -- it scrolls instead. */
+   panels into slivers once the cards above filled the column. */
 .scroll > * { flex: 0 0 auto; }
 
 .scroll::-webkit-scrollbar { width: 9px; }
 .scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--border-2);
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
-/* ---------- cards ---------- */
+/* ---------- cards: the paper ---------- */
 
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: var(--surface);
   padding: 12px 13px 13px;
 }
 
@@ -211,25 +274,21 @@ body::before {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-/* The step number replaces HirePilot's stepper: same ordered rhythm, no
-   pretence of tracking state. */
 .step-no {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 16px; height: 16px;
   flex: 0 0 auto;
   border-radius: 5px;
-  background: rgba(139, 92, 246, 0.18);
-  border: 1px solid rgba(139, 92, 246, 0.32);
-  color: #c4b5fd;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: 9px;
   font-weight: 800;
 }
@@ -239,7 +298,7 @@ body::before {
 label {
   display: block;
   margin: 9px 0 4px;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.07em;
@@ -250,8 +309,8 @@ label:first-child { margin-top: 0; }
 input[type="text"], input[type="password"], input:not([type]), textarea, select {
   width: 100%;
   font: inherit;
-  color: var(--text-primary);
-  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  background: var(--field);
   border: 1px solid var(--border);
   border-radius: var(--radius-field);
   padding: 7px 9px;
@@ -261,32 +320,33 @@ textarea { resize: vertical; line-height: 1.5; }
 #jobDescription { height: 72px; }
 #resumeText { height: 78px; }
 
-input::placeholder, textarea::placeholder { color: var(--text-muted); }
+input::placeholder, textarea::placeholder { color: var(--text-3); }
 
 input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: none;
-  border-color: rgba(139, 92, 246, 0.55);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+  border-color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 select {
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   padding-right: 26px;
 }
-select option { background: var(--surface-strong); color: var(--text-primary); }
+select option { background: var(--surface); color: var(--text); }
 
 input[type="file"] {
   width: 100%;
   padding: 6px;
   font-size: 11px;
-  color: var(--text-secondary);
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px dashed var(--border-strong);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px dashed var(--border-2);
   border-radius: var(--radius-field);
 }
 input[type="file"]::file-selector-button {
@@ -294,13 +354,13 @@ input[type="file"]::file-selector-button {
   font-weight: 700;
   margin-right: 9px;
   padding: 4px 10px;
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 7px;
   cursor: pointer;
 }
-input[type="file"]::file-selector-button:hover { border-color: var(--border-strong); }
+input[type="file"]::file-selector-button:hover { border-color: var(--border-2); }
 
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
@@ -308,7 +368,7 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-stro
 
 .hint {
   margin-top: 5px;
-  color: var(--text-muted);
+  color: var(--text-3);
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0;
@@ -316,7 +376,7 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-stro
   line-height: 1.45;
 }
 
-/* ---------- chips (checkboxes) ---------- */
+/* ---------- chips ---------- */
 
 .chips { display: flex; flex-wrap: wrap; gap: 7px; }
 
@@ -328,8 +388,8 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-stro
   margin: 0;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-secondary);
+  background: var(--raised);
+  color: var(--text-2);
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0;
@@ -337,57 +397,50 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-stro
   cursor: pointer;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
-.chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.chip:hover { border-color: var(--border-2); color: var(--text); }
 .chip:has(input:checked) {
-  color: var(--text-primary);
-  border-color: rgba(139, 92, 246, 0.45);
-  background: rgba(139, 92, 246, 0.13);
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
-/* `appearance: none` and NOT `display: none` -- see the file header. The input
-   stays visible and hit-testable, it just stops looking like an OS widget. */
+/* `appearance: none` and NOT `display: none`. A hidden input is not
+   hit-testable, and the e2e suite drives these with page.uncheck() -- hiding
+   them would pass every unit test and break the real popup. */
 .chip input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 15px;
-  height: 15px;
+  width: 15px; height: 15px;
   flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--border-strong);
+  margin: 0; padding: 0;
+  border: 1px solid var(--border-2);
   border-radius: 5px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--field);
   cursor: pointer;
   position: relative;
   transition: background 0.16s ease, border-color 0.16s ease;
 }
 .chip input[type="checkbox"]:checked {
-  background: var(--accent-gradient);
-  border-color: transparent;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .chip input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 4px;
-  height: 8px;
-  border: solid #fff;
+  left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid #0E1412;
   border-width: 0 2px 2px 0;
   transform: rotate(42deg);
 }
 .chip input[type="checkbox"]:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }
 
 /* ---------- buttons ---------- */
 
-button {
-  font: inherit;
-  cursor: pointer;
-  border-radius: var(--radius-field);
-}
+button { font: inherit; cursor: pointer; border-radius: var(--radius-field); }
 
 .primary-btn {
   display: inline-flex;
@@ -398,16 +451,16 @@ button {
   padding: 11px 14px;
   font-size: 13.5px;
   font-weight: 800;
-  color: #fff;
+  color: var(--cta-ink);
+  background: var(--cta-bg);
   border: 1px solid transparent;
   border-radius: 11px;
-  background: var(--accent-gradient);
-  box-shadow: 0 10px 26px rgba(139, 92, 246, 0.26);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+  transition: filter 0.16s ease, transform 0.12s ease;
 }
-.primary-btn:hover:not(:disabled) { filter: brightness(1.07); box-shadow: 0 12px 30px rgba(139, 92, 246, 0.34); }
+.primary-btn:hover:not(:disabled) { filter: brightness(1.06); }
 .primary-btn:active:not(:disabled) { transform: translateY(1px); }
-.primary-btn:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.primary-btn:disabled { opacity: 0.45; cursor: default; }
+.primary-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .primary-btn svg { width: 15px; height: 15px; flex: 0 0 auto; }
 
 .secondary-btn {
@@ -419,31 +472,23 @@ button {
   padding: 8px 11px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.055);
+  color: var(--text-2);
+  background: var(--raised);
   border: 1px solid var(--border);
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  transition: border-color 0.18s ease, color 0.18s ease;
 }
-.secondary-btn:hover:not(:disabled) {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-  background: rgba(255, 255, 255, 0.09);
-}
+.secondary-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
 .secondary-btn:disabled { opacity: 0.5; cursor: default; }
+.secondary-btn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
-.mini-btn {
-  padding: 7px 10px;
-  font-size: 11.5px;
-  font-weight: 700;
-  white-space: nowrap;
-}
+.mini-btn { padding: 7px 10px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
 
 /* ---------- collapsibles ---------- */
 
 details.panel {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--surface);
   overflow: hidden;
 }
 details.panel > summary {
@@ -452,7 +497,7 @@ details.panel > summary {
   gap: 8px;
   padding: 10px 13px;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -463,15 +508,15 @@ details.panel > summary::-webkit-details-marker { display: none; }
 details.panel > summary::after {
   content: "";
   margin-left: auto;
-  width: 6px;
-  height: 6px;
-  border: solid var(--text-muted);
+  width: 6px; height: 6px;
+  border: solid var(--text-3);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg) translateY(-2px);
   transition: transform 0.18s ease;
 }
 details.panel[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
-details.panel > summary:hover { color: var(--text-primary); }
+details.panel > summary:hover { color: var(--text); }
+details.panel > summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 details.panel .body { padding: 2px 13px 13px; }
 details.panel .body > label:first-child { margin-top: 0; }
 
@@ -480,7 +525,7 @@ details.panel .body > label:first-child { margin-top: 0; }
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: none;
-  color: var(--text-muted);
+  color: var(--text-3);
 }
 
 /* ---------- footer ---------- */
@@ -489,15 +534,14 @@ details.panel .body > label:first-child { margin-top: 0; }
   flex: 0 0 auto;
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border);
-  background: rgba(17, 24, 38, 0.86);
-  backdrop-filter: blur(8px);
+  background: var(--ground);
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
 #status {
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 11.5px;
   white-space: pre-line;
   max-height: 54px;
@@ -507,9 +551,9 @@ details.panel .body > label:first-child { margin-top: 0; }
 
 #warnings {
   font-size: 11.5px;
-  color: var(--warning);
-  background: var(--warning-soft);
-  border: 1px solid rgba(251, 191, 36, 0.26);
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-soft);
   border-radius: var(--radius-field);
   padding: 8px 10px;
 }

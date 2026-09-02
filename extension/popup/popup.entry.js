@@ -54,6 +54,7 @@ const els = {
   warnings: $('warnings'),
   result: $('result'),
   keyStatus: $('keyStatus'),
+  themeToggle: $('themeToggle'),
 };
 
 let lastResumeHtml = null;
@@ -428,6 +429,33 @@ const PERSIST_ON_CHANGE = [
  * "why did nothing happen" is otherwise answered only by opening a collapsed
  * <details> and squinting at a password field.
  */
+/**
+ * Theme: follow the OS, or an explicit choice the user has made.
+ *
+ * Three states, not two. No `data-theme` attribute means "follow the system",
+ * which is what a fresh install should do -- the CSS handles that with
+ * prefers-color-scheme. Setting the attribute pins it, and the pin has to win
+ * in BOTH directions, so the stylesheet defines the canvas palette twice:
+ * once under the media query guarded against an explicit dark, and once under
+ * [data-theme="light"].
+ */
+const THEMES = ['system', 'dark', 'light'];
+
+function applyTheme(theme) {
+  if (theme === 'dark' || theme === 'light') {
+    document.documentElement.dataset.theme = theme;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  if (!els.themeToggle) return;
+  const label = { system: 'Following your system theme', dark: 'Dark', light: 'Canvas' }[theme] || 'Following your system theme';
+  els.themeToggle.title = `${label} — click to change`;
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme || 'system';
+}
+
 function refreshKeyStatus() {
   if (!els.keyStatus) return;
   const keys = [
@@ -449,7 +477,7 @@ function refreshKeyStatus() {
 }
 
 async function persistSettings() {
-  await setSettings(collectSettings());
+  await setSettings({ ...collectSettings(), theme: currentTheme() });
 }
 
 const PERSIST_DEBOUNCE_MS = 250;
@@ -474,6 +502,7 @@ async function restoreSettings() {
   if (typeof settings.useJudge === 'boolean') els.useJudge.checked = settings.useJudge;
   applyPreferences(settings.preferences);
   applyProviderKeys(settings.providerKeys);
+  applyTheme(settings.theme || 'system');
   refreshKeyStatus();
 }
 
@@ -634,6 +663,15 @@ for (const id of PERSIST_ON_CHANGE) {
   el.addEventListener('change', schedulePersist);
 }
 
+if (els.themeToggle) {
+  els.themeToggle.addEventListener('click', () => {
+    const next = THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length];
+    applyTheme(next);
+    schedulePersist();
+  });
+}
+
+applyTheme('system');
 refreshKeyStatus();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
