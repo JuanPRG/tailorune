@@ -325,3 +325,43 @@ export function getProvider(id) {
   if (!p) throw new Error(`Unknown provider: ${id}`);
   return p;
 }
+
+/**
+ * The provider chain a run will actually use, from what the popup holds.
+ *
+ * ONE FUNCTION, TWO CALLERS, DELIBERATELY. The popup's header pill and the
+ * offscreen document's chain builder were computing this separately, and they
+ * disagreed: the pill counted non-empty text boxes while the chain counted
+ * providers, skipping a fallback key that duplicates the selected provider.
+ * A user with a Gemini key in both the main field and the Gemini fallback saw
+ * "2 keys" for a chain of one. Reported as "why does it say one key when I
+ * have three" -- the number was answering a different question than the one
+ * being asked.
+ *
+ * Rules, matching what rotation needs:
+ *   - the selected provider comes first, and only if it has a key
+ *   - every OTHER provider with a fallback key follows
+ *   - a fallback for the selected provider is ignored: it is the same
+ *     credential slot, not extra reach
+ *   - an explicit model pins the first entry only
+ *
+ * @returns {Array<{providerId: string, apiKey: string, model?: string}>}
+ */
+export function resolveProviderChain({ providerId, apiKey, model, providerKeys } = {}) {
+  const chain = [];
+  const primaryKey = String(apiKey || '').trim();
+  if (providerId && primaryKey) {
+    chain.push({ providerId, apiKey: primaryKey, model: (model || '').trim() || undefined });
+  }
+  for (const [id, key] of Object.entries(providerKeys || {})) {
+    const trimmed = String(key || '').trim();
+    if (!trimmed || id === providerId || !PROVIDERS[id]) continue;
+    chain.push({ providerId: id, apiKey: trimmed });
+  }
+  return chain;
+}
+
+/** Human-readable provider labels, for telling the user what a run can reach. */
+export function chainLabels(chain) {
+  return (chain || []).map((e) => (PROVIDERS[e.providerId] || {}).label || e.providerId);
+}

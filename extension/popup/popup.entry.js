@@ -16,6 +16,9 @@ import {
 } from '../engine/resumeLibrary.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
+// The same resolver the offscreen document uses to build the run's chain, so
+// the header pill and the actual run cannot report different things.
+import { resolveProviderChain, chainLabels } from '../engine/providers.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -473,22 +476,36 @@ function currentTheme() {
 
 function refreshKeyStatus() {
   if (!els.keyStatus) return;
-  const keys = [
-    els.apiKey.value, els.fallbackGemini.value, els.fallbackGroq.value,
-    els.fallbackOpenrouter.value,
-  ].filter((k) => String(k || '').trim());
 
-  if (!keys.length) {
+  // Counts PROVIDERS a run can actually reach, not text boxes with something
+  // in them. Those are different numbers, and showing the wrong one produced
+  // "why does it say one key when I have three": a fallback key for the
+  // provider already selected above adds no reach, and a key for a provider
+  // that no longer exists (Cerebras, in old saved settings) adds none either.
+  // resolveProviderChain is the same function the run uses.
+  const chain = resolveProviderChain({
+    providerId: els.provider.value,
+    apiKey: els.apiKey.value,
+    model: els.modelName.value,
+    providerKeys: collectProviderKeys(),
+  });
+  const names = chainLabels(chain);
+
+  if (!names.length) {
     els.keyStatus.dataset.state = 'missing';
     els.keyStatus.textContent = 'No key';
     els.keyStatus.title = 'Add an API key under AI provider to tailor anything.';
     return;
   }
+
   els.keyStatus.dataset.state = 'ready';
-  els.keyStatus.textContent = keys.length === 1 ? '1 key' : `${keys.length} keys`;
-  els.keyStatus.title = keys.length === 1
-    ? 'One provider configured. Adding a fallback key lets a run survive a rate limit.'
-    : `${keys.length} providers configured, so a run can rotate when one is rate-limited.`;
+  // Naming the provider beats a bare count: it is the difference between "1
+  // key" (which invites "no I have three") and "Gemini" (which invites "ah,
+  // the others are not set").
+  els.keyStatus.textContent = names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+  els.keyStatus.title = names.length === 1
+    ? `Only ${names[0]} is set up. Add another provider's key below so a run can survive a rate limit.`
+    : `A run can rotate across ${names.length} providers, in order: ${names.join(' -> ')}.`;
 }
 
 async function persistSettings() {

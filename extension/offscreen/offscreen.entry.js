@@ -16,6 +16,7 @@ import { judgeTailoredModel } from '../engine/judge.js';
 import {
   chatWithRotation, cooldownState, demoteModel, describeChain,
 } from '../engine/rotatingClient.js';
+import { resolveProviderChain } from '../engine/providers.js';
 import { validatePreferences } from '../engine/preferences.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
@@ -71,11 +72,11 @@ async function runTailor(payload) {
   // Playwright e2e tests use to exercise the real pipeline against a local
   // mock server, since context.route() does not intercept fetches made from
   // an offscreen document (confirmed empirically, not documented anywhere).
-  const providerKeys = payload.providerKeys || {};
-  const chain = [{ providerId, apiKey, model: modelName || undefined }];
-  for (const [id, key] of Object.entries(providerKeys)) {
-    if (id !== providerId && key) chain.push({ providerId: id, apiKey: key });
-  }
+  // Shared with the popup's header pill, so the number the user is shown and
+  // the chain a run actually walks cannot drift apart.
+  const chain = resolveProviderChain({
+    providerId, apiKey, model: modelName, providerKeys: payload.providerKeys,
+  });
 
   // One rotating caller shared by every stage, so a provider that just got
   // rate-limited during the resume pass is already cooling down by the time
