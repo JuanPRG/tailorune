@@ -61,21 +61,27 @@ const ALL_KEYS = Object.keys(PROVIDERS).map((providerId) => ({ providerId, apiKe
 const EXPECTED_CHAINS = {
   resume: [
     'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'qwen/qwen3.8-27b',
-    'openai/gpt-oss-120b', 'gpt-oss-120b', 'minimax/minimax-m2.7:free',
-    'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
+    'openai/gpt-oss-120b', 'minimax/minimax-m2.7:free',
+    'gemini-2.5-flash', 'openai/gpt-oss-20b',
   ],
   skills: [
     'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'qwen/qwen3.8-27b',
-    'openai/gpt-oss-120b', 'gpt-oss-120b', 'minimax/minimax-m2.7:free',
-    'gemini-2.5-flash', 'openai/gpt-oss-20b', 'zai-glm-4.7',
+    'openai/gpt-oss-120b', 'minimax/minimax-m2.7:free',
+    'gemini-2.5-flash', 'openai/gpt-oss-20b',
   ],
-  // Curated path, unchanged in shape. v4's 4th entry was `local`.
-  coverLetter: ['gemma-4-31b', 'qwen/qwen3.8-27b', 'gemini-3.1-flash-lite'],
-  judge: ['qwen/qwen3.8-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
+  // Curated, and rebuilt from a PROSE benchmark when Cerebras was dropped.
+  // qwen is the fastest of the three and goes last anyway: it ran over the
+  // 275-word ceiling on 3 of 3 attempts (292, 300, 302 words).
+  coverLetter: ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'qwen/qwen3.8-27b'],
+  // The judge emits JSON, so it is ordered on schema reliability instead:
+  // 3.1-flash-lite held the schema 3/3, 3.5-flash-lite returned one
+  // unparseable answer.
+  judge: ['gemini-3.1-flash-lite', 'qwen/qwen3.8-27b', 'gemini-3.5-flash-lite'],
 };
 
-// The models the benchmark ranked highest, which must stay at the FRONT.
-// Depth is added behind measured quality, never in place of it.
+// The models the benchmark ranked highest for JSON, which must stay at the
+// FRONT of the resume chain. Depth is added behind measured quality, never in
+// place of it.
 //
 // flash-lite leads on RELIABILITY rather than score -- 63% concreteness, but
 // the only candidate that returned a usable resume on all three runs. The
@@ -188,11 +194,13 @@ test('an explicitly pinned model wins, and is exempt from task policy', () => {
   // A user who names a model has made a choice; honour it rather than
   // silently substituting one the policy table prefers.
   const pinned = buildChainEntries(
-    [{ providerId: 'cerebras', apiKey: 'k', model: 'gemma-4-31b' }],
+    [{ providerId: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash' }],
     { task: 'resume' },
   );
-  // gemma-4-31b is on the JSON exclusion list, yet it was asked for by name.
-  assert.deepEqual(modelsOf(pinned), ['gemma-4-31b']);
+  // gemini-3.5-flash is on the JSON exclusion list, yet it was asked for by
+  // name -- so it is honoured anyway. Note that is the FLASH, not the
+  // flash-LITE that leads the prose chain.
+  assert.deepEqual(modelsOf(pinned), ['gemini-3.5-flash']);
 });
 
 test('every route names a provider that exists', () => {
@@ -207,6 +215,19 @@ test('every chain names a route that exists', () => {
     for (const name of chain) {
       assert.ok(ROUTES[name], `${task} chain names unknown route "${name}"`);
     }
+  }
+});
+
+test('no route names a provider that was removed', () => {
+  // Cerebras was dropped when it ended its no-card free tier on 2026-08-17.
+  // A route left behind would name a provider that getProvider() throws on,
+  // and a CHAIN left naming a dead route silently shortens instead -- which
+  // happened during the removal and was caught only by reading the resolved
+  // chain. The "every chain names a route that exists" test above is the
+  // permanent guard; this one pins the provider list itself.
+  assert.deepEqual(Object.keys(PROVIDERS).sort(), ['gemini', 'groq', 'openrouter']);
+  for (const [name, route] of Object.entries(ROUTES)) {
+    assert.notEqual(route.providerId, 'cerebras', `route "${name}" still names Cerebras`);
   }
 });
 

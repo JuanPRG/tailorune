@@ -32,14 +32,12 @@ const ENV_FILES = [
 // v4 names two of its provider keys differently. Mapped rather than renamed,
 // so v4's own config is never edited to suit this repo.
 const KEY_ALIASES = {
-  LLM_PROVIDER_CEREBRAS_API_KEY: 'CEREBRAS_API_KEY',
   LLM_PROVIDER_OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
 };
 
 export const PROVIDER_ENV = {
   gemini: 'GEMINI_API_KEY',
   groq: 'GROQ_API_KEY',
-  cerebras: 'CEREBRAS_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
 };
 

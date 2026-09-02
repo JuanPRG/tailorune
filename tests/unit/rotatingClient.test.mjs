@@ -30,8 +30,7 @@ import { resetRateWindows } from '../../extension/engine/rateWindow.js';
 const CHAIN = [
   { providerId: 'gemini', apiKey: 'k1' },
   { providerId: 'groq', apiKey: 'k2' },
-  { providerId: 'cerebras', apiKey: 'k3' },
-  { providerId: 'openrouter', apiKey: 'k4' },
+  { providerId: 'openrouter', apiKey: 'k3' },
 ];
 
 // The resume chain, DERIVED rather than restated.
@@ -366,7 +365,7 @@ test('a QUALITY failure on one task leaves the same model usable for another', a
 
   // gemini-3.1-flash-lite is 3rd in the letter chain; confirm it is not held.
   const letter = modelRoutedFetch({
-    'gemma-4-31b': () => fail(500),
+    'gemini-3.5-flash-lite': () => fail(500),
     'qwen/qwen3.8-27b': () => fail(500),
   });
   const res = await run({
@@ -379,21 +378,30 @@ test('an INFRASTRUCTURE failure on one task holds the model for every task', asy
   fresh();
   // Everything AHEAD of the shared model in the resume chain has to fail for
   // it to be reached at all -- derived, not hardcoded, because the chain gains
-  // and loses entries as models come and go. 503 is shared-scope too, but on
-  // different models, so it does not confound what this checks.
+  // and loses entries as models come and go.
+  //
+  // Those must fail TASK-scoped (422), not shared (503). An earlier version
+  // used 503 on the reasoning that it was "a different model, so it does not
+  // confound" -- but the judge chain overlaps the resume chain, so the shared
+  // holds leaked across and left the judge with nothing to run. The test then
+  // failed for a reason that had nothing to do with what it was checking.
   const SHARED = 'qwen/qwen3.8-27b';
   const ahead = RESUME_ORDER.slice(0, RESUME_ORDER.indexOf(SHARED));
   const { impl } = modelRoutedFetch({
-    ...Object.fromEntries(ahead.map((m) => [m, () => fail(503)])),
+    ...Object.fromEntries(ahead.map((m) => [m, () => fail(422, 'schema not supported')])),
     [SHARED]: () => fail(429, 'You exceeded your current quota'),
   });
   await run({ chain: CHAIN, messages: [], task: 'resume', fetchImpl: impl });
 
-  // That model also LEADS the judge chain. A quota is a fact about the model
-  // everywhere, so the judge must skip it too.
+  // That model is also in the judge chain. A quota is a fact about the model
+  // everywhere, so the judge must skip it -- derived rather than named,
+  // because which model sits where changes as the benchmark is re-run.
+  const judgeChain = describeChain(CHAIN, 'judge').map((e) => e.model);
   const judge = modelRoutedFetch({});
   const res = await run({ chain: CHAIN, messages: [], task: 'judge', fetchImpl: judge.impl });
-  assert.equal(res.model, 'gemma-4-31b', 'a shared hold should apply across tasks');
+  assert.ok(judgeChain.includes(SHARED), 'the test needs the shared model to be in the judge chain');
+  assert.notEqual(res.model, SHARED, 'a shared hold should apply across tasks');
+  assert.ok(!judge.seen.includes(SHARED), 'and it should not even be attempted');
 });
 
 test('two keys for the same model cool down independently', async () => {
@@ -515,10 +523,10 @@ test('a request over the local TPM budget is skipped without a cooldown', async 
 test('a pinned model is honoured and exempt from task policy', () => {
   fresh();
   const entries = buildChainEntries(
-    [{ providerId: 'cerebras', apiKey: 'k', model: 'gemma-4-31b' }],
+    [{ providerId: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash' }],
     { task: 'resume' },
   );
-  assert.deepEqual(entries.map((e) => e.model), ['gemma-4-31b']);
+  assert.deepEqual(entries.map((e) => e.model), ['gemini-3.5-flash']);
   assert.equal(entries[0].pinned, true);
 });
 
@@ -526,13 +534,13 @@ test('no task walks every route, for a caller with no opinion', () => {
   fresh();
   const models = buildChainEntries(CHAIN, {}).map((e) => e.model);
   assert.ok(models.includes(RESUME_ORDER[0]));
-  assert.ok(models.includes('gemma-4-31b'), 'without a policy, nothing is filtered out');
+  assert.ok(models.includes('gemini-3.5-flash-lite'), 'without a policy, nothing is filtered out');
 });
 
 test('describeChain reports the resolved order without making a call', () => {
   fresh();
   assert.deepEqual(
     describeChain(CHAIN, 'judge').map((e) => e.model),
-    ['qwen/qwen3.8-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
+    ['gemini-3.1-flash-lite', 'qwen/qwen3.8-27b', 'gemini-3.5-flash-lite'],
   );
 });

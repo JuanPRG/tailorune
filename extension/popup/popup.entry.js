@@ -46,7 +46,6 @@ const els = {
   providerDetails: $('providerDetails'),
   fallbackGemini: $('fallbackGemini'),
   fallbackGroq: $('fallbackGroq'),
-  fallbackCerebras: $('fallbackCerebras'),
   fallbackOpenrouter: $('fallbackOpenrouter'),
   tailorBtn: $('tailorBtn'),
   previewBtn: $('previewBtn'),
@@ -348,7 +347,6 @@ function collectProviderKeys() {
   return {
     gemini: els.fallbackGemini.value.trim(),
     groq: els.fallbackGroq.value.trim(),
-    cerebras: els.fallbackCerebras.value.trim(),
     openrouter: els.fallbackOpenrouter.value.trim(),
   };
 }
@@ -357,7 +355,6 @@ function applyProviderKeys(keys) {
   if (!keys) return;
   els.fallbackGemini.value = keys.gemini || '';
   els.fallbackGroq.value = keys.groq || '';
-  els.fallbackCerebras.value = keys.cerebras || '';
   els.fallbackOpenrouter.value = keys.openrouter || '';
 }
 
@@ -419,7 +416,7 @@ const PERSIST_ON_CHANGE = [
   'provider', 'modelName', 'apiKey', 'includeCoverLetter', 'useJudge',
   'resumeDensity', 'keywordAlignment', 'coverLetterLength', 'coverLetterTone',
   'preservePoints', 'resumeNotes', 'coverLetterNotes',
-  'fallbackGemini', 'fallbackGroq', 'fallbackCerebras', 'fallbackOpenrouter',
+  'fallbackGemini', 'fallbackGroq', 'fallbackOpenrouter',
 ];
 
 /**
@@ -435,7 +432,7 @@ function refreshKeyStatus() {
   if (!els.keyStatus) return;
   const keys = [
     els.apiKey.value, els.fallbackGemini.value, els.fallbackGroq.value,
-    els.fallbackCerebras.value, els.fallbackOpenrouter.value,
+    els.fallbackOpenrouter.value,
   ].filter((k) => String(k || '').trim());
 
   if (!keys.length) {

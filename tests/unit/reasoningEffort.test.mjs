@@ -33,7 +33,7 @@ import { getProvider } from '../../extension/engine/providers.js';
 
 const GROQ = getProvider('groq');
 const GEMINI = getProvider('gemini');
-const CEREBRAS = getProvider('cerebras');
+const OPENROUTER = getProvider('openrouter');
 
 const OK = { choices: [{ message: { content: '{"summary":"x"}' }, finish_reason: 'stop' }] };
 
@@ -71,7 +71,7 @@ test('Groq gpt-oss gets the format but NOT the effort', () => {
 
 test('no other provider gets either parameter, however hard the caller asks', () => {
   resetReasoningEffortSupport();
-  for (const [label, provider] of [['gemini', GEMINI], ['cerebras', CEREBRAS]]) {
+  for (const [label, provider] of [['gemini', GEMINI], ['openrouter', OPENROUTER]]) {
     assert.deepEqual(
       reasoningParamsFor(provider.baseUrl, 'gemini-3.1-flash-lite', 'none'), {},
       `${label} should receive no reasoning parameters`,

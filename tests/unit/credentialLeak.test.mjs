@@ -28,7 +28,6 @@ import { credentialFingerprint } from '../../extension/engine/fingerprint.js';
 const SECRETS = {
   gemini: 'AIzaSyD-not-a-real-key-0123456789abcdef',
   groq: 'gsk_notARealKeyButShapedLikeOne0123456789abcdef',
-  cerebras: 'csk-notarealkey000111222333444555666777888',
   openrouter: 'sk-or-v1-notarealkey0001112223334445556667778889',
 };
 
@@ -102,7 +101,7 @@ test('a fingerprint is stable, short, and distinguishes different keys', () => {
   // Stability is what makes it usable as an identity; distinctness is what
   // makes per-credential cooldowns correct.
   assert.equal(credentialFingerprint(SECRETS.groq), credentialFingerprint(SECRETS.groq));
-  assert.notEqual(credentialFingerprint(SECRETS.groq), credentialFingerprint(SECRETS.cerebras));
+  assert.notEqual(credentialFingerprint(SECRETS.groq), credentialFingerprint(SECRETS.openrouter));
   assert.match(credentialFingerprint(SECRETS.groq), /^[0-9a-f]{8}$/);
 });
 

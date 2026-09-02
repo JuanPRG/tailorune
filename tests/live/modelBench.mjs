@@ -37,6 +37,7 @@ import { resetReasoningEffortSupport } from '../../extension/engine/llm.js';
 import { parseTxt } from '../../extension/engine/parseTxt.js';
 import { extractDocxText } from '../../extension/engine/extractDocxText.js';
 import { tailorResume } from '../../extension/engine/tailor.js';
+import { generateCoverLetter } from '../../extension/engine/coverLetter.js';
 import { conceptRetentionRatio } from '../../extension/engine/textUtils.js';
 
 loadEnvFiles();
@@ -60,10 +61,6 @@ const CANDIDATES = {
     'openai/gpt-oss-120b',     // current chain #3
     'openai/gpt-oss-20b',      // current chain #6
   ],
-  cerebras: [
-    'gpt-oss-120b',
-    'gemma-4-31b',
-  ],
   openrouter: [
     'z-ai/glm-5.2:free',
     'google/gemma-4-31b-it:free',
@@ -80,6 +77,16 @@ const wantAllFree = args.includes('--all-free');
 // noise for a finding, so the tool can repeat and report the spread.
 const repeatArg = args.find((a) => a.startsWith('--repeat='));
 const REPEATS = repeatArg ? Math.max(1, Number(repeatArg.split('=')[1]) || 1) : 1;
+// Prose and JSON are different jobs and the .env has always treated them so --
+// it excludes the whole gpt-oss family from letters while preferring one of
+// them for resumes. Benchmarking only the resume pass would rank models on
+// half the work.
+const taskArg = args.find((a) => a.startsWith('--task='));
+const TASK = taskArg ? taskArg.split('=')[1] : 'resume';
+if (!['resume', 'coverLetter'].includes(TASK)) {
+  console.error(`--task must be resume or coverLetter, got "${TASK}"`);
+  process.exit(1);
+}
 const onlyArg = args.find((a) => a.startsWith('--models='));
 const ONLY = onlyArg ? onlyArg.split('=')[1].split(',').map((m) => m.trim()) : null;
 const providerFilter = args.filter((a) => !a.startsWith('--'));
@@ -112,7 +119,7 @@ if (!targets.length) {
   process.exit(1);
 }
 
-console.log(`benchmarking ${targets.length} models on the real resume pass`);
+console.log(`benchmarking ${targets.length} models on the real ${TASK} pass`);
 console.log(`fixture: ${path.basename(FIXTURE)} — ${originalBullets.length} bullets\n`);
 console.log(`  ${'model'.padEnd(40)} ${'status'.padEnd(24)} ${'secs'.padStart(6)} ${'keep'.padStart(5)}  notes`);
 console.log(`  ${'-'.repeat(40)} ${'-'.repeat(24)} ${'-'.repeat(6)} ${'-'.repeat(5)}  -----`);
@@ -129,7 +136,7 @@ for (const { providerId, model } of targets) {
 
   const callLlm = async (opts) => {
     const res = await chatWithRotation({
-      ...opts, chain: pinned, task: 'resume', sleepImpl: async () => {},
+      ...opts, chain: pinned, task: TASK, sleepImpl: async () => {},
     });
     if (res.finishReason === 'length') truncated = true;
     return res;
@@ -139,21 +146,41 @@ for (const { providerId, model } of targets) {
   let status = 'error';
   let retention = null;
   try {
-    const out = await tailorResume({
-      model: structuredClone(baseModel),
-      jobDescription: JOB,
-      callLlm,
-      maxAttempts: 1,          // one shot: measuring the model, not the retry loop
-      job: { title: 'Senior Financial Analyst', company: 'Acme', description: JOB },
-    });
-    status = out.report ? out.report.status : 'no report';
-    const after = (out.model.sections || [])
-      .flatMap((s) => (s.entries || []).flatMap((e) => e.bullets || []));
-    if (after.length) {
-      retention = conceptRetentionRatio(originalBullets.join(' '), after.join(' '));
-    }
-    if (out.report && out.report.validator && out.report.validator.errors) {
-      notes.push(...out.report.validator.errors.slice(0, 1));
+    if (TASK === 'coverLetter') {
+      const out = await generateCoverLetter({
+        model: baseModel,
+        job: { title: 'Senior Financial Analyst', company: 'Acme', description: JOB },
+        callLlm,
+        maxAttempts: 1,        // one shot: measuring the model, not the retry loop
+      });
+      status = out.report ? out.report.status : 'no report';
+      const body = (out.paragraphs || []).join(' ');
+      const words = body.split(/\s+/).filter(Boolean).length;
+      // For prose the useful score is whether it drew on the ACTUAL resume
+      // rather than writing a generic letter -- so retention is measured
+      // against the source bullets, same as the resume pass.
+      if (body) retention = conceptRetentionRatio(originalBullets.join(' '), body);
+      notes.push(`${words}w`);
+      if (out.report && out.report.validator && out.report.validator.errors) {
+        notes.push(...out.report.validator.errors.slice(0, 1));
+      }
+    } else {
+      const out = await tailorResume({
+        model: structuredClone(baseModel),
+        jobDescription: JOB,
+        callLlm,
+        maxAttempts: 1,        // one shot: measuring the model, not the retry loop
+        job: { title: 'Senior Financial Analyst', company: 'Acme', description: JOB },
+      });
+      status = out.report ? out.report.status : 'no report';
+      const after = (out.model.sections || [])
+        .flatMap((s) => (s.entries || []).flatMap((e) => e.bullets || []));
+      if (after.length) {
+        retention = conceptRetentionRatio(originalBullets.join(' '), after.join(' '));
+      }
+      if (out.report && out.report.validator && out.report.validator.errors) {
+        notes.push(...out.report.validator.errors.slice(0, 1));
+      }
     }
   } catch (err) {
     status = (err && err.kind) || 'error';

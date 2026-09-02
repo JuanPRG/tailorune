@@ -44,10 +44,6 @@ export const PROVIDERS = {
     label: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
   },
-  cerebras: {
-    label: 'Cerebras',
-    baseUrl: 'https://api.cerebras.ai/v1',
-  },
   openrouter: {
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
@@ -88,10 +84,10 @@ export const ROUTES = {
   groq_qwen: { providerId: 'groq', models: ['qwen/qwen3.8-27b'] },
   // LLM_PROVIDER_GROQ_OSS120_*
   groq_oss120: { providerId: 'groq', models: ['openai/gpt-oss-120b'] },
-  // LLM_PROVIDER_CEREBRAS_OSS120_*
-  cerebras_oss120: { providerId: 'cerebras', models: ['gpt-oss-120b'] },
-  // LLM_PROVIDER_CEREBRAS_GEMMA_* — prose specialist. EXCLUDED for JSON.
-  cerebras_gemma: { providerId: 'cerebras', models: ['gemma-4-31b'] },
+  // Replaces the retired cerebras_gemma as the prose leader. Benchmarked as
+  // the best letter writer available: 3/3 usable at 1.7s, and the only
+  // candidate that reliably stays under the word ceiling.
+  gemini35_flash_lite: { providerId: 'gemini', models: ['gemini-3.5-flash-lite'] },
   // --- pool routes -------------------------------------------------------
   //
   // The plain provider names from LLM_PROVIDER_CHAIN. Unlike the pinned
@@ -115,11 +111,6 @@ export const ROUTES = {
   groq: {
     providerId: 'groq',
     models: ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
-  },
-  // LLM_PROVIDER_CEREBRAS_MODELS
-  cerebras: {
-    providerId: 'cerebras',
-    models: ['gpt-oss-120b', 'gemma-4-31b', 'zai-glm-4.7'],
   },
   // LLM_PROVIDER_OPENROUTER_MODELS. Kept verbatim, and worth reading closely:
   // ling is RETIRED and the other two are on the JSON exclusion list, so this
@@ -153,7 +144,7 @@ export const ROUTES = {
  * provider does not burn all three of its models before another provider is
  * tried.
  */
-export const DEFAULT_CHAIN = ['gemini', 'groq', 'cerebras', 'openrouter'];
+export const DEFAULT_CHAIN = ['gemini', 'groq', 'openrouter'];
 
 /**
  * LLM_<TASK>_PROVIDER_CHAIN, in order, with the terminal `local` route
@@ -186,10 +177,22 @@ export const TASK_CHAINS = {
   // for prose. For these two tasks the broad chain is not deeper, it is
   // simply unfiltered, which is why the .env configures them explicitly.
   //
-  // LLM_COVER_LETTER_PROVIDER_CHAIN
-  coverLetter: ['cerebras_gemma', 'groq_qwen', 'gemini31_flash_lite'],
-  // LLM_JUDGE_PROVIDER_CHAIN
-  judge: ['groq_qwen', 'cerebras_gemma', 'gemini31_flash_lite'],
+  // Rebuilt when Cerebras was dropped, from a prose benchmark rather than by
+  // shuffling whatever was left. Three real letters per model:
+  //
+  //   gemini-3.5-flash-lite  3/3 approved  1.7s  226-246 words
+  //   gemini-3.1-flash-lite  3/3 approved  3.1s  245-261 words
+  //   qwen/qwen3.8-27b       0/3           0.9s  292-302 words  <- always over
+  //
+  // qwen is the fastest and still goes last, because it ran over the 275-word
+  // ceiling on every attempt. That was the "cover letter above maximum"
+  // finding recurring in live runs: the chain led with a dead Cerebras model
+  // and fell through to one that writes long.
+  coverLetter: ['gemini35_flash_lite', 'gemini31_flash_lite', 'groq_qwen'],
+  // The judge returns JSON, not prose, so it is ordered on schema reliability
+  // instead: 3.1-flash-lite held the schema on all three runs, while
+  // 3.5-flash-lite returned one unparseable answer.
+  judge: ['gemini31_flash_lite', 'groq_qwen', 'gemini35_flash_lite'],
 };
 
 /** LLM_RESUME_JSON_EXCLUDED_MODELS — ruled out for strict JSON work. */
@@ -198,7 +201,6 @@ const JSON_EXCLUDED_MODELS = [
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'openai/gpt-oss-20b:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
-  'gemma-4-31b',
 ];
 
 /** LLM_RESUME_JSON_PREFERRED_MODELS. */
@@ -219,7 +221,6 @@ const JSON_PREFERRED_MODELS = [
   'gemini-3.5-flash-lite',
   'qwen/qwen3.8-27b',
   'openai/gpt-oss-120b',
-  'gpt-oss-120b',
   'minimax/minimax-m2.7:free',
   'gemini-2.5-flash',
 ];
@@ -239,7 +240,6 @@ const PROSE_JUDGE_EXCLUDED_MODELS = [
   'qwen/qwen3-next-80b-a3b-instruct:free',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
-  'gpt-oss-120b',
   'openai/gpt-oss-120b:free',
   'openai/gpt-oss-20b:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
@@ -248,9 +248,11 @@ const PROSE_JUDGE_EXCLUDED_MODELS = [
 /**
  * Which model suits which TASK — llm.py:2226's `_apply_task_model_policy`.
  *
- * `gemma-4-31b` is why per-task policy has to exist at all: the .env EXCLUDES
- * it for resume JSON and PREFERS it for cover letters. One ordering cannot say
- * both.
+ * Per-task policy exists because one ordering cannot describe two jobs. The
+ * sharpest case used to be gemma-4-31b -- excluded for resume JSON, preferred
+ * for letters -- and it outlived gemma's removal: qwen/qwen3.8-27b now ranks
+ * high for resumes on speed and LAST for letters, because it runs over the
+ * word ceiling every time.
  *
  * `preferred` reorders; `excluded` removes. A model absent from `preferred` is
  * still usable, just last — being unranked is not a veto, only `excluded` is.
@@ -260,12 +262,12 @@ export const TASK_MODEL_POLICY = {
   skills: { preferred: JSON_PREFERRED_MODELS, excluded: JSON_EXCLUDED_MODELS },
   // LLM_COVER_LETTER_PREFERRED_MODELS — prose, so gemma leads.
   coverLetter: {
-    preferred: ['gemma-4-31b', 'qwen/qwen3.8-27b', 'gemini-3.1-flash-lite'],
+    preferred: ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'qwen/qwen3.8-27b'],
     excluded: PROSE_JUDGE_EXCLUDED_MODELS,
   },
   // LLM_JUDGE_PREFERRED_MODELS
   judge: {
-    preferred: ['qwen/qwen3.8-27b', 'gemma-4-31b', 'gemini-3.1-flash-lite'],
+    preferred: ['gemini-3.1-flash-lite', 'qwen/qwen3.8-27b', 'gemini-3.5-flash-lite'],
     excluded: PROSE_JUDGE_EXCLUDED_MODELS,
   },
 };
