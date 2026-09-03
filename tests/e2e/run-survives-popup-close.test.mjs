@@ -342,3 +342,64 @@ test('reset re-reads the page rather than just emptying the form', async (t) => 
   assert.equal(await sw.evaluate(() => self.__extractCalls), before + 1,
     'reset must read the current page, not just empty the form');
 });
+
+test('coming back to a tailored posting brings the job back, not just the result', async (t) => {
+  // Reported: tailor a job, visit a different posting (correctly cleared),
+  // come back, and the header offers "Re-tailor" over an EMPTY job field.
+  //
+  // Three things had to line up. The stored run kept the title and employer
+  // but not the description. The draft could not cover it -- there is one
+  // draft slot, so the second posting overwrote the first. And a restored run
+  // returns before the page is read, by design, because reading would fill
+  // the description underneath its own finished output.
+  //
+  // The run now carries the text it was tailored against. Stored rather than
+  // re-read: this is what the output came from, so re-tailoring means the
+  // same job unless the user changes it, and it survives the posting being
+  // edited or taken down.
+  const JD = 'THE DESCRIPTION THIS RUN WAS ACTUALLY TAILORED AGAINST';
+  const { popup } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate(([key, jd]) => chrome.storage.local.set({
+        [key]: {
+          at: Date.now(), jobTitle: 'Backend Engineer', employer: 'Acme Corp',
+          jobDescription: jd, pageUrl: 'https://jobs.test/a', wordCount: 431,
+          downloads: ['a.docx'], htmlPreview: '<h1>preview</h1>',
+          resumeStatus: 'approved', resumeWarnings: [], resumeErrors: [],
+        },
+      }), [LAST_RUN_KEY, JD]);
+    },
+  });
+
+  await popup.waitForFunction(
+    () => document.getElementById('tailorBtnLabel').textContent === 'Re-tailor',
+    { timeout: 10000 },
+  );
+  assert.equal(await popup.inputValue('#jobDescription'), JD,
+    'offering a re-tailor with nothing to tailor is the reported bug');
+  assert.equal(await popup.inputValue('#jobTitle'), 'Backend Engineer');
+  assert.equal(await popup.inputValue('#employer'), 'Acme Corp');
+});
+
+test('later edits beat the snapshot the run was tailored from', async (t) => {
+  // A draft for this page is the user's own more recent work, so it wins.
+  // applyLastRun only ever fills fields that are empty.
+  const { popup } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate(([runKey, draftKey]) => chrome.storage.local.set({
+        [runKey]: {
+          at: Date.now(), jobTitle: 'Backend Engineer', employer: 'Acme Corp',
+          jobDescription: 'THE OLD SNAPSHOT', pageUrl: '', wordCount: 431,
+          downloads: ['a.docx'], htmlPreview: '<h1>preview</h1>',
+          resumeStatus: 'approved', resumeWarnings: [], resumeErrors: [],
+        },
+        [draftKey]: { at: Date.now(), pageUrl: '', jobDescription: 'MY LATER EDITS' },
+      }), [LAST_RUN_KEY, 'tailorune_job_draft_v1']);
+    },
+  });
+
+  await popup.waitForFunction(
+    () => document.getElementById('jobDescription').value === 'MY LATER EDITS',
+    { timeout: 10000 },
+  );
+});

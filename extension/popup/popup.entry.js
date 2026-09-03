@@ -921,8 +921,15 @@ async function readLastRun() {
   }
 }
 
-/** Put a finished run back on screen: previews, findings, and what it was for. */
+/** Put a finished run back on screen: previews, findings, and the job itself. */
 function applyLastRun(last) {
+  // The job this run was for, into whatever is still empty. Only empty
+  // fields, so a draft for this page -- the user's own later edits, applied
+  // before this -- wins over the snapshot taken when the run happened.
+  for (const id of JOB_FIELDS) {
+    if (last[id] && !els[id].value.trim()) els[id].value = last[id];
+  }
+
   lastResumeHtml = last.htmlPreview || null;
   lastCoverLetterHtml = last.coverLetterHtml || null;
   lastResumePdf = last.resumePdfBase64
@@ -981,7 +988,14 @@ async function restoreOrDetect() {
   // fills the description, which is precisely what stops the automatic read
   // below from replacing it.
   if (draftIsHere) applyJobDraft(draft);
-  if (runIsHere) { applyLastRun(last); return; }
+  if (runIsHere) {
+    applyLastRun(last);
+    // A run stored before runs carried their job description has nothing to
+    // put back, so fall through to the page rather than leaving the user
+    // offered a re-tailor with nothing to tailor.
+    if (!els.jobDescription.value.trim()) await autoDetectJob();
+    return;
+  }
 
   // A draft for this page means the user was already working here, so there
   // is nothing to detect and no reason to reach for another job's run.

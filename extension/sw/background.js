@@ -91,6 +91,20 @@ async function saveLastRun(payload, request) {
         // nothing to do with.
         pageUrl: await activePageUrl(),
         employer: (request && request.employer) || '',
+        // The description this run was actually tailored against.
+        //
+        // Without it, coming back to a posting you had already tailored
+        // restored the RESULT and nothing to re-tailor: the header offered
+        // "Re-tailor" over an empty job field. The draft could not cover it
+        // -- there is one draft slot, so visiting a second posting overwrites
+        // the first -- and the page was never re-read, because a restored run
+        // returns before the read.
+        //
+        // Stored rather than re-read on the way back, because this is the
+        // text the output came from. Re-tailoring should mean the same job
+        // unless the user changes it, and it still works when the posting has
+        // since been edited or taken down.
+        jobDescription: (request && request.jobDescription) || '',
         wordCount: payload.wordCount,
         downloads: (payload.downloads || []).map((d) => d.filename),
         htmlPreview: payload.htmlPreview || null,
