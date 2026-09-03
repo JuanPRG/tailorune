@@ -123,13 +123,15 @@
       <section class="card">
         <div class="section-title-row">
           <span class="section-heading"><span class="step-no">2</span> Job details</span>
+          <!-- In the title row rather than a full-width button below it: the
+               action belongs to this section's heading, and the row already
+               exists. Worth 35px of a 485px column. -->
+          <button id="readPageBtn" class="secondary-btn row-btn" type="button">Read this page</button>
         </div>
-
-        <button id="readPageBtn" class="secondary-btn" type="button">Read job from this page</button>
         <div id="extractHint" class="hint"></div>
 
-        <label for="jobDescription">Job description</label>
-        <textarea id="jobDescription" placeholder="Paste the job description, or read it from the current tab..."></textarea>
+        <textarea id="jobDescription" aria-label="Job description"
+                  placeholder="Paste the job description, or read it from the current tab..."></textarea>
 
         <div class="row" style="margin-top:9px;">
           <div>
@@ -153,7 +155,8 @@
             <input id="includeCoverLetter" type="checkbox" checked />
             Cover letter
           </label>
-          <label class="chip" for="useJudge">
+          <label class="chip" for="useJudge"
+                 title="Costs one extra AI call. Advisory only — it flags rewrites that drift from your original wording, but never changes, weakens or withholds the document. Yours to judge.">
             <input id="useJudge" type="checkbox" checked />
             Accuracy review
           </label>
@@ -161,10 +164,6 @@
             <input id="autoDownloadPdf" type="checkbox" checked />
             PDF copy
           </label>
-        </div>
-        <div class="hint">
-          The review costs one extra AI call. Advisory only — it flags rewrites that drift from your
-          original wording, but never changes, weakens or withholds the document. Yours to judge.
         </div>
       </section>
 
@@ -300,8 +299,14 @@
         <button id="footerResetBtn" class="secondary-btn cta-reset caution" type="button" hidden
                 title="Clear the job and the last result. Your resume and keys stay.">Reset</button>
       </div>
-      <button id="previewBtn" class="secondary-btn" type="button" style="display:none;">Save resume as PDF</button>
-      <button id="previewClBtn" class="secondary-btn" type="button" style="display:none;">Save cover letter as PDF</button>
+      <!-- Side by side, not stacked. Two full-width buttons cost 42px of a
+           600px popup and pushed the input cards into a scroll the moment a
+           run finished. An empty flex row collapses to nothing, so the
+           wrapper needs no hiding of its own when both are absent. -->
+      <div class="row" id="pdfRow" hidden>
+        <button id="previewBtn" class="secondary-btn" type="button" style="display:none;">Save resume PDF</button>
+        <button id="previewClBtn" class="secondary-btn" type="button" style="display:none;">Save letter PDF</button>
+      </div>
     </footer>
 
   </div>

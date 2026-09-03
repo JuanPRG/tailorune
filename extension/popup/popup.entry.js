@@ -50,6 +50,7 @@ const els = {
   apiKey: $('apiKey'),
   mainView: $('mainView'),
   appFooter: $('appFooter'),
+  pdfRow: $('pdfRow'),
   settingsView: $('settingsView'),
   settingsBtn: $('settingsBtn'),
   settingsBackBtn: $('settingsBackBtn'),
@@ -743,8 +744,7 @@ async function onTailorClick() {
   await persistSettings();
 
   setBusy(true);
-  els.previewBtn.style.display = 'none';
-  els.previewClBtn.style.display = 'none';
+  setPdfButtons(false, false);
   // The restored previous run must not linger next to a running one.
   lastResumeHtml = null;
   lastCoverLetterHtml = null;
@@ -789,8 +789,7 @@ async function onTailorClick() {
       lastCoverLetterPdf = response.coverLetter && response.coverLetter.pdfBase64
         ? { base64: response.coverLetter.pdfBase64, filename: response.coverLetter.pdfFilename }
         : null;
-      els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
-      els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
+      setPdfButtons(lastResumeHtml, lastCoverLetterHtml);
       setHasRun(true);
     } else {
       setStatus(`Failed: ${(response && response.error) || 'unknown error'}`);
@@ -834,8 +833,7 @@ async function restoreLastRun() {
   lastCoverLetterPdf = last.coverLetterPdfBase64
     ? { base64: last.coverLetterPdfBase64, filename: last.coverLetterPdfFilename }
     : null;
-  els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
-  els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
+  setPdfButtons(lastResumeHtml, lastCoverLetterHtml);
   renderFindings({
     resumeStatus: last.resumeStatus,
     resumeWarnings: last.resumeWarnings,
@@ -932,6 +930,18 @@ function setBusy(busy) {
   renderCta();
 }
 
+/**
+ * Show or hide the pair of save-as-PDF buttons.
+ *
+ * The row collapses when neither is offered: an empty flex row is 0px tall
+ * but still draws the footer's 7px gap, which is 7px of a 478px column.
+ */
+function setPdfButtons(resume, letter) {
+  els.previewBtn.style.display = resume ? 'block' : 'none';
+  els.previewClBtn.style.display = letter ? 'block' : 'none';
+  els.pdfRow.hidden = !resume && !letter;
+}
+
 function setHasRun(hasRun) {
   ctaHasRun = hasRun;
   renderCta();
@@ -965,8 +975,7 @@ async function onResetClick() {
   lastCoverLetterHtml = null;
   lastResumePdf = null;
   lastCoverLetterPdf = null;
-  els.previewBtn.style.display = 'none';
-  els.previewClBtn.style.display = 'none';
+  setPdfButtons(false, false);
   els.warnings.innerHTML = '';
   els.result.textContent = '';
   setHasRun(false);

@@ -232,3 +232,68 @@ test('real popup: reset is the only control tinted as caution', async (t) => {
     'the footer reset should be tinted too',
   );
 });
+
+test('the front page fits in the 600px Chrome allows a popup', async (t) => {
+  // The whole point of the last few passes: three cards, a header and a
+  // pinned footer inside 600px. It was 79px over and scrolled on every run.
+  //
+  // MEASURED IN A SIZED TAB, NOT THE REAL POPUP, and the first version of
+  // this test got that wrong -- it asserted against the live popup and failed
+  // by 409px. The popup's window height is Chrome's to choose and it came
+  // back around 510px in this browser, so `max-height: 100vh` correctly
+  // shrank the app to fit it. That is the layout working, not failing. The
+  // claim worth pinning is about the budget the design targets: 420x600.
+  //
+  // Asserted as SLACK rather than "does not scroll", because zero overflow
+  // and zero room are not the same state -- the first survives a hint line
+  // appearing, the second does not.
+  const { popup } = await openRealPopup(t);
+  const page = await popup.context().newPage();
+  await page.setViewportSize({ width: 420, height: 600 });
+  await page.goto(popup.url());
+  await page.fill('#resumeText', 'Ada Lovelace — Analytical Engine notes');
+  await page.$eval('#resumeManage', (el) => { el.open = false; });
+  await page.waitForTimeout(250);
+
+  const fit = await page.evaluate(() => {
+    const main = document.getElementById('mainView');
+    const kids = [...main.children].filter((el) => el.getBoundingClientRect().height > 0);
+    const top = main.getBoundingClientRect().top;
+    const bottom = kids[kids.length - 1].getBoundingClientRect().bottom;
+    const content = bottom - top + parseFloat(getComputedStyle(main).paddingBottom);
+    return {
+      slack: Math.round(main.clientHeight - content),
+      overflow: main.scrollHeight - main.clientHeight,
+    };
+  });
+
+  assert.equal(fit.overflow, 0, `the front page should not scroll, but overflows by ${fit.overflow}px`);
+  assert.ok(fit.slack > 20, `and should keep room to grow, but has only ${fit.slack}px spare`);
+  await page.close();
+});
+
+test('real popup: the CTA survives a window shorter than 600px', async (t) => {
+  // `html, body { height: 600px }` is a REQUEST. A short browser window or
+  // page zoom gets less, and with `overflow: hidden` there is then no way to
+  // reach what falls off the bottom -- which was the Tailor button itself,
+  // clipped and unclickable. Measured at 510px before `max-height: 100vh`.
+  //
+  // Driven through a tab rather than the real popup, because the popup's own
+  // window size is Chrome's to decide and cannot be set from a test.
+  const { popup } = await openRealPopup(t);
+  const url = popup.url();
+  const page = await popup.context().newPage();
+
+  for (const height of [600, 510, 420]) {
+    await page.setViewportSize({ width: 420, height });
+    await page.goto(url);
+    await page.waitForTimeout(150);
+    const seen = await page.evaluate(() => {
+      const r = document.getElementById('tailorBtn').getBoundingClientRect();
+      return { visible: r.bottom <= window.innerHeight && r.top >= 0, bottom: Math.round(r.bottom) };
+    });
+    assert.equal(seen.visible, true,
+      `at a ${height}px window the CTA must stay on screen, but its bottom was ${seen.bottom}px`);
+  }
+  await page.close();
+});
