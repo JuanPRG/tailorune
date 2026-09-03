@@ -50,6 +50,45 @@ async function downloadOutputs(outputs) {
   return results;
 }
 
+const LAST_RUN_KEY = 'tailorune_last_run_v1';
+
+/**
+ * Keep the most recent finished run so the popup can show it again.
+ *
+ * Only the latest, and only what the popup actually renders: the two HTML
+ * previews, the findings, and enough context to say which job it was for.
+ * The resume TEXT is deliberately not copied here -- it already lives in the
+ * resume library, and a second copy is a second thing to leak and to forget
+ * to clear.
+ */
+async function saveLastRun(payload, request) {
+  try {
+    await chrome.storage.local.set({
+      [LAST_RUN_KEY]: {
+        at: Date.now(),
+        jobTitle: (request && request.jobTitle) || '',
+        employer: (request && request.employer) || '',
+        wordCount: payload.wordCount,
+        downloads: (payload.downloads || []).map((d) => d.filename),
+        htmlPreview: payload.htmlPreview || null,
+        coverLetterHtml: (payload.coverLetter && payload.coverLetter.htmlPreview) || null,
+        resumeStatus: payload.resumeStatus,
+        resumeWarnings: payload.resumeWarnings,
+        resumeErrors: payload.resumeErrors,
+        resumeJudge: payload.resumeJudge,
+        skills: payload.skills,
+        coverLetterStatus: (payload.coverLetter && payload.coverLetter.status) || null,
+        timings: payload.timings,
+        llm: payload.llm,
+      },
+    });
+  } catch (err) {
+    // Never fail a finished run over bookkeeping: the documents are already
+    // downloaded and the response is about to be sent.
+    console.warn('could not persist the last run', err);
+  }
+}
+
 /**
  * Read the job posting off the user's active tab.
  *
@@ -133,7 +172,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           return;
         }
         const downloads = await downloadOutputs(result.outputs);
-        sendResponse({
+        const payload = {
           ok: true,
           wordCount: result.wordCount,
           compactionIterations: result.compactionIterations,
@@ -148,7 +187,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           cooldowns: result.cooldowns,
           timings: result.timings,
           llm: result.llm,
-        });
+        };
+
+        // Persist BEFORE responding, and unconditionally.
+        //
+        // A browser-action popup is destroyed the moment it loses focus, so
+        // if the user tabs away while this runs -- or even glances at the
+        // download shelf -- sendResponse below has nowhere to land and the
+        // whole result is dropped: previews, findings, timings, the lot. The
+        // .docx files survive because downloadOutputs() already ran, which
+        // makes the loss especially confusing: the files are there and the
+        // reasons they look the way they do are gone.
+        //
+        // Writing it here rather than in the popup is what makes a run
+        // survivable. The popup restores it on next open.
+        await saveLastRun(payload, message.payload);
+        sendResponse(payload);
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });
       }

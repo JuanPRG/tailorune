@@ -633,6 +633,9 @@ async function onTailorClick() {
   els.tailorBtn.disabled = true;
   els.previewBtn.style.display = 'none';
   els.previewClBtn.style.display = 'none';
+  // The restored previous run must not linger next to a running one.
+  lastResumeHtml = null;
+  lastCoverLetterHtml = null;
   els.warnings.innerHTML = '';
   els.result.textContent = '';
   setStatus(includeCoverLetter
@@ -679,6 +682,62 @@ async function onTailorClick() {
   }
 }
 
+const LAST_RUN_KEY = 'tailorune_last_run_v1';
+
+/**
+ * Put the previous run back on screen when the popup reopens.
+ *
+ * A browser-action popup is destroyed on focus loss, so glancing at the
+ * download shelf after a run was enough to lose the findings and both preview
+ * buttons while the .docx files sat in Downloads -- files present, every
+ * reason for how they look gone. The service worker now writes the finished
+ * result before responding, so this reads it back.
+ *
+ * Presented as a PREVIOUS run, not as a fresh one. Restoring a "Done —"
+ * status silently would make a stale result look like something that just
+ * happened, which is a worse bug than the one being fixed.
+ */
+async function restoreLastRun() {
+  let last = null;
+  try {
+    const bag = await chrome.storage.local.get(LAST_RUN_KEY);
+    last = bag && bag[LAST_RUN_KEY];
+  } catch { /* nothing stored, or storage unavailable */ }
+  if (!last) return;
+
+  lastResumeHtml = last.htmlPreview || null;
+  lastCoverLetterHtml = last.coverLetterHtml || null;
+  els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
+  els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
+  renderFindings({
+    resumeStatus: last.resumeStatus,
+    resumeWarnings: last.resumeWarnings,
+    resumeErrors: last.resumeErrors,
+    resumeJudge: last.resumeJudge,
+    skills: last.skills,
+    coverLetter: last.coverLetterStatus ? { status: last.coverLetterStatus } : null,
+  });
+
+  const forJob = [last.jobTitle, last.employer].filter(Boolean).join(' at ');
+  const files = (last.downloads || []).length;
+  setStatus(
+    `Previous run${forJob ? ` — ${forJob}` : ''}: ${last.wordCount} words, `
+    + `${files} file${files === 1 ? '' : 's'} in Downloads. ${describeAge(last.at)}`,
+  );
+}
+
+/** "2 minutes ago" beats a timestamp for deciding whether this is still yours. */
+function describeAge(at) {
+  if (!at) return '';
+  const mins = Math.round((Date.now() - at) / 60000);
+  if (mins < 1) return 'Just now.';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago.`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago.`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago.`;
+}
+
 els.readPageBtn.addEventListener('click', onReadPageClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
 els.savedResumes.addEventListener('change', onSelectResume);
@@ -708,6 +767,7 @@ applyTheme('system');
 refreshKeyStatus();
 refreshEmptyState();
 els.resumeText.addEventListener('input', refreshEmptyState);
+restoreLastRun();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.
