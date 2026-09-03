@@ -106,26 +106,35 @@ export function renderResumeHtml(model) {
      comes from weight, capitals and rules -- see renderDocx.js. */
   @page { size: letter; margin: 0; }
   * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.3; color: #1a1a1a; margin: 0; }
+  /* SPACING IS DERIVED FROM renderDocx.js, not chosen. Every value below is
+     that file's twips divided by 20 (twips -> points), because the two files
+     must render the same document and a comfortable-looking stylesheet is
+     not the same thing as a matching one.
+
+     line-height 1.15 is Word's single spacing for Arial. It was 1.3, which
+     reads better on screen and added about 1.5pt to EVERY line -- roughly an
+     inch over a full resume, enough to push a one-page DOCX onto a second
+     PDF page while the word budget still said it fit. */
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.15; color: #1a1a1a; margin: 0; }
   .sheet { max-width: 7.5in; margin: 0 auto; padding: 0.4in; }
-  h1 { font-size: 18pt; text-align: center; margin: 0 0 4px; }
-  .contact { text-align: center; margin: 0 0 14px; }
-  .summary { margin: 0 0 14px; }
-  h2 { font-size: inherit; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; padding-bottom: 3px; margin: 14px 0 7px; }
-  p { margin: 0 0 4px; }
+  h1 { font-size: 18pt; text-align: center; margin: 0 0 1pt; }          /* docx after 20tw */
+  .contact { text-align: center; margin: 0 0 7pt; }                     /* docx after 140tw */
+  .summary { margin: 0 0 7pt; }                                         /* docx after 140tw */
+  h2 { font-size: inherit; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; padding-bottom: 2pt; margin: 7pt 0 3.5pt; }  /* docx before 140tw / after 70tw */
+  p { margin: 0 0 2pt; }                                                /* docx after 40tw */
   /* Titles down the left edge, chronology down the right: the arrangement a
      reader scans fastest, and what both reference resumes do. */
-  .role-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 8px; }
+  .role-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 5pt; }  /* docx before 100tw */
   .role-title { font-weight: bold; }
   .role-date { white-space: nowrap; }
-  .role-context { font-style: italic; margin-bottom: 4px; }
+  .role-context { font-style: italic; margin-bottom: 2pt; }             /* docx after 40tw */
   /* Justified: bullets, summary and skills all run to multiple lines, and a
      flush right edge is what makes a dense one-page resume read as a block of
      text. Headings, titles and dated rows stay ragged -- stretching a short
      line to the margin looks broken. */
   .summary, .justified, li { text-align: justify; }
-  ul { margin: 0 0 6px; padding-left: 18px; }
-  li { margin-bottom: 2px; }
+  ul { margin: 0 0 1pt; padding-left: 18px; }
+  li { margin-bottom: 1pt; }                                            /* docx after 20tw */
   .print-hint { background: #e0edee; border: 1px solid #0f6e78; border-radius: 4px; padding: 10px 14px; margin-bottom: 16px; font-size: 10pt; }
   /* The screen page and the PRINTED page are different geometries, and
      conflating them silently changed the document. .sheet pads 0.4in to
