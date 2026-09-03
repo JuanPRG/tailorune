@@ -486,6 +486,66 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-field); }
 .primary-btn:hover:not(:disabled) { filter: brightness(1.06); }
 .primary-btn:active:not(:disabled) { transform: translateY(1px); }
 .primary-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---------- the CTA while a run is in flight ---------- */
+
+/* A run is 7-17 seconds across three passes with no progress reporting, so
+   the button has to carry the whole "still working" signal on its own.
+   `data-busy` rather than :disabled for the LOOK: the button is genuinely
+   disabled, but dimming it to 45% is the wrong message -- greyed out reads as
+   "unavailable", and this is the opposite, the one thing currently happening.
+   So it keeps full contrast and moves instead. */
+.primary-btn[data-busy] {
+  opacity: 1;
+  cursor: progress;
+  position: relative;
+  overflow: hidden;
+}
+
+/* The sparkle is eight rays around a centre, so rotation is the one motion
+   that fits it -- it reads as working rather than as a foreign spinner
+   bolted on. Slow enough to look considered, not frantic. */
+.primary-btn[data-busy] svg {
+  animation: cta-spin 2.4s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes cta-spin { to { transform: rotate(360deg); } }
+
+/* An indeterminate sweep along the bottom edge. Indeterminate on purpose:
+   the pipeline reports nothing until it finishes, so a percentage would be
+   invented, and an invented progress bar is worse than none. This says
+   "alive", which is all that is actually known. */
+.primary-btn[data-busy]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 34%;
+  background: var(--cta-ink);
+  opacity: 0.55;
+  border-radius: 2px;
+  animation: cta-sweep 1.5s ease-in-out infinite;
+}
+
+@keyframes cta-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(400%); }
+}
+
+/* Reduced motion: keep the state legible, drop the movement. The blanket
+   rule further down kills transitions, not animations, so these need saying
+   explicitly -- and the label still changes to "Tailoring...", which is the
+   part that actually carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .primary-btn[data-busy] svg { animation: none; }
+  .primary-btn[data-busy]::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.3;
+  }
+}
 .primary-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .primary-btn svg { width: 15px; height: 15px; flex: 0 0 auto; }
 

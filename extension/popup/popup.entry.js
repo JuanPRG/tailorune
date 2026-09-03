@@ -640,7 +640,7 @@ async function onTailorClick() {
 
   await persistSettings();
 
-  els.tailorBtn.disabled = true;
+  setBusy(true);
   els.previewBtn.style.display = 'none';
   els.previewClBtn.style.display = 'none';
   // The restored previous run must not linger next to a running one.
@@ -689,7 +689,7 @@ async function onTailorClick() {
     setStatus(`Failed: ${err && err.message ? err.message : err}`);
     els.result.textContent = JSON.stringify({ ok: false, error: String(err) });
   } finally {
-    els.tailorBtn.disabled = false;
+    setBusy(false);
   }
 }
 
@@ -776,9 +776,49 @@ function describeAge(at) {
  * job. Before the first run there is nothing to move on from, so the reset
  * stays hidden and the CTA keeps the whole width.
  */
+/**
+ * The CTA's label has ONE source of truth, and this is it.
+ *
+ * Three states, two writers, and they collided: setBusy captured the label on
+ * entry and restored it on exit, while setHasRun set it to "Re-tailor" the
+ * moment a run succeeded. The finally block then ran second and put the
+ * pre-run text back, so a finished run showed "Tailor resume" -- caught by a
+ * test asserting the paired state, not by looking at it, because the window
+ * where it is wrong is the one you stop watching.
+ *
+ * Now nothing writes the label directly: both callers set a flag and this
+ * renders from them.
+ */
+let ctaBusy = false;
+let ctaHasRun = false;
+
+function renderCta() {
+  if (!els.tailorBtnLabel) return;
+  els.tailorBtnLabel.textContent = ctaBusy ? 'Tailoring…'
+    : (ctaHasRun ? 'Re-tailor' : 'Tailor resume');
+  if (els.footerResetBtn) els.footerResetBtn.hidden = !ctaHasRun || ctaBusy;
+}
+
+/**
+ * Put the CTA into, or out of, its running state.
+ *
+ * The button is disabled either way -- a second run while one is in flight
+ * would race two pipelines against the same rate limits. What changes is the
+ * LOOK: `data-busy` keeps it at full contrast and animates it, because a
+ * dimmed grey button reads as "unavailable" when the truth is the opposite,
+ * this being the one thing currently happening.
+ */
+function setBusy(busy) {
+  ctaBusy = busy;
+  els.tailorBtn.disabled = busy;
+  if (busy) els.tailorBtn.dataset.busy = 'true';
+  else delete els.tailorBtn.dataset.busy;
+  renderCta();
+}
+
 function setHasRun(hasRun) {
-  if (els.tailorBtnLabel) els.tailorBtnLabel.textContent = hasRun ? 'Re-tailor' : 'Tailor resume';
-  if (els.footerResetBtn) els.footerResetBtn.hidden = !hasRun;
+  ctaHasRun = hasRun;
+  renderCta();
 }
 
 /**

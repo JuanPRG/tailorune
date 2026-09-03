@@ -89,10 +89,23 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   await fillApiKey(page, 'test-key-not-real');
   await page.click('#tailorBtn');
 
+  // The CTA must announce that it is working. onTailorClick sets this
+  // synchronously before its first await, so it is observable the instant the
+  // click handler has run -- no race with the mock's reply.
+  assert.equal(await page.getAttribute('#tailorBtn', 'data-busy'), 'true',
+    'the button should enter its running state immediately');
+  assert.equal(await page.textContent('#tailorBtnLabel'), 'Tailoring…',
+    'the label carries the state for anyone not watching the icon');
+
   await page.waitForFunction(
     () => document.getElementById('status').textContent.startsWith('Done'),
     { timeout: 60000 },
   );
+
+  assert.equal(await page.getAttribute('#tailorBtn', 'data-busy'), null,
+    'the running state must clear when the run ends');
+  assert.equal(await page.textContent('#tailorBtnLabel'), 'Re-tailor',
+    'and the label returns to the paired state, not to its pre-run text');
 
   // --- the popup goes away, exactly as it does on focus loss --------------
   await page.close();
