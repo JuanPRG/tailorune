@@ -10,6 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -26,7 +27,7 @@ const MOCKED_BULLETS = ['TAILORED BULLET A.', 'TAILORED BULLET B.'];
 async function runUploadScenario(t, fixtureFilename) {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-upload-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

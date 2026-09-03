@@ -20,8 +20,15 @@
 //      not including, an LLM call.
 //   2. The popup is DESTROYED the moment it loses focus (verified directly).
 //      Nothing in a real-popup test may focus another window or tab.
+//
+// It does NOT follow that any of this needs a visible browser. The popup
+// wants a focused WINDOW, which new headless still has -- chrome.action
+// .openPopup() was measured working headless, and the launch options come
+// from browser.mjs like every other test's. See that file for why headless
+// needs `channel: 'chromium'` rather than `headless: true` alone.
 
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -44,7 +51,7 @@ export async function openRealPopup(t) {
   const port = debugPort();
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-popup-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

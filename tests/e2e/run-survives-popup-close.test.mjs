@@ -24,6 +24,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -41,7 +42,7 @@ const LAST_RUN_KEY = 'tailorune_last_run_v1';
 test('a finished run is recoverable after the popup is gone', async (t) => {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-survive-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
@@ -167,7 +168,7 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
   // one resume serves many applications.
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-reset-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

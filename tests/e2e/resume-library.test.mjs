@@ -10,6 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -30,7 +31,7 @@ const MOCKED_SUMMARY = 'TAILORED SUMMARY from a saved resume.';
 async function launch(t) {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-lib-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

@@ -10,6 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -30,7 +31,7 @@ const MOCKED_EXPERIENCE_BULLETS = ['TAILORED EXPERIENCE BULLET ONE.', 'TAILORED 
 test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Downloads, locked fields intact', async (t) => {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

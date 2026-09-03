@@ -11,6 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import http from 'node:http';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +67,7 @@ function startSmartMockLlm() {
 test('cover letter path: two LLM calls, two DOCX files, greeting and sign-off built locally', async (t) => {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-cl-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     acceptDownloads: true,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,

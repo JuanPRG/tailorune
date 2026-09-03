@@ -23,6 +23,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { BROWSER } from './browser.mjs';
 import http from 'node:http';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -222,7 +223,7 @@ test('extraction: re-injecting into the same page does not throw on redeclared t
 test('service worker returns an actionable message when activeTab was never granted', async (t) => {
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-jd-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    ...BROWSER,
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,
