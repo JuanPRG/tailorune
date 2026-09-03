@@ -10,6 +10,7 @@ import { parseTxt } from '../engine/parseTxt.js';
 import { tailorResume } from '../engine/tailor.js';
 import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js';
 import { renderResumeHtml } from '../engine/renderHtml.js';
+import { renderResumePdf, renderCoverLetterPdf } from '../engine/renderPdf.js';
 import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
 import { tailorSkills } from '../engine/tailorSkills.js';
 import { judgeTailoredModel } from '../engine/judge.js';
@@ -43,6 +44,27 @@ function slugify(text) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'resume';
+}
+
+/**
+ * The three Arimo faces, fetched once per offscreen document.
+ *
+ * They are extension resources rather than bundled base64 because 134KB of
+ * font inlined into offscreen.bundle.js is 134KB parsed on every startup,
+ * whether or not anyone asks for a PDF.
+ */
+let fontsPromise = null;
+function loadPdfFonts() {
+  if (fontsPromise) return fontsPromise;
+  const face = async (name) => new Uint8Array(
+    await (await fetch(chrome.runtime.getURL(`fonts/${name}`))).arrayBuffer(),
+  );
+  fontsPromise = (async () => ({
+    regular: await face('arimo-regular.ttf'),
+    bold: await face('arimo-bold.ttf'),
+    italic: await face('arimo-italic.ttf'),
+  }))().catch((err) => { fontsPromise = null; throw err; });
+  return fontsPromise;
 }
 
 function bytesToBase64(bytes) {
@@ -194,6 +216,21 @@ async function runTailor(payload) {
   // path, per SPIKE_FINDINGS.md.
   const htmlPreview = renderResumeHtml(tailoredModel);
 
+  // ...and the PDF, which is what the button actually saves. Rendered here
+  // rather than on demand because the popup is destroyed when it loses focus,
+  // so "on demand" would mean waking the offscreen document again with a
+  // model it no longer holds. It costs about 80ms against a 7-17s run.
+  //
+  // A failure here is NOT fatal: htmlPreview above still reaches the print
+  // dialog, so a resume that somehow defeats the layout engine degrades to
+  // the old two-click path instead of losing the run.
+  let resumePdfBase64 = null;
+  try {
+    resumePdfBase64 = await bytesToBase64(await renderResumePdf(tailoredModel, await loadPdfFonts()));
+  } catch (err) {
+    console.error('resume PDF render failed, falling back to print preview', err);
+  }
+
   let coverLetter = null;
   if (payload.includeCoverLetter) {
     const { paragraphs, report } = await timed('coverLetter', () => generateCoverLetter({
@@ -215,6 +252,17 @@ async function runTailor(payload) {
       warnings: report.validator ? report.validator.warnings : [],
       errors: report.validator ? report.validator.errors : [],
       htmlPreview: renderCoverLetterHtml({ bodyParagraphs: paragraphs, model: tailoredModel, job }),
+      pdfBase64: await (async () => {
+        try {
+          return await bytesToBase64(await renderCoverLetterPdf(
+            { bodyParagraphs: paragraphs, model: tailoredModel, job }, await loadPdfFonts(),
+          ));
+        } catch (err) {
+          console.error('cover letter PDF render failed, falling back to print preview', err);
+          return null;
+        }
+      })(),
+      pdfFilename: `${slug}_cover_letter.pdf`,
     };
   }
 
@@ -222,6 +270,8 @@ async function runTailor(payload) {
     ok: true,
     outputs,
     htmlPreview,
+    resumePdfBase64,
+    resumePdfFilename: `${slug}_tailored_resume.pdf`,
     wordCount,
     compactionIterations,
     resumeStatus: resumeReport.status,

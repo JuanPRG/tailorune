@@ -25,8 +25,23 @@ async function ensureOffscreenDocument() {
   });
 }
 
+const MIME = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pdf: 'application/pdf',
+};
+
+/**
+ * Save base64 bytes to the user's Downloads folder, no dialog.
+ *
+ * `saveAs: false` is the whole point: the DOCX has always landed in Downloads
+ * by itself while the PDF demanded a print dialog and a location picker.
+ * Given real PDF bytes the same call serves both, so the two artifacts
+ * finally behave the same way.
+ */
 async function triggerDownload(base64, filename) {
-  const dataUrl = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${base64}`;
+  const ext = String(filename || '').split('.').pop().toLowerCase();
+  const mime = MIME[ext] || 'application/octet-stream';
+  const dataUrl = `data:${mime};base64,${base64}`;
   const downloadId = await chrome.downloads.download({ url: dataUrl, filename, saveAs: false, conflictAction: 'uniquify' });
   return downloadId;
 }
@@ -72,6 +87,13 @@ async function saveLastRun(payload, request) {
         downloads: (payload.downloads || []).map((d) => d.filename),
         htmlPreview: payload.htmlPreview || null,
         coverLetterHtml: (payload.coverLetter && payload.coverLetter.htmlPreview) || null,
+        // The rendered PDFs, so "Save as PDF" still works after the popup has
+        // been destroyed and reopened. About 19KB and 13KB of base64 -- the
+        // same order as the HTML previews already stored beside them.
+        resumePdfBase64: payload.resumePdfBase64 || null,
+        resumePdfFilename: payload.resumePdfFilename || null,
+        coverLetterPdfBase64: (payload.coverLetter && payload.coverLetter.pdfBase64) || null,
+        coverLetterPdfFilename: (payload.coverLetter && payload.coverLetter.pdfFilename) || null,
         resumeStatus: payload.resumeStatus,
         resumeWarnings: payload.resumeWarnings,
         resumeErrors: payload.resumeErrors,
@@ -159,6 +181,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
+    // Saving a PDF is a download, and chrome.downloads lives only here --
+    // see this file's header. The popup holds the bytes; the service worker
+    // is the only thing allowed to write them to disk.
+    if (message.type === 'pdf:save') {
+      try {
+        if (!message.base64) throw new Error('No PDF was generated for this run.');
+        sendResponse({
+          ok: true,
+          downloadId: await triggerDownload(message.base64, message.filename || 'tailorune.pdf'),
+        });
+      } catch (err) {
+        sendResponse({ ok: false, error: String((err && err.message) || err) });
+      }
+      return;
+    }
+
     if (message.type === 'tailor:run') {
       try {
         await ensureOffscreenDocument();
@@ -178,6 +216,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           compactionIterations: result.compactionIterations,
           downloads,
           htmlPreview: result.htmlPreview,
+          resumePdfBase64: result.resumePdfBase64,
+          resumePdfFilename: result.resumePdfFilename,
           resumeStatus: result.resumeStatus,
           resumeWarnings: result.resumeWarnings,
           resumeErrors: result.resumeErrors,

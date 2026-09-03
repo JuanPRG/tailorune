@@ -29,7 +29,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
-import { getExtensionServiceWorker, fillApiKey } from './helpers.mjs';
+import { getExtensionServiceWorker, fillApiKey,
+  waitForNewestDownload, pdfTextOf,
+} from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -117,6 +119,10 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
 
   // 2. And it is all still there: previews, findings, context.
   assert.ok(stored.htmlPreview, 'the resume preview HTML must survive');
+  // The rendered PDF has to survive too, or "Save as PDF" after a reopen
+  // silently degrades to the print dialog it was built to replace.
+  assert.ok(stored.resumePdfBase64, 'the rendered resume PDF must survive the popup being destroyed');
+  assert.match(stored.resumePdfFilename, /\.pdf$/, 'and it must know what to call itself');
   assert.equal(stored.jobTitle, 'Backend Engineer');
   assert.equal(stored.employer, 'Acme Corp');
   assert.ok(stored.wordCount > 0);
@@ -138,14 +144,17 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
     'the resume preview button must come back -- losing it was the reported bug',
   );
 
-  // The restored preview must actually open, not just be visible.
-  const [tab] = await Promise.all([
-    context.waitForEvent('page'),
-    reopened.click('#previewBtn'),
-  ]);
-  await tab.waitForLoadState('domcontentloaded');
-  assert.match(await tab.textContent('body'), /TAILORED BULLET ONE/,
-    'the restored preview should contain the tailored resume');
+  // The restored button must actually SAVE, not just be visible -- and save
+  // the PDF directly, the way the .docx already did, rather than reopening
+  // the print dialog.
+  await reopened.click('#previewBtn');
+  const pdfItem = await waitForNewestDownload(sw, 'application/pdf');
+  const pdfText = await pdfTextOf(pdfItem.filename);
+  assert.ok(
+    pdfText.includes('TAILORED BULLET ONE'),
+    'the PDF saved from a RESTORED run should contain the tailored resume',
+  );
+  assert.ok(pdfText.includes('Juan Rivera'), 'and the candidate name');
 });
 
 test('reset clears the job and the stored run, and keeps what is expensive', async (t) => {

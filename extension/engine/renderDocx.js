@@ -15,6 +15,7 @@
 
 import { Document, Packer, Paragraph, TextRun, Tab, TabStopType, AlignmentType, BorderStyle } from 'docx';
 import { coverLetterSubject } from './coverLetter.js';
+import { classifyLine, orderedBlocks, roleHead } from './resumeLayout.js';
 
 const FONT = 'Arial';
 
@@ -35,6 +36,17 @@ const MARGIN_TOP = 432; // 0.30in
 const MARGIN_SIDE = 864; // 0.60in
 const MARGIN_BOTTOM = 720; // 0.50in
 
+// US Letter, DECLARED. A .docx with no page size takes the reader's default,
+// which is Letter in North America and A4 nearly everywhere else -- so the
+// same file opened in Warsaw was 0.24in narrower per line and 0.69in taller
+// per page than the PDF and the HTML, which are both pinned to Letter. Three
+// renderers cannot be "the same document" while one of them asks the
+// operating system what shape paper is. Found by measuring a LibreOffice
+// conversion and getting text positions 50pt off: 842pt of A4 against the
+// 792pt everything else assumed.
+const PAGE_WIDTH = 12240;  // 8.5in
+const PAGE_HEIGHT = 15840; // 11in
+
 // Measured, not assumed: a LibreOffice page-count sweep put the one-page
 // boundary at 522 words for BOTH 0.30/0.75/0.60 and this tighter geometry.
 // Page breaks land on line boundaries, so extra width adds no lines to
@@ -46,9 +58,6 @@ const MARGIN_BOTTOM = 720; // 0.50in
 // Letter width (12240 twips) less both side margins: where a right-aligned
 // tab stop has to sit for dates to land flush with the right edge.
 const CONTENT_WIDTH = 12240 - MARGIN_SIDE * 2;
-
-// Longest a role's context can be and still share the title's line.
-const INLINE_CONTEXT_MAX = 92;
 
 function textParagraph(text, opts = {}) {
   return new Paragraph({
@@ -94,20 +103,6 @@ function sectionHeading(text) {
   });
 }
 
-/** A source line that already carries a bullet marker, rendered as a real list item. */
-const LEADING_BULLET_RE = /^[-*•▪◦‣]\s+/;
-
-// A line ending in a year or a date range, separated by real whitespace:
-// "Bachelor of Economics   2015", "Advanced Diploma (CPA)   May 2023 - Apr 2026".
-// Both reference resumes bold this line and push the year to the right margin,
-// exactly as they do for a role -- and both leave the institution line beneath
-// it plain, which is what tells the two apart at a glance.
-// Written as a literal, not assembled from strings. `\s` and `\d` are not
-// valid escapes inside a template literal and collapse to bare `s` and `d`,
-// which turns this pattern into something that matches nothing and fails
-// silently — it did exactly that on the first attempt.
-const TRAILING_YEAR_RE = /^(.*\S)\s{2,}((?:[A-Za-z]{3,9}\.?\s+)?\d{4}(?:\s*[-–—]\s*(?:present|current|(?:[A-Za-z]{3,9}\.?\s+)?\d{4}))?)\s*$/i;
-
 function datedLineParagraph(text, year) {
   return new Paragraph({
     spacing: { before: 60, after: 20 },
@@ -120,28 +115,10 @@ function datedLineParagraph(text, year) {
 }
 
 function lineParagraph(line, { justify = false } = {}) {
-  if (LEADING_BULLET_RE.test(line)) {
-    return bulletParagraph(line.replace(LEADING_BULLET_RE, '').trim());
-  }
-  const dated = TRAILING_YEAR_RE.exec(line);
-  if (dated) return datedLineParagraph(dated[1].trim(), dated[2].trim());
-  return textParagraph(line, { justify });
-}
-
-/**
- * Split an entry's meta into the date range and whatever context follows it.
- *
- * parseTxt joins them with " · " ("2018 - Present · Colombia (Remote)"), and
- * the date is what belongs at the right margin; the context is a subtitle.
- */
-const META_DATE_RE = /^(?:[A-Za-z]{3,9}\.?\s+\d{4}|\d{4})\s*[-–—]\s*(?:present|current|[A-Za-z]{3,9}\.?\s+\d{4}|\d{4})$/i;
-function splitMeta(meta) {
-  const parts = String(meta || '').split(' · ').map((p) => p.trim()).filter(Boolean);
-  if (!parts.length) return { date: '', context: '' };
-  if (META_DATE_RE.test(parts[0])) {
-    return { date: parts[0], context: parts.slice(1).join(' · ') };
-  }
-  return { date: '', context: parts.join(' · ') };
+  const { kind, text, date } = classifyLine(line);
+  if (kind === 'bullet') return bulletParagraph(text);
+  if (kind === 'dated') return datedLineParagraph(text, date);
+  return textParagraph(text, { justify });
 }
 
 /**
@@ -163,10 +140,7 @@ function splitMeta(meta) {
 function renderEntries(entries) {
   const out = [];
   entries.forEach((entry, idx) => {
-    const title = entry.title || '(untitled role)';
-    const { date, context } = splitMeta(entry.meta);
-    const inlineContext = context && `${title} · ${context}`.length <= INLINE_CONTEXT_MAX;
-    const headline = inlineContext ? `${title} · ${context}` : title;
+    const { headline, date, context, inlineContext } = roleHead(entry);
 
     const children = [new TextRun({ text: headline, bold: true, size: BODY_SIZE, font: FONT })];
     if (date) {
@@ -207,36 +181,13 @@ export function buildResumeDocument(model) {
     children.push(textParagraph(model.summary, { after: 140, justify: true }));
   }
 
-  // Skills is parsed out of `sections` into its own field, because it has its
-  // own tailoring pass and its own rules -- but that must not decide where it
-  // PRINTS. parseTxt records each block's position, so a resume that ends with
-  // skills comes back ending with skills. Models built by hand (tests, older
-  // callers) carry no order, and fall back to skills-first.
-  const blocks = [];
-  if (model.skills && model.skills.lines.length) {
-    blocks.push({
-      order: model.skills.order ?? -1,
-      heading: model.skills.heading || 'SKILLS',
-      // Real list items, matching the reference resume. Each line is a
-      // labelled group ("Languages: Java, Python"), and a bullet is what tells
-      // a reader -- and a parser -- that these are peers rather than prose.
-      render: () => model.skills.lines.map((line) => lineParagraph(line, { justify: true })),
-    });
-  }
-  model.sections.forEach((section, i) => {
-    blocks.push({
-      order: section.order ?? i,
-      heading: section.heading,
-      render: () => (section.entries
-        ? renderEntries(section.entries)
-        : section.lines.map((line) => lineParagraph(line, { justify: true }))),
-    });
-  });
-
-  blocks.sort((a, b) => a.order - b.order);
-  for (const block of blocks) {
+  // Section order -- including where skills lands -- is resumeLayout.js's
+  // call, so the DOCX, the HTML and the PDF cannot disagree about it.
+  for (const block of orderedBlocks(model)) {
     children.push(sectionHeading(block.heading));
-    children.push(...block.render());
+    children.push(...(block.kind === 'entries'
+      ? renderEntries(block.entries)
+      : block.lines.map((line) => lineParagraph(line, { justify: true }))));
   }
 
   return new Document({
@@ -244,6 +195,7 @@ export function buildResumeDocument(model) {
       {
         properties: {
           page: {
+            size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
             margin: {
               top: MARGIN_TOP, right: MARGIN_SIDE, bottom: MARGIN_BOTTOM, left: MARGIN_SIDE,
             },
@@ -292,7 +244,10 @@ export function buildCoverLetterDocument({ bodyParagraphs, model, job }) {
     sections: [
       {
         properties: {
-          page: { margin: { top: CL_MARGIN_TWIPS, right: CL_MARGIN_TWIPS, bottom: CL_MARGIN_TWIPS, left: CL_MARGIN_TWIPS } },
+          page: {
+            size: { width: PAGE_WIDTH, height: PAGE_HEIGHT },
+            margin: { top: CL_MARGIN_TWIPS, right: CL_MARGIN_TWIPS, bottom: CL_MARGIN_TWIPS, left: CL_MARGIN_TWIPS },
+          },
         },
         children,
       },

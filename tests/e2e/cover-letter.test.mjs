@@ -16,7 +16,10 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
+import {
+  getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey,
+  waitForNewestDownload, pdfTextOf,
+} from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -127,14 +130,28 @@ test('cover letter path: two LLM calls, two DOCX files, greeting and sign-off bu
   assert.ok(clText.includes('Juan Rivera'), 'real candidate name missing from the letter');
   assert.ok(clText.includes('Re: Backend Engineer at Acme Corp'), 'job reference line missing');
 
-  // The letter also gets its own print preview.
-  assert.equal(await page.locator('#previewClBtn').isVisible(), true, 'cover-letter preview button should be visible');
-  const [clPage] = await Promise.all([
-    context.waitForEvent('page'),
-    page.click('#previewClBtn'),
-  ]);
-  await clPage.waitForLoadState();
-  const clPreview = await clPage.textContent('body');
-  assert.ok(clPreview.includes('Dear Hiring Manager,'));
-  assert.ok(clPreview.includes('Juan Rivera'));
+  // ...and the letter saves as a PDF in ONE click.
+  //
+  // This used to open a tab and raise the print dialog, and the assertion
+  // below used to wait for that tab. renderPdf.js now produces real bytes
+  // during the run, so the button hands them to chrome.downloads and the file
+  // lands in Downloads exactly as the .docx beside it does -- no dialog, no
+  // location picker. Asserted against the file ON DISK, because "the promise
+  // resolved" is not the same claim as "the user has a readable PDF".
+  assert.equal(await page.locator('#previewClBtn').isVisible(), true, 'cover-letter PDF button should be visible');
+  await page.click('#previewClBtn');
+
+  // Matched by MIME: Playwright renames every download to an extensionless
+  // GUID, so the requested filename is not observable from here.
+  const pdfItem = await waitForNewestDownload(sw, 'application/pdf');
+
+  const pdfText = await pdfTextOf(pdfItem.filename);
+  assert.ok(pdfText.includes('Dear Hiring Manager,'), 'greeting missing from the PDF');
+  assert.ok(pdfText.includes('Sincerely,'), 'sign-off missing from the PDF');
+  assert.ok(pdfText.includes('Juan Rivera'), 'candidate name missing from the PDF');
+  assert.ok(pdfText.includes('BODY PARAGRAPH ONE'), 'letter body missing from the PDF');
+  assert.ok(
+    pdfText.includes('Re: Backend Engineer at Acme Corp'),
+    'job reference line missing from the PDF',
+  );
 });

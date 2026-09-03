@@ -67,6 +67,8 @@ const els = {
 
 let lastResumeHtml = null;
 let lastCoverLetterHtml = null;
+let lastResumePdf = null;        // { base64, filename }
+let lastCoverLetterPdf = null;
 
 const storage = chromeStorageAdapter();
 
@@ -311,14 +313,39 @@ function openHtmlInTab(html) {
   chrome.tabs.create({ url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}` });
 }
 
-// Opening the preview fires the print dialog straight away, which is the
-// whole point: v4's PDFs came from Chromium's print-to-PDF, and this is the
-// same Skia renderer -- the only thing that ever separated Tailorune from
-// v4's PDF output was four clicks. Cancelling the dialog leaves the preview
-// page open, so one button still serves both "give me the PDF" and "let me
-// read it first".
-els.previewBtn.addEventListener('click', () => lastResumeHtml && openHtmlInTab(withAutoPrint(lastResumeHtml)));
-els.previewClBtn.addEventListener('click', () => lastCoverLetterHtml && openHtmlInTab(withAutoPrint(lastCoverLetterHtml)));
+/**
+ * Save a rendered PDF straight to Downloads.
+ *
+ * The bytes were produced during the run by renderPdf.js, so this is one
+ * message and no dialog -- the DOCX has always behaved this way and the PDF
+ * now matches it.
+ *
+ * If the run produced no PDF (the renderer threw on some unusual resume) the
+ * old path is still there: the HTML preview opens in a tab with the print
+ * dialog already up. Degrading to two clicks beats losing the artifact.
+ */
+async function savePdf(pdf, fallbackHtml, label) {
+  if (!pdf || !pdf.base64) {
+    if (fallbackHtml) openHtmlInTab(withAutoPrint(fallbackHtml));
+    return;
+  }
+  try {
+    const response = await chrome.runtime.sendMessage({
+      target: 'sw', type: 'pdf:save', base64: pdf.base64, filename: pdf.filename,
+    });
+    if (!response || !response.ok) throw new Error((response && response.error) || 'Download failed');
+    setStatus(`Saved ${pdf.filename} to your Downloads.`);
+  } catch (err) {
+    if (fallbackHtml) {
+      openHtmlInTab(withAutoPrint(fallbackHtml));
+      return;
+    }
+    setStatus(`Could not save the ${label} PDF: ${String((err && err.message) || err)}`);
+  }
+}
+
+els.previewBtn.addEventListener('click', () => savePdf(lastResumePdf, lastResumeHtml, 'resume'));
+els.previewClBtn.addEventListener('click', () => savePdf(lastCoverLetterPdf, lastCoverLetterHtml, 'cover letter'));
 
 /** {providerId: key} for every provider the user supplied a fallback key for. */
 /**
@@ -646,6 +673,8 @@ async function onTailorClick() {
   // The restored previous run must not linger next to a running one.
   lastResumeHtml = null;
   lastCoverLetterHtml = null;
+  lastResumePdf = null;
+  lastCoverLetterPdf = null;
   els.warnings.innerHTML = '';
   els.result.textContent = '';
   setStatus(includeCoverLetter
@@ -679,6 +708,12 @@ async function onTailorClick() {
       renderFindings(response);
       lastResumeHtml = response.htmlPreview || null;
       lastCoverLetterHtml = response.coverLetter ? response.coverLetter.htmlPreview : null;
+      lastResumePdf = response.resumePdfBase64
+        ? { base64: response.resumePdfBase64, filename: response.resumePdfFilename }
+        : null;
+      lastCoverLetterPdf = response.coverLetter && response.coverLetter.pdfBase64
+        ? { base64: response.coverLetter.pdfBase64, filename: response.coverLetter.pdfFilename }
+        : null;
       els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
       els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
       setHasRun(true);
@@ -718,6 +753,12 @@ async function restoreLastRun() {
 
   lastResumeHtml = last.htmlPreview || null;
   lastCoverLetterHtml = last.coverLetterHtml || null;
+  lastResumePdf = last.resumePdfBase64
+    ? { base64: last.resumePdfBase64, filename: last.resumePdfFilename }
+    : null;
+  lastCoverLetterPdf = last.coverLetterPdfBase64
+    ? { base64: last.coverLetterPdfBase64, filename: last.coverLetterPdfFilename }
+    : null;
   els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
   els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
   renderFindings({
@@ -847,6 +888,8 @@ async function onResetClick() {
 
   lastResumeHtml = null;
   lastCoverLetterHtml = null;
+  lastResumePdf = null;
+  lastCoverLetterPdf = null;
   els.previewBtn.style.display = 'none';
   els.previewClBtn.style.display = 'none';
   els.warnings.innerHTML = '';

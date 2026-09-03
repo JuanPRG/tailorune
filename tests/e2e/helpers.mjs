@@ -44,3 +44,58 @@ export async function fillApiKey(page, key = 'test-key-not-real') {
   await page.locator('#providerDetails').evaluate((el) => { el.open = true; });
   await page.fill('#apiKey', key);
 }
+
+/**
+ * Wait for a download the USER triggered from the popup, where the test never
+ * sees the id.
+ *
+ * The "Save as PDF" buttons hand their bytes to the service worker, which
+ * calls chrome.downloads.download() and keeps the id to itself, so
+ * waitForCompletedDownload has nothing to be given.
+ *
+ * MATCHED ON MIME, NOT ON FILENAME, and that is not a style choice: under
+ * Playwright every download lands as a GUID in a playwright-artifacts-*
+ * directory with NO EXTENSION AT ALL --
+ *
+ *   C:\...\playwright-artifacts-fosrbG\80eedb1e-6442-4fe8-ad75-83e1b674a5c6
+ *
+ * -- so `filename.endsWith('.pdf')` never matches anything here, however
+ * correct the extension's own `filename` argument was. The requested name is
+ * simply not what reaches disk in this harness, which also means a test
+ * cannot assert it.
+ */
+export async function waitForNewestDownload(sw, mime, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let seen = null;
+  while (Date.now() < deadline) {
+    const items = await sw.evaluate(
+      () => chrome.downloads.search({ orderBy: ['-startTime'], limit: 20 }),
+    );
+    const matching = (items || []).filter((i) => i.mime === mime);
+    seen = matching[0] || seen;
+    const done = matching.find((i) => i.state === 'complete');
+    if (done) return done;
+    const broken = matching.find((i) => i.state === 'interrupted');
+    if (broken) throw new Error(`Download interrupted: ${broken.error}`);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(
+    `No completed "${mime}" download within ${timeoutMs}ms`
+    + (seen ? ` (one was ${seen.state})` : ' (none started)'),
+  );
+}
+
+/** The text of a PDF on disk, for asserting what actually reached the user. */
+export async function pdfTextOf(filePath) {
+  const { readFileSync } = await import('node:fs');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(readFileSync(filePath)), useSystemFonts: true,
+  }).promise;
+  let out = '';
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    out += (await page.getTextContent()).items.map((i) => i.str).join(' ') + ' ';
+  }
+  return out.replace(/\s+/g, ' ');
+}

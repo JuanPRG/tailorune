@@ -22,41 +22,22 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
-// Mirrors renderDocx.js's splitMeta: the date belongs at the right margin,
-// the rest is a subtitle. Kept in step deliberately -- the two exits are one
-// design, so a change to how a role reads has to land in both.
-const META_DATE_RE = /^(?:[A-Za-z]{3,9}\.?\s+\d{4}|\d{4})\s*[-–—]\s*(?:present|current|[A-Za-z]{3,9}\.?\s+\d{4}|\d{4})$/i;
-const INLINE_CONTEXT_MAX = 92;
+import { LEADING_BULLET_RE, classifyLine, orderedBlocks, roleHead } from './resumeLayout.js';
 
-function splitMeta(meta) {
-  const parts = String(meta || '').split(' · ').map((x) => x.trim()).filter(Boolean);
-  if (!parts.length) return { date: '', context: '' };
-  if (META_DATE_RE.test(parts[0])) return { date: parts[0], context: parts.slice(1).join(' · ') };
-  return { date: '', context: parts.join(' · ') };
-}
-
-// Mirrors renderDocx.js. Written as a literal for the same reason it is there:
-// \s and \d are not valid escapes in a template literal and collapse to bare
-// letters, which silently produces a pattern that matches nothing.
-const TRAILING_YEAR_RE = /^(.*\S)\s{2,}((?:[A-Za-z]{3,9}\.?\s+)?\d{4}(?:\s*[-–—]\s*(?:present|current|(?:[A-Za-z]{3,9}\.?\s+)?\d{4}))?)\s*$/i;
-const LEADING_BULLET_RE = /^[-*•▪◦‣]\s+/;
-
-/** A plain section line: a dated row (education) reads like a role. */
+/** A plain section line: a bullet, or a dated row (education) that reads like a role. */
 function renderLine(line) {
-  const dated = TRAILING_YEAR_RE.exec(line);
-  if (dated) {
-    return `<div class="role-head"><span class="role-title">${escapeHtml(dated[1].trim())}</span>`
-      + `<span class="role-date">${escapeHtml(dated[2].trim())}</span></div>`;
+  const { kind, text, date } = classifyLine(line);
+  if (kind === 'bullet') return `<ul><li>${escapeHtml(text)}</li></ul>`;
+  if (kind === 'dated') {
+    return `<div class="role-head"><span class="role-title">${escapeHtml(text)}</span>`
+      + `<span class="role-date">${escapeHtml(date)}</span></div>`;
   }
-  return `<p class="justified">${escapeHtml(line)}</p>`;
+  return `<p class="justified">${escapeHtml(text)}</p>`;
 }
 
 function renderEntries(entries) {
   return entries.map((entry) => {
-    const title = entry.title || '(untitled role)';
-    const { date, context } = splitMeta(entry.meta);
-    const inline = context && `${title} · ${context}`.length <= INLINE_CONTEXT_MAX;
-    const headline = inline ? `${title} · ${context}` : title;
+    const { headline, date, context, inlineContext: inline } = roleHead(entry);
     return `
     <div class="role-head">
       <span class="role-title">${escapeHtml(headline)}</span>
@@ -71,28 +52,16 @@ function renderEntries(entries) {
 /** @param {import('./resumeModel.js').ResumeModel} model */
 export function renderResumeHtml(model) {
   const contactLine = model.contact ? model.contact.split('\n').join(' | ') : '';
-  // Source order, same as renderDocx: skills is parsed into its own field but
-  // must print where the resume put it.
-  const blocks = [];
-  if (model.skills && model.skills.lines.length) {
-    blocks.push({
-      order: model.skills.order ?? -1,
-      html: `<h2>${escapeHtml(model.skills.heading || 'SKILLS')}</h2><ul>${
-        model.skills.lines.map((l) => `<li>${escapeHtml(l.replace(LEADING_BULLET_RE, ''))}</li>`).join('')}</ul>`,
-    });
-  }
-  model.sections.forEach((section, i) => {
-    blocks.push({
-      order: section.order ?? i,
-      html: `<h2>${escapeHtml(section.heading)}</h2>${
-        section.entries
-          ? renderEntries(section.entries)
-          : section.lines.map((l) => (LEADING_BULLET_RE.test(l)
-            ? `<ul><li>${escapeHtml(l.replace(LEADING_BULLET_RE, ''))}</li></ul>`
-            : renderLine(l))).join('')}`,
-    });
-  });
-  blocks.sort((a, b) => a.order - b.order);
+  // Section order -- including where skills lands -- is resumeLayout.js's
+  // call, so the DOCX, the HTML and the PDF cannot disagree about it.
+  const blocks = orderedBlocks(model).map((block) => ({
+    html: `<h2>${escapeHtml(block.heading)}</h2>${
+      block.kind === 'skills'
+        ? `<ul>${block.lines.map((l) => `<li>${escapeHtml(l.replace(LEADING_BULLET_RE, ''))}</li>`).join('')}</ul>`
+        : block.kind === 'entries'
+          ? renderEntries(block.entries)
+          : block.lines.map(renderLine).join('')}`,
+  }));
   const sectionsHtml = blocks.map((b) => b.html).join('');
   const skillsHtml = '';
 
