@@ -72,6 +72,11 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   await page.selectOption('#provider', 'gemini');
   await fillApiKey(page);
   await page.uncheck('#includeCoverLetter');
+  // Chip OFF for this run, deliberately: it proves the preference is real,
+  // and it leaves the button as the ONLY source of a PDF below. With
+  // auto-download on, waiting for "a PDF download" would be satisfied by the
+  // automatic one and would assert nothing about the button at all.
+  await page.uncheck('#autoDownloadPdf');
   await page.click('#tailorBtn');
 
   await page.waitForFunction(() => {
@@ -142,6 +147,12 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   // TAILORED summary -- the same pair the .docx is checked for, because two
   // formats of one resume disagreeing about the phone number is the failure
   // that matters.
+  // With the chip off, nothing but the .docx should have been downloaded.
+  assert.deepEqual(
+    resultJson.downloads.map((d) => d.kind).sort(), ['resume'],
+    'with "PDF copy" unchecked a run must download the .docx only',
+  );
+
   assert.equal(await page.locator('#previewBtn').isVisible(), true, 'resume PDF button should appear after a successful tailor');
   await page.click('#previewBtn');
 

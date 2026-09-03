@@ -225,10 +225,18 @@ async function runTailor(payload) {
   // dialog, so a resume that somehow defeats the layout engine degrades to
   // the old two-click path instead of losing the run.
   let resumePdfBase64 = null;
+  const resumePdfFilename = `${slug}_tailored_resume.pdf`;
   try {
     resumePdfBase64 = await bytesToBase64(await renderResumePdf(tailoredModel, await loadPdfFonts()));
   } catch (err) {
     console.error('resume PDF render failed, falling back to print preview', err);
+  }
+
+  // Rendering is unconditional; only DOWNLOADING is a preference. The button
+  // needs the bytes whether or not the file was wanted automatically, and 80ms
+  // against a 7-17s run is not worth a branch.
+  if (resumePdfBase64 && payload.autoDownloadPdf) {
+    outputs.push({ kind: 'resume_pdf', filename: resumePdfFilename, base64: resumePdfBase64 });
   }
 
   let coverLetter = null;
@@ -264,6 +272,13 @@ async function runTailor(payload) {
       })(),
       pdfFilename: `${slug}_cover_letter.pdf`,
     };
+    if (coverLetter.pdfBase64 && payload.autoDownloadPdf) {
+      outputs.push({
+        kind: 'cover_letter_pdf',
+        filename: coverLetter.pdfFilename,
+        base64: coverLetter.pdfBase64,
+      });
+    }
   }
 
   return {
@@ -271,7 +286,7 @@ async function runTailor(payload) {
     outputs,
     htmlPreview,
     resumePdfBase64,
-    resumePdfFilename: `${slug}_tailored_resume.pdf`,
+    resumePdfFilename,
     wordCount,
     compactionIterations,
     resumeStatus: resumeReport.status,

@@ -37,6 +37,7 @@ const els = {
   employer: $('employer'),
   includeCoverLetter: $('includeCoverLetter'),
   useJudge: $('useJudge'),
+  autoDownloadPdf: $('autoDownloadPdf'),
   resumeDensity: $('resumeDensity'),
   keywordAlignment: $('keywordAlignment'),
   coverLetterLength: $('coverLetterLength'),
@@ -437,6 +438,7 @@ function collectSettings() {
     apiKey: els.apiKey.value.trim(),
     includeCoverLetter: els.includeCoverLetter.checked,
     useJudge: els.useJudge.checked,
+    autoDownloadPdf: els.autoDownloadPdf.checked,
     preferences: collectPreferences(),
     providerKeys: collectProviderKeys(),
   };
@@ -457,7 +459,7 @@ function collectSettings() {
  * `change` still matters for <select> and checkboxes.
  */
 const PERSIST_ON_CHANGE = [
-  'provider', 'modelName', 'apiKey', 'includeCoverLetter', 'useJudge',
+  'provider', 'modelName', 'apiKey', 'includeCoverLetter', 'useJudge', 'autoDownloadPdf',
   'resumeDensity', 'keywordAlignment', 'coverLetterLength', 'coverLetterTone',
   'preservePoints', 'resumeNotes', 'coverLetterNotes',
   'fallbackGemini', 'fallbackGroq', 'fallbackOpenrouter',
@@ -570,6 +572,7 @@ async function restoreSettings() {
   if (settings.apiKey) els.apiKey.value = settings.apiKey;
   if (typeof settings.includeCoverLetter === 'boolean') els.includeCoverLetter.checked = settings.includeCoverLetter;
   if (typeof settings.useJudge === 'boolean') els.useJudge.checked = settings.useJudge;
+  if (typeof settings.autoDownloadPdf === 'boolean') els.autoDownloadPdf.checked = settings.autoDownloadPdf;
   applyPreferences(settings.preferences);
   applyProviderKeys(settings.providerKeys);
   applyTheme(settings.theme || 'system');
@@ -655,6 +658,7 @@ async function onTailorClick() {
   const apiKey = els.apiKey.value.trim();
   const includeCoverLetter = els.includeCoverLetter.checked;
   const useJudge = els.useJudge.checked;
+  const autoDownloadPdf = els.autoDownloadPdf.checked;
   const preferences = collectPreferences();
   const providerKeys = collectProviderKeys();
 
@@ -693,7 +697,7 @@ async function onTailorClick() {
       payload: {
         resumeText, jobDescription,
         jobTitle: els.jobTitle.value.trim(), employer: els.employer.value.trim(),
-        includeCoverLetter, useJudge, preferences,
+        includeCoverLetter, useJudge, autoDownloadPdf, preferences,
         providerId, apiKey, modelName, providerKeys, baseUrlOverride,
       },
     });

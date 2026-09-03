@@ -89,6 +89,9 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   // is about SURVIVING a closed popup, not about letter quality.
   await page.uncheck('#includeCoverLetter');
   await fillApiKey(page, 'test-key-not-real');
+  // Chip off: the PDF must come from the RESTORED button, not from the
+  // automatic download this run would otherwise have produced.
+  await page.uncheck('#autoDownloadPdf');
   await page.click('#tailorBtn');
 
   // The CTA must announce that it is working. onTailorClick sets this

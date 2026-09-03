@@ -18,7 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey,
-  waitForNewestDownload, pdfTextOf,
+  pdfTextOf,
 } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -103,11 +103,20 @@ test('cover letter path: two LLM calls, two DOCX files, greeting and sign-off bu
   const result = JSON.parse(await page.textContent('#result'));
   assert.equal(result.ok, true, `expected ok:true, got ${JSON.stringify(result)}`);
 
-  // Both documents must have been produced and downloaded.
-  assert.equal(result.downloads.length, 2, `expected 2 downloads, got ${JSON.stringify(result.downloads)}`);
+  // Both documents, in BOTH formats, downloaded automatically -- no clicks.
+  //
+  // The "PDF copy" chip is on by default, so a run produces four files. The
+  // PDF used to require opening a tab and driving a print dialog while the
+  // .docx arrived by itself; these assertions are what stops that asymmetry
+  // coming back.
   const kinds = result.downloads.map((d) => d.kind).sort();
-  assert.deepEqual(kinds, ['cover_letter', 'resume']);
+  assert.deepEqual(
+    kinds, ['cover_letter', 'cover_letter_pdf', 'resume', 'resume_pdf'],
+    `expected both documents in both formats, got ${JSON.stringify(result.downloads)}`,
+  );
   assert.match(result.downloads.find((d) => d.kind === 'cover_letter').filename, /_cover_letter\.docx$/);
+  assert.match(result.downloads.find((d) => d.kind === 'cover_letter_pdf').filename, /_cover_letter\.pdf$/);
+  assert.match(result.downloads.find((d) => d.kind === 'resume_pdf').filename, /_tailored_resume\.pdf$/);
 
   // Both LLM calls really happened, and were distinguishable.
   const calls = mockLlm.calls();
@@ -130,21 +139,18 @@ test('cover letter path: two LLM calls, two DOCX files, greeting and sign-off bu
   assert.ok(clText.includes('Juan Rivera'), 'real candidate name missing from the letter');
   assert.ok(clText.includes('Re: Backend Engineer at Acme Corp'), 'job reference line missing');
 
-  // ...and the letter saves as a PDF in ONE click.
+  // ...and the letter PDF that arrived on its own carries the same letter.
   //
-  // This used to open a tab and raise the print dialog, and the assertion
-  // below used to wait for that tab. renderPdf.js now produces real bytes
-  // during the run, so the button hands them to chrome.downloads and the file
-  // lands in Downloads exactly as the .docx beside it does -- no dialog, no
-  // location picker. Asserted against the file ON DISK, because "the promise
-  // resolved" is not the same claim as "the user has a readable PDF".
-  assert.equal(await page.locator('#previewClBtn').isVisible(), true, 'cover-letter PDF button should be visible');
-  await page.click('#previewClBtn');
-
-  // Matched by MIME: Playwright renames every download to an extensionless
-  // GUID, so the requested filename is not observable from here.
-  const pdfItem = await waitForNewestDownload(sw, 'application/pdf');
-
+  // Asserted against the file ON DISK, and located BY DOWNLOAD ID rather than
+  // by name: Playwright renames every download to an extensionless GUID, so
+  // the filename the extension asked for is not observable from a test.
+  //
+  // The on-demand button path is covered where it can be isolated --
+  // vertical-slice.test.mjs and run-survives-popup-close.test.mjs both run
+  // with the chip off, so there the button is the only thing that can produce
+  // a PDF at all.
+  const clPdf = result.downloads.find((d) => d.kind === 'cover_letter_pdf');
+  const pdfItem = await waitForCompletedDownload(sw, clPdf.downloadId);
   const pdfText = await pdfTextOf(pdfItem.filename);
   assert.ok(pdfText.includes('Dear Hiring Manager,'), 'greeting missing from the PDF');
   assert.ok(pdfText.includes('Sincerely,'), 'sign-off missing from the PDF');
