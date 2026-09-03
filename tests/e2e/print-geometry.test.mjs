@@ -38,13 +38,19 @@ const FIXTURE = path.resolve(__dirname, '../fixtures/resumes/juan-rivera-full.tx
 // renderDocx.js: MARGIN_TOP 432 twips, MARGIN_SIDE 864, MARGIN_BOTTOM 720.
 const DOCX_SIDE_IN = 864 / 1440;
 
-/** Print the HTML through the same Skia path v4 used, and measure the text. */
-async function measure(html) {
+/**
+ * Print the HTML through the same Skia path v4 used, and measure the text.
+ *
+ * `pdfOpts.margin` stands in for Chrome's print-dialog Margins control. That
+ * control is the whole reason this file has two cases: it OVERRIDES the CSS
+ * @page margin, and a user who once picked "None" keeps it silently forever.
+ */
+async function measure(html, pdfOpts = {}) {
   const browser = await chromium.launch();
   try {
     const page = await (await browser.newContext()).newPage();
     await page.setContent(html);
-    const bytes = await page.pdf({ printBackground: true });
+    const bytes = await page.pdf({ printBackground: true, ...pdfOpts });
 
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise;
@@ -95,26 +101,67 @@ test('the printed resume matches the DOCX text block', async () => {
   );
 });
 
-test('the on-screen paper padding does not leak into print', async () => {
-  // The regression, stated as the thing that actually went wrong: .sheet's
-  // screen padding stacking on top of the @page margin. Asserted as a DELTA
-  // against a deliberately broken build, so it cannot pass just because some
-  // other number happens to look plausible.
+test('the margins hold whatever the print dialog is set to', async () => {
+  // THE CASE THAT WAS MISSED, and it shipped a broken PDF.
+  //
+  // The first fix put the margins in @page and removed the screen padding.
+  // Every measurement here passed, because page.pdf() has no dialog to
+  // disagree with it. On a real machine with the dialog's Margins set to
+  // "None" -- a sticky preference nobody remembers choosing -- @page was
+  // discarded and the resume printed edge to edge: section rules running off
+  // both sides, words clipped mid-line.
+  //
+  // The margin now lives in the CONTENT, which no dialog setting can remove.
+  // Both cases below must land on the same number.
   const model = parseTxt(readFileSync(FIXTURE, 'utf8'));
-  const fixed = await measure(renderResumeHtml(model));
 
-  const broken = renderResumeHtml(model)
-    .replace('.sheet { max-width: none; margin: 0; padding: 0; }', '/* override removed */');
-  const withPadding = await measure(broken);
+  const asNone = await measure(renderResumeHtml(model));
+  const asDefault = await measure(renderResumeHtml(model), {
+    margin: { top: '0.4in', bottom: '0.4in', left: '0.4in', right: '0.4in' },
+  });
 
+  for (const [label, m] of [['dialog None', asNone], ['dialog Default', asDefault]]) {
+    assert.ok(
+      Math.abs(m.leftIn - DOCX_SIDE_IN) <= 0.05,
+      `${label}: left ${m.leftIn.toFixed(2)}in should be the DOCX's ${DOCX_SIDE_IN.toFixed(2)}in`,
+    );
+    assert.ok(m.leftIn > 0.1, `${label}: the text must never reach the paper edge`);
+  }
   assert.ok(
-    withPadding.leftIn - fixed.leftIn > 0.3,
-    'the broken build should show the padding; if it does not, this test is no longer testing anything',
+    Math.abs(asNone.leftIn - asDefault.leftIn) < 0.05,
+    'the two dialog settings must not produce different documents',
   );
-  assert.ok(
-    fixed.leftIn < withPadding.leftIn,
-    'the print override must remove the screen padding',
+});
+
+test('the margin is declared in the content, not in @page', async () => {
+  // A SOURCE assertion, and the reason is worth stating: this bug CANNOT be
+  // caught by rendering.
+  //
+  // Chrome's print-dialog Margins control is what discards @page, and
+  // page.pdf() has no dialog -- in this Chromium the CSS @page always wins
+  // there, whatever margin argument is passed. So a build that relies on
+  // @page measures perfectly through every automated path available here and
+  // still prints edge to edge on a machine where someone once chose "None".
+  // That is exactly how it shipped.
+  //
+  // What can be checked is the invariant that makes the render irrelevant:
+  // the margin must be padding on .sheet, and @page must be zero. Pin that.
+  const model = parseTxt(readFileSync(FIXTURE, 'utf8'));
+  const html = renderResumeHtml(model);
+
+  assert.match(
+    html, /@page\s*\{[^}]*margin:\s*0\s*;/,
+    '@page must be zero: any margin declared there is discarded by the dialog',
   );
+  assert.match(
+    html, /@media print\s*\{[\s\S]*?\.sheet\s*\{[^}]*padding:\s*0\.30in 0\.60in 0\.50in/,
+    'the printed margin must be padding on .sheet, which no dialog setting can remove',
+  );
+
+  // And the rendered result must still agree with the DOCX, so the invariant
+  // above is not satisfied by some number that merely looks tidy.
+  const m = await measure(html);
+  assert.ok(Math.abs(m.leftIn - DOCX_SIDE_IN) <= 0.05);
 });
 
 test('withAutoPrint opens the dialog, and only once', async () => {

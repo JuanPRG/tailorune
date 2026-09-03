@@ -37,11 +37,25 @@ test('renderResumeHtml includes the headers-and-footers print hint', () => {
   assert.match(html, /Headers and footers/);
 });
 
-test('renderResumeHtml uses the same asymmetric margins as the DOCX template', () => {
-  // 0.30in top / 0.60in sides / 0.50in bottom. A wide top margin spends the
-  // most valuable space on the page; the sides are what control line length.
+test('renderResumeHtml puts the DOCX margins in the CONTENT, not in @page', () => {
+  // 0.30in top / 0.60in sides / 0.50in bottom, matching renderDocx.js. A
+  // narrow top margin spends the most valuable space on the page; the sides
+  // control line length.
+  //
+  // This test used to assert those numbers on @page, and that is precisely
+  // how a broken PDF shipped. Chrome's print dialog has a Margins control
+  // that DISCARDS @page, and a user who once chose "None" keeps it silently
+  // -- so the resume printed edge to edge, section rules running off both
+  // sides and words clipped mid-line, while every automated measurement
+  // looked perfect because page.pdf() has no dialog to disagree with it.
+  //
+  // Padding is content. No dialog setting can remove it. @page must stay at
+  // zero so "Default" and "None" both land on the same document.
   const html = renderResumeHtml(sampleModel());
-  assert.match(html, /@page\s*\{\s*size:\s*letter;\s*margin:\s*0\.30in 0\.60in 0\.50in/);
+  assert.match(html, /@page\s*\{\s*size:\s*letter;\s*margin:\s*0\s*;/,
+    '@page must be zero -- anything declared there is at the dialog\'s mercy');
+  assert.match(html, /@media print\s*\{[\s\S]*?\.sheet\s*\{[^}]*padding:\s*0\.30in 0\.60in 0\.50in/,
+    'the printed margin must be padding on .sheet');
 });
 
 test('renderResumeHtml omits the skills block entirely when there are no skills', () => {

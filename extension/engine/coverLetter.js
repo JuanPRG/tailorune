@@ -292,7 +292,7 @@ export function renderCoverLetterHtml({ bodyParagraphs, model, job }) {
 <meta charset="utf-8" />
 <title>${name} — Cover Letter</title>
 <style>
-  @page { size: letter; margin: 0.85in; }
+  @page { size: letter; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.5; color: #1a1a1a; }
   .sheet { max-width: 7.5in; margin: 0 auto; padding: 0.4in; }
@@ -311,9 +311,22 @@ export function renderCoverLetterHtml({ bodyParagraphs, model, job }) {
      line breaks, and a one-page budget (measured against the DOCX) that no
      longer describes the PDF. Verified by printing and measuring the text
      bbox, not by reading the CSS. */
+  /* THE MARGIN LIVES IN THE CONTENT, and @page is zero. That looks backwards
+     and is deliberate.
+
+     Chrome's print dialog has a Margins control (Default / None / Minimum /
+     Custom) and it OVERRIDES the @page margin. A user who once chose "None"
+     keeps it, silently, forever. Relying on @page therefore produced a resume
+     printed edge to edge -- section rules running off both sides and words
+     clipped mid-line -- while every measurement through Playwright looked
+     perfect, because page.pdf() has no dialog to disagree with it.
+
+     Padding is content. Nothing in the dialog can remove it. With @page at
+     zero, "Default" and "None" both land on exactly the letter template's 0.85in.
+  */
   @media print {
     .print-hint, .print-actions { display: none; }
-    .sheet { max-width: none; margin: 0; padding: 0; }
+    .sheet { max-width: none; margin: 0; padding: 0.85in; }
   }
 </style>
 </head>

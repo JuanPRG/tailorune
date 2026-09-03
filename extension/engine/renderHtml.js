@@ -104,7 +104,7 @@ export function renderResumeHtml(model) {
 <style>
   /* TWO type sizes for the page: 18pt name, 10pt everything else. Hierarchy
      comes from weight, capitals and rules -- see renderDocx.js. */
-  @page { size: letter; margin: 0.30in 0.60in 0.50in; }
+  @page { size: letter; margin: 0; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.3; color: #1a1a1a; margin: 0; }
   .sheet { max-width: 7.5in; margin: 0 auto; padding: 0.4in; }
@@ -135,9 +135,22 @@ export function renderResumeHtml(model) {
      line breaks, and a one-page budget (measured against the DOCX) that no
      longer describes the PDF. Verified by printing and measuring the text
      bbox, not by reading the CSS. */
+  /* THE MARGIN LIVES IN THE CONTENT, and @page is zero. That looks backwards
+     and is deliberate.
+
+     Chrome's print dialog has a Margins control (Default / None / Minimum /
+     Custom) and it OVERRIDES the @page margin. A user who once chose "None"
+     keeps it, silently, forever. Relying on @page therefore produced a resume
+     printed edge to edge -- section rules running off both sides and words
+     clipped mid-line -- while every measurement through Playwright looked
+     perfect, because page.pdf() has no dialog to disagree with it.
+
+     Padding is content. Nothing in the dialog can remove it. With @page at
+     zero, "Default" and "None" both land on exactly the DOCX template's 0.30/0.60/0.50in.
+  */
   @media print {
     .print-hint, .print-actions { display: none; }
-    .sheet { max-width: none; margin: 0; padding: 0; }
+    .sheet { max-width: none; margin: 0; padding: 0.30in 0.60in 0.50in; }
   }
 </style>
 </head>
