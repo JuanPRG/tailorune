@@ -180,6 +180,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font: inherit;
+  cursor: pointer;
   padding: 4px 9px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -190,6 +192,8 @@ body {
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
+.status-pill:hover { border-color: var(--border-2); }
+.status-pill:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .status-pill::before {
   content: "";
   width: 6px; height: 6px;
@@ -244,6 +248,12 @@ body {
    panels into slivers once the cards above filled the column. */
 .scroll > * { flex: 0 0 auto; }
 
+/* `display: flex` above OUTRANKS the [hidden] attribute's user-agent rule,
+   so hiding a scroll region needs saying explicitly. Without this the
+   settings view and the tailoring view both rendered, stacked, and the gear
+   appeared to do nothing but append a second page to the first. */
+.scroll[hidden] { display: none; }
+
 .scroll::-webkit-scrollbar { width: 9px; }
 .scroll::-webkit-scrollbar-thumb {
   background: var(--border-2);
@@ -251,6 +261,49 @@ body {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+/* ---------- settings view ---------- */
+
+/* A sibling of <main>, not an overlay. The popup is 600px tall, so a modal
+   inside it would have had less room than the thing it covered. Exactly one
+   of the two is visible; [hidden] does the switching, via .scroll[hidden]. */
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 2px;
+}
+.settings-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- caution: the controls that discard work ---------- */
+
+/* Reset is the only thing in this UI that throws anything away, and it looked
+   exactly like the buttons that do not -- an icon in a row of icons, and a
+   secondary button beside the primary one.
+   AMBER, NOT RED. It clears the job and the last result and keeps the resume
+   and the API keys, so it earns caution rather than alarm; red here would be
+   crying wolf, and the next genuinely destructive control would have nothing
+   left to escalate to. --warn is 7.35:1 on surface. */
+.icon-btn.caution,
+.secondary-btn.caution {
+  color: var(--warn);
+  border-color: var(--warn-soft);
+  background: var(--warn-soft);
+}
+.icon-btn.caution:hover,
+.secondary-btn.caution:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.icon-btn.caution:focus-visible,
+.secondary-btn.caution:focus-visible { outline-color: var(--warn); }
 
 /* ---------- cards: the paper ---------- */
 
@@ -697,6 +750,9 @@ details.panel .body > label:first-child { margin-top: 0; }
   flex-direction: column;
   gap: 7px;
 }
+/* `display: flex` above outranks the [hidden] attribute's UA rule, so the
+   footer would stay on screen behind the settings view without this. */
+.app-footer[hidden] { display: none; }
 
 /* The CTA and its companion. Reset only joins it once a run has finished,
    so the ordinary state stays a single full-width primary action. */

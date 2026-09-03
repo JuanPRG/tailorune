@@ -199,8 +199,7 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
   await page.fill('#resumeText', 'MY RESUME TEXT');
   await page.fill('#jobDescription', 'A very long job description that would be annoying to re-paste.');
   await page.fill('#jobTitle', 'Analyst');
-  await page.locator('#providerDetails').evaluate((el) => { el.open = true; });
-  await page.fill('#apiKey', 'my-precious-key');
+  await fillApiKey(page, 'my-precious-key');
   await page.waitForTimeout(500);
 
   // A finished run puts the footer in its paired state: the CTA offers

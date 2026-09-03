@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
+import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey, configureProvider } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -60,8 +60,7 @@ async function runUploadScenario(t, fixtureFilename) {
 
   await page.setInputFiles('#resumeFile', path.resolve(__dirname, '../fixtures/resumes', fixtureFilename));
   await page.fill('#jobDescription', 'Seeking a backend engineer experienced with Python and AWS.');
-  await page.selectOption('#provider', 'gemini');
-  await fillApiKey(page);
+  await configureProvider(page, { provider: 'gemini' });
   await page.uncheck('#includeCoverLetter');
   await page.click('#tailorBtn');
 

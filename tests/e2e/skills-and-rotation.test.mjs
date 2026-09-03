@@ -16,7 +16,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
+import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey, configureProvider } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -149,9 +149,12 @@ test('a rate-limited primary provider fails over to a fallback key instead of fa
   await page.fill('#resumeText', FIXTURE);
   await page.fill('#jobDescription', 'Backend engineer.');
   await page.uncheck('#includeCoverLetter');
-  await fillApiKey(page, 'primary-gemini-key');
-  // Give Groq a fallback key so the chain has somewhere to rotate to.
-  await page.fill('#fallbackGroq', 'fallback-groq-key');
+  // One settings visit for both keys. The Groq fallback is what gives the
+  // chain somewhere to rotate to when the primary is rate limited.
+  await configureProvider(page, {
+    apiKey: 'primary-gemini-key',
+    fallbacks: { '#fallbackGroq': 'fallback-groq-key' },
+  });
   await page.click('#tailorBtn');
 
   const result = await waitForResult(page);

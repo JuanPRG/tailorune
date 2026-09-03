@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { openRealPopup, readStorage, waitForStorage } from './realPopup.mjs';
-import { openResumeManage } from './helpers.mjs';
+import { openResumeManage, fillApiKey, closeSettings } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCX_FIXTURE = path.resolve(__dirname, '../fixtures/resumes/juan-rivera-tabstops.docx');
@@ -105,8 +105,7 @@ test('real popup: a selected file with an empty textarea is recovered by Save, n
 test('real popup: settings persist as you type, without needing a tailor run', async (t) => {
   const { popup, sw } = await openRealPopup(t);
 
-  await popup.locator('#providerDetails').evaluate((el) => { el.open = true; });
-  await popup.fill('#apiKey', 'popup-context-key');
+  await fillApiKey(popup, 'popup-context-key');
 
   const settings = await waitForStorage(sw, 'tailorune_settings_v1', (v) => Boolean(v && v.apiKey));
   assert.equal(settings.apiKey, 'popup-context-key');
@@ -149,4 +148,87 @@ test('real popup: the resume card stays compact, and says what is loaded', async
   // matter of opinion. The card was 317px with the textarea exposed.
   const height = await cardHeight();
   assert.ok(height < 170, `the loaded resume card should stay compact, measured ${height}px`);
+});
+
+test('real popup: the gear swaps views, and never shows two at once', async (t) => {
+  // THE BUG THIS EXISTS FOR. Both scroll regions rendered at the same time,
+  // stacked, so the gear appeared to append a settings page to the bottom of
+  // the tailoring page instead of replacing it. Cause: `.scroll` sets
+  // `display: flex`, which OUTRANKS the [hidden] attribute's user-agent rule
+  // -- so the element was hidden in the DOM sense and painted anyway.
+  //
+  // Nothing in an assertion about #settingsView.hidden would have caught it,
+  // which is the whole point of asserting on isVisible() here.
+  const { popup } = await openRealPopup(t);
+  const shown = async () => ({
+    main: await popup.isVisible('#mainView'),
+    settings: await popup.isVisible('#settingsView'),
+    footer: await popup.isVisible('#appFooter'),
+  });
+
+  // A first run lands on the WORK, not on configuration -- even with no key
+  // stored. The amber "No key" pill is how you get to settings.
+  assert.deepEqual(await shown(), { main: true, settings: false, footer: true },
+    'the popup should open on tailoring, whatever is or is not configured');
+
+  await popup.click('#keyStatus');
+  assert.deepEqual(await shown(), { main: false, settings: true, footer: false },
+    'the key pill should lead to the key');
+
+  await popup.click('#settingsBackBtn');
+  assert.deepEqual(await shown(), { main: true, settings: false, footer: true },
+    'back should return to tailoring, with the CTA reachable again');
+
+  await popup.click('#settingsBtn');
+  assert.deepEqual(await shown(), { main: false, settings: true, footer: false },
+    'the gear should open settings');
+
+  await popup.click('#settingsBtn');
+  assert.deepEqual(await shown(), { main: true, settings: false, footer: true },
+    'the gear should toggle back out again');
+
+  // The fields really moved -- they are reachable in settings and nowhere else.
+  await popup.click('#settingsBtn');
+  for (const id of ['#apiKey', '#provider', '#resumeDensity', '#coverLetterTone', '#fallbackGroq']) {
+    assert.equal(await popup.isVisible(id), true, `${id} should live in the settings view`);
+  }
+});
+
+test('real popup: reset is the only control tinted as caution', async (t) => {
+  // Reset is the one control here that discards work, and it used to look
+  // exactly like the controls that do not. Amber rather than red: it keeps
+  // the resume and the API keys, so it earns caution, not alarm.
+  //
+  // Compared by DISTANCE, not equality. The first attempt asserted that the
+  // gear and the theme toggle were the same colour and failed on
+  // rgb(99,119,109) against rgb(95,114,105) -- both are var(--text-2), caught
+  // mid `transition: color 0.16s`. Equality on a transitioning property is a
+  // flake waiting to happen; "obviously different" and "near enough the same"
+  // are the claims that actually matter.
+  const { popup } = await openRealPopup(t);
+  await popup.waitForTimeout(400); // let the entry transitions settle
+
+  const rgb = async (sel) => popup.$eval(sel, (el) => {
+    const [r, g, b] = getComputedStyle(el).color.match(/\d+/g).map(Number);
+    return [r, g, b];
+  });
+  const gap = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  const reset = await rgb('#resetBtn');
+  const gear = await rgb('#settingsBtn');
+  const theme = await rgb('#themeToggle');
+
+  assert.ok(gap(reset, gear) > 40, `reset (${reset}) must read differently from the gear (${gear})`);
+  assert.ok(gap(reset, theme) > 40, `reset (${reset}) must read differently from the theme toggle (${theme})`);
+  assert.ok(gap(gear, theme) < 20, `the non-destructive icons should still match: ${gear} vs ${theme}`);
+
+  // Amber, not red: warmer than it is cool, and not a pure alarm colour.
+  assert.ok(reset[0] > reset[2], `reset should be warm-tinted, got rgb(${reset})`);
+
+  // Both reset controls carry the same treatment, so the pair beside the CTA
+  // reads the same way as the one in the header.
+  assert.equal(
+    await popup.$eval('#footerResetBtn', (el) => el.classList.contains('caution')), true,
+    'the footer reset should be tinted too',
+  );
 });

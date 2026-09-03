@@ -17,8 +17,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
 import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey,
-  waitForNewestDownload, pdfTextOf,
-} from './helpers.mjs';
+  waitForNewestDownload, pdfTextOf, configureProvider } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -70,8 +69,7 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
 
   await page.fill('#resumeText', FIXTURE);
   await page.fill('#jobDescription', 'Seeking a backend engineer experienced with Python and AWS.');
-  await page.selectOption('#provider', 'gemini');
-  await fillApiKey(page);
+  await configureProvider(page, { provider: 'gemini' });
   await page.uncheck('#includeCoverLetter');
   // Chip OFF for this run, deliberately: it proves the preference is real,
   // and it leaves the button as the ONLY source of a PDF below. With

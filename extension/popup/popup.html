@@ -25,18 +25,32 @@
         <!-- Replaces HirePilot's "Connected" backend indicator. Tailorune has
              no backend, so the honest thing to report is whether a key is set.
              Driven by popup.entry.js when present; harmless if it is not. -->
-        <span id="keyStatus" class="status-pill">No key</span>
+        <!-- A BUTTON, not a label. It reports whether a key is set, and the
+             key now lives behind the gear -- so the thing that tells you
+             something is missing is also the thing that takes you to it. -->
+        <button id="keyStatus" class="status-pill" type="button">No key</button>
         <!-- Reset sits beside the theme toggle, where HirePilot put its own
-             reset. Two-step: the first click arms it, because losing a long
-             pasted job description to a stray click is the one expensive
-             mistake this button could cause. -->
-        <button id="resetBtn" class="icon-btn" type="button"
+             reset. Tinted amber rather than left to look like the other two:
+             it is the only control in this header that DISCARDS anything, and
+             a stray click costs a long pasted job description. Amber and not
+             red because it keeps the resume and the keys -- caution, not
+             alarm. -->
+        <button id="resetBtn" class="icon-btn caution" type="button"
                 title="Start a new application — clears the job and the last result, keeps your resume and keys"
                 aria-label="Start a new application">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" />
             <path d="M20.7 4.2v5.2h-5.2" />
+          </svg>
+        </button>
+        <button id="settingsBtn" class="icon-btn" type="button"
+                title="Provider and tailoring settings" aria-label="Settings"
+                aria-expanded="false" aria-controls="settingsView">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.1" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.4 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z" />
           </svg>
         </button>
         <button id="themeToggle" class="icon-btn" type="button"
@@ -50,7 +64,7 @@
       </div>
     </header>
 
-    <main class="scroll">
+    <main class="scroll" id="mainView">
 
       <section class="card">
         <div class="section-title-row">
@@ -154,94 +168,120 @@
         </div>
       </section>
 
-      <details class="panel">
-        <summary>Tailoring preferences</summary>
-        <div class="body">
-          <div class="row">
-            <div>
-              <label for="resumeDensity">Resume density</label>
-              <select id="resumeDensity">
-                <option value="concise">Concise</option>
-                <option value="standard">Standard</option>
-                <option value="detailed" selected>Detailed</option>
-              </select>
-            </div>
-            <div>
-              <label for="keywordAlignment">Keyword alignment</label>
-              <select id="keywordAlignment">
-                <option value="light">Light</option>
-                <option value="balanced" selected>Balanced</option>
-              </select>
-            </div>
-          </div>
-          <div class="row" style="margin-top:9px;">
-            <div>
-              <label for="coverLetterLength">Letter length</label>
-              <select id="coverLetterLength">
-                <option value="short">Short</option>
-                <option value="standard" selected>Standard</option>
-                <option value="long">Long</option>
-              </select>
-            </div>
-            <div>
-              <label for="coverLetterTone">Letter tone</label>
-              <select id="coverLetterTone">
-                <option value="direct" selected>Direct</option>
-                <option value="warm">Warm</option>
-                <option value="confident">Confident</option>
-                <option value="formal">Formal</option>
-              </select>
-            </div>
-          </div>
-          <label for="preservePoints">Points to preserve</label>
-          <input id="preservePoints" placeholder="e.g. keep the AWS work prominent" />
-          <label for="resumeNotes">Resume notes</label>
-          <input id="resumeNotes" placeholder="optional guidance for the resume" />
-          <label for="coverLetterNotes">Cover letter notes</label>
-          <input id="coverLetterNotes" placeholder="optional guidance for the letter" />
-        </div>
-      </details>
 
-      <details class="panel" id="providerDetails">
-        <summary>AI provider</summary>
-        <div class="body">
-          <div class="row">
-            <div>
-              <label for="provider">Provider</label>
-              <select id="provider">
-                <option value="gemini">Gemini — free</option>
-                <option value="groq">Groq — free</option>
-                <option value="openrouter">OpenRouter — free tier</option>
-              </select>
-            </div>
-            <div>
-              <label for="modelName">Model (optional)</label>
-              <input id="modelName" placeholder="provider default" />
-            </div>
-          </div>
-          <label for="apiKey">API key</label>
-          <input id="apiKey" type="password" placeholder="stored locally only" />
-          <div class="hint">
-            Gemini and Groq have free tiers that need no card. OpenRouter's free models share an
-            upstream pool, so they work but can be busy. All three are free to use.
-          </div>
-          <div class="hint">
-            Optional fallback keys. If your main provider is rate-limited mid-run, the next one with
-            a key here is used instead — more keys means a run is less likely to stall.
-          </div>
-          <label for="fallbackGemini" class="subtle-label">Gemini</label>
-          <input id="fallbackGemini" type="password" placeholder="optional" />
-          <label for="fallbackGroq" class="subtle-label">Groq</label>
-          <input id="fallbackGroq" type="password" placeholder="optional" />
-          <label for="fallbackOpenrouter" class="subtle-label">OpenRouter</label>
-          <input id="fallbackOpenrouter" type="password" placeholder="optional" />
-        </div>
-      </details>
 
       <pre id="result" aria-hidden="true"></pre>
     </main>
 
-    <footer class="app-footer">
+    <!-- Settings, reached by the gear in the header.
+         Both groups are configured once and then left alone for months, so
+         they spent every single run sitting at the bottom of the scroll
+         column, pushing the three steps that DO change out of view.
+
+         Presented as a separate view rather than a modal: the popup is
+         600px tall and an overlay inside it would have less room than the
+         thing it covered. The nested <details> are gone with them -- this
+         view IS the disclosure, and making the reader open two more to
+         reach a field would be charging twice for the same click. -->
+    <section class="scroll settings-view" id="settingsView" hidden aria-label="Settings">
+      <div class="settings-head">
+        <button id="settingsBackBtn" class="icon-btn" type="button"
+                title="Back to tailoring" aria-label="Back to tailoring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+        </button>
+        <h2>Settings</h2>
+      </div>
+
+      <!-- Provider first: nothing in this extension works without a key. -->
+      <section class="card" id="providerCard">
+        <div class="section-title-row">
+          <span class="section-heading">AI provider</span>
+        </div>
+        <div class="row">
+          <div>
+            <label for="provider">Provider</label>
+            <select id="provider">
+              <option value="gemini">Gemini — free</option>
+              <option value="groq">Groq — free</option>
+              <option value="openrouter">OpenRouter — free tier</option>
+            </select>
+          </div>
+          <div>
+            <label for="modelName">Model (optional)</label>
+            <input id="modelName" placeholder="provider default" />
+          </div>
+        </div>
+        <label for="apiKey">API key</label>
+        <input id="apiKey" type="password" placeholder="stored locally only" />
+        <div class="hint">
+          Gemini and Groq have free tiers that need no card. OpenRouter's free models share an
+          upstream pool, so they work but can be busy. All three are free to use.
+        </div>
+        <div class="hint">
+          Optional fallback keys. If your main provider is rate-limited mid-run, the next one with
+          a key here is used instead — more keys means a run is less likely to stall.
+        </div>
+        <label for="fallbackGemini" class="subtle-label">Gemini</label>
+        <input id="fallbackGemini" type="password" placeholder="optional" />
+        <label for="fallbackGroq" class="subtle-label">Groq</label>
+        <input id="fallbackGroq" type="password" placeholder="optional" />
+        <label for="fallbackOpenrouter" class="subtle-label">OpenRouter</label>
+        <input id="fallbackOpenrouter" type="password" placeholder="optional" />
+      </section>
+
+      <section class="card">
+        <div class="section-title-row">
+          <span class="section-heading">Tailoring preferences</span>
+        </div>
+        <div class="row">
+          <div>
+            <label for="resumeDensity">Resume density</label>
+            <select id="resumeDensity">
+              <option value="concise">Concise</option>
+              <option value="standard">Standard</option>
+              <option value="detailed" selected>Detailed</option>
+            </select>
+          </div>
+          <div>
+            <label for="keywordAlignment">Keyword alignment</label>
+            <select id="keywordAlignment">
+              <option value="light">Light</option>
+              <option value="balanced" selected>Balanced</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:9px;">
+          <div>
+            <label for="coverLetterLength">Letter length</label>
+            <select id="coverLetterLength">
+              <option value="short">Short</option>
+              <option value="standard" selected>Standard</option>
+              <option value="long">Long</option>
+            </select>
+          </div>
+          <div>
+            <label for="coverLetterTone">Letter tone</label>
+            <select id="coverLetterTone">
+              <option value="direct" selected>Direct</option>
+              <option value="warm">Warm</option>
+              <option value="confident">Confident</option>
+              <option value="formal">Formal</option>
+            </select>
+          </div>
+        </div>
+        <label for="preservePoints">Points to preserve</label>
+        <input id="preservePoints" placeholder="e.g. keep the AWS work prominent" />
+        <label for="resumeNotes">Resume notes</label>
+        <input id="resumeNotes" placeholder="optional guidance for the resume" />
+        <label for="coverLetterNotes">Cover letter notes</label>
+        <input id="coverLetterNotes" placeholder="optional guidance for the letter" />
+      </section>
+    </section>
+
+    <footer class="app-footer" id="appFooter">
       <div id="warnings"></div>
       <div id="status"></div>
       <div class="cta-row">
@@ -257,7 +297,7 @@
         <!-- Appears only once there is a finished run to move on from. The
              pair is the whole point: Re-tailor keeps this job and tries
              again, Reset starts a different one. -->
-        <button id="footerResetBtn" class="secondary-btn cta-reset" type="button" hidden
+        <button id="footerResetBtn" class="secondary-btn cta-reset caution" type="button" hidden
                 title="Clear the job and the last result. Your resume and keys stay.">Reset</button>
       </div>
       <button id="previewBtn" class="secondary-btn" type="button" style="display:none;">Save resume as PDF</button>

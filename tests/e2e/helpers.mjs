@@ -35,14 +35,60 @@ export async function waitForCompletedDownload(sw, downloadId, timeoutMs = 15000
   throw new Error(`Download ${downloadId} did not complete within ${timeoutMs}ms`);
 }
 
+/** Open the settings view (provider and tailoring preferences). */
+export async function openSettings(page) {
+  if (await page.locator('#settingsView').evaluate((el) => el.hidden)) {
+    await page.click('#settingsBtn');
+  }
+  await page.waitForSelector('#apiKey', { state: 'visible' });
+}
+
+/** Return to the tailoring view. */
+export async function closeSettings(page) {
+  if (!await page.locator('#settingsView').evaluate((el) => el.hidden)) {
+    await page.click('#settingsBackBtn');
+  }
+  await page.waitForSelector('#tailorBtn', { state: 'visible' });
+}
+
 /**
- * The API key input lives inside a collapsed <details>, which Playwright
- * cannot fill. popup.js auto-expands it when no key is stored, but a test
- * shouldn't depend on that timing -- force it open, then fill.
+ * Put a key in, then come back.
+ *
+ * The API key field lives in the settings view behind the header's gear, so
+ * this is the same two clicks a user makes. It RETURNS to the tailoring view
+ * on purpose: the settings view hides main and the footer, so a test that
+ * left it open would find neither the resume field nor the CTA.
+ *
+ * popup.js opens settings by itself when no key is stored, which is the
+ * common case in a fresh profile -- but a test should not depend on that
+ * timing, so this checks rather than assumes.
  */
+/**
+ * Configure the provider in ONE settings visit.
+ *
+ * Provider, key and fallback keys all live behind the gear, and the settings
+ * view hides the tailoring view -- so doing them one at a time meant opening
+ * and closing it around each field. Tests were written as
+ * `selectOption('#provider') ; fillApiKey()` back when both were on the main
+ * page; that pairing is now a single trip.
+ *
+ * @param {object} opts
+ * @param {string} [opts.provider]  value for #provider
+ * @param {string} [opts.apiKey]    primary key
+ * @param {Record<string,string>} [opts.fallbacks]  selector -> key, e.g. {'#fallbackGroq': 'k'}
+ */
+export async function configureProvider(page, { provider, apiKey = 'test-key-not-real', fallbacks = {} } = {}) {
+  await openSettings(page);
+  if (provider) await page.selectOption('#provider', provider);
+  await page.fill('#apiKey', apiKey);
+  for (const [selector, key] of Object.entries(fallbacks)) await page.fill(selector, key);
+  await closeSettings(page);
+}
+
 export async function fillApiKey(page, key = 'test-key-not-real') {
-  await page.locator('#providerDetails').evaluate((el) => { el.open = true; });
+  await openSettings(page);
   await page.fill('#apiKey', key);
+  await closeSettings(page);
 }
 
 /**
@@ -108,7 +154,7 @@ export async function pdfTextOf(filePath) {
  * than 110px of scrolled document. It opens itself while the card is empty
  * and closes when a resume arrives, so any test that drives those controls
  * AFTER loading one has to open it -- the same click a user makes, and the
- * same reason fillApiKey() forces #providerDetails open.
+ * same reason fillApiKey() opens the settings view.
  */
 export async function openResumeManage(page) {
   await page.locator('#resumeManage').evaluate((el) => { el.open = true; });

@@ -48,7 +48,11 @@ const els = {
   provider: $('provider'),
   modelName: $('modelName'),
   apiKey: $('apiKey'),
-  providerDetails: $('providerDetails'),
+  mainView: $('mainView'),
+  appFooter: $('appFooter'),
+  settingsView: $('settingsView'),
+  settingsBtn: $('settingsBtn'),
+  settingsBackBtn: $('settingsBackBtn'),
   fallbackGemini: $('fallbackGemini'),
   fallbackGroq: $('fallbackGroq'),
   fallbackOpenrouter: $('fallbackOpenrouter'),
@@ -555,6 +559,26 @@ function refreshResumeSummary() {
   els.resumeMeta.title = els.resumeMeta.textContent;
 }
 
+/**
+ * Swap between the tailoring view and settings.
+ *
+ * Two siblings and one [hidden] each, rather than a modal: at 600px tall an
+ * overlay would have had less room than the view beneath it. The footer goes
+ * with them -- leaving "Tailor resume" under a settings page invites running
+ * a job from a screen that is not about jobs.
+ */
+function showSettings(show) {
+  if (!els.settingsView || !els.mainView) return;
+  els.settingsView.hidden = !show;
+  els.mainView.hidden = show;
+  if (els.appFooter) els.appFooter.hidden = show;
+  if (els.settingsBtn) els.settingsBtn.setAttribute('aria-expanded', String(Boolean(show)));
+  // Return focus to something meaningful in the view just opened, so the
+  // gear is not still focused while its panel is what changed.
+  const target = show ? els.settingsBackBtn : els.settingsBtn;
+  if (target) target.focus({ preventScroll: true });
+}
+
 function currentTheme() {
   return document.documentElement.dataset.theme || 'system';
 }
@@ -579,7 +603,7 @@ function refreshKeyStatus() {
   if (!names.length) {
     els.keyStatus.dataset.state = 'missing';
     els.keyStatus.textContent = 'No key';
-    els.keyStatus.title = 'Add an API key under AI provider to tailor anything.';
+    els.keyStatus.title = 'Add an API key in Settings to tailor anything — click here, or the gear above.';
     return;
   }
 
@@ -589,7 +613,7 @@ function refreshKeyStatus() {
   // the others are not set").
   els.keyStatus.textContent = names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
   els.keyStatus.title = names.length === 1
-    ? `Only ${names[0]} is set up. Add another provider's key below so a run can survive a rate limit.`
+    ? `Only ${names[0]} is set up. Add another provider's key in Settings so a run can survive a rate limit.`
     : `A run can rotate across ${names.length} providers, in order: ${names.join(' -> ')}.`;
 }
 
@@ -608,10 +632,11 @@ function schedulePersist() {
 
 async function restoreSettings() {
   const settings = await getSettings();
-  // No key saved yet means this is a first run: expand the provider section
-  // rather than hiding the one field the user MUST fill behind a collapsed
-  // <details>. (Found by an e2e test that couldn't fill it either.)
-  if (!settings || !settings.apiKey) els.providerDetails.open = true;
+  // A first run does NOT jump into settings. The old layout expanded the
+  // provider <details> in place, which was unobtrusive; doing the equivalent
+  // now would mean replacing the whole first screen with a settings page,
+  // and greeting someone with configuration is a worse trade than one click.
+  // The amber "No key" pill is the way in instead, and it is a button.
   if (!settings) return;
   if (settings.provider) els.provider.value = settings.provider;
   if (settings.model) els.modelName.value = settings.model;
@@ -713,7 +738,7 @@ async function onTailorClick() {
     return;
   }
   if (!jobDescription) { setStatus('Paste the job description first.'); return; }
-  if (!apiKey) { setStatus('Enter an API key first (AI provider section).'); return; }
+  if (!apiKey) { setStatus('Enter an API key first — the gear icon, top right.'); return; }
 
   await persistSettings();
 
@@ -993,6 +1018,10 @@ els.resumeName.addEventListener('input', refreshResumeSummary);
 // The file input is visually hidden, so this is the control the user actually
 // presses; clicking it opens the same OS picker.
 els.uploadBtn.addEventListener('click', () => els.resumeFile.click());
+els.settingsBtn.addEventListener('click', () => showSettings(els.mainView.hidden === false));
+els.settingsBackBtn.addEventListener('click', () => showSettings(false));
+// The pill reports the key, and the key lives in settings, so it goes there.
+els.keyStatus.addEventListener('click', () => showSettings(true));
 restoreLastRun();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
