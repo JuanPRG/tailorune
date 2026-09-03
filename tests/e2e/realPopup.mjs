@@ -47,7 +47,16 @@ function debugPort() {
  *
  * @returns {Promise<{popup: import('playwright').Page, sw: any, context: any}>}
  */
-export async function openRealPopup(t) {
+/**
+ * @param {object} [opts]
+ * @param {string} [opts.hostUrl]  page to leave in front of the popup. The
+ *   popup reads the ACTIVE tab, so anything testing that needs a real page
+ *   there rather than the placeholder.
+ * @param {(sw: any) => Promise<void>} [opts.beforeOpen]  runs with the
+ *   service worker once it exists but BEFORE the popup is opened -- the only
+ *   window in which to observe what the popup does on load.
+ */
+export async function openRealPopup(t, { hostUrl, beforeOpen } = {}) {
   const port = debugPort();
   const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-popup-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -70,10 +79,15 @@ export async function openRealPopup(t) {
 
   const sw = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
 
-  // chrome.action.openPopup() needs a normal focused window to anchor to.
+  // chrome.action.openPopup() needs a normal focused window to anchor to --
+  // and that window is also the tab the extension will read a job from, so
+  // tests that care about extraction pass their own URL.
   const host = await context.newPage();
-  await host.setContent('<h1>host page</h1>');
+  if (hostUrl) await host.goto(hostUrl);
+  else await host.setContent('<h1>host page</h1>');
   await host.bringToFront();
+
+  if (beforeOpen) await beforeOpen(sw);
 
   await sw.evaluate(() => chrome.action.openPopup());
 
@@ -89,7 +103,7 @@ export async function openRealPopup(t) {
   }
   if (!popup) throw new Error('the real browser-action popup never appeared as a CDP target');
 
-  return { popup, sw, context };
+  return { popup, sw, context, host };
 }
 
 /**

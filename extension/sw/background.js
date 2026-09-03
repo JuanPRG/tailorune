@@ -13,6 +13,8 @@
 // 'offscreen') so the two listeners never react to each other's traffic —
 // the standard pattern for MV3 offscreen documents.
 
+import { normalizePageUrl } from '../engine/pageIdentity.js';
+
 const OFFSCREEN_URL = chrome.runtime.getURL('offscreen/offscreen.html');
 
 async function ensureOffscreenDocument() {
@@ -82,6 +84,12 @@ async function saveLastRun(payload, request) {
       [LAST_RUN_KEY]: {
         at: Date.now(),
         jobTitle: (request && request.jobTitle) || '',
+        // The page this run was FOR. Without it the popup cannot tell
+        // "reopened on the same posting" from "moved on to a different job",
+        // and a finished run stayed on screen -- stale Re-tailor, stale
+        // findings, stale save-as-PDF buttons -- over a posting it had
+        // nothing to do with.
+        pageUrl: await activePageUrl(),
         employer: (request && request.employer) || '',
         wordCount: payload.wordCount,
         downloads: (payload.downloads || []).map((d) => d.filename),
@@ -147,6 +155,17 @@ function friendlyInjectionError(message) {
   return `Could not read this page: ${text}`;
 }
 
+/** The active tab's normalized URL, or '' when there is nothing readable. */
+async function activePageUrl() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url || RESTRICTED_URL_RE.test(tab.url)) return '';
+    return normalizePageUrl(tab.url);
+  } catch {
+    return '';
+  }
+}
+
 async function extractJobFromActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.id) throw new Error('No active tab to read. Open the job posting first.');
@@ -172,6 +191,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.target !== 'sw') return undefined;
 
   (async () => {
+    // Cheap enough to ask on every open, and the popup needs the answer
+    // BEFORE it decides whether to restore a run or read the page.
+    if (message.type === 'tab:url') {
+      sendResponse({ ok: true, url: await activePageUrl() });
+      return;
+    }
+
     if (message.type === 'job:extract') {
       try {
         sendResponse({ ok: true, job: await extractJobFromActiveTab() });

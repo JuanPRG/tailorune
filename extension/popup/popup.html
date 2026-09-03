@@ -36,7 +36,7 @@
              red because it keeps the resume and the keys -- caution, not
              alarm. -->
         <button id="resetBtn" class="icon-btn caution" type="button"
-                title="Start a new application — clears the job and the last result, keeps your resume and keys"
+                title="Start a new application — clears the last result and re-reads the job from this page. Your resume and keys stay."
                 aria-label="Start a new application">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -283,6 +283,7 @@
     <footer class="app-footer" id="appFooter">
       <div id="warnings"></div>
       <div id="status"></div>
+
       <div class="cta-row">
         <button id="tailorBtn" class="primary-btn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -297,7 +298,7 @@
              pair is the whole point: Re-tailor keeps this job and tries
              again, Reset starts a different one. -->
         <button id="footerResetBtn" class="secondary-btn cta-reset caution" type="button" hidden
-                title="Clear the job and the last result. Your resume and keys stay.">Reset</button>
+                title="Clear the last result and re-read the job from this page. Your resume and keys stay.">Reset</button>
       </div>
       <!-- Side by side, not stacked. Two full-width buttons cost 42px of a
            600px popup and pushed the input cards into a scroll the moment a

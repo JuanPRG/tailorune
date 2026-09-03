@@ -20,6 +20,8 @@ import { extractPdfText } from '../engine/extractPdfText.js';
 // the header pill and the actual run cannot report different things.
 import { resolveProviderChain, chainLabels } from '../engine/providers.js';
 import { withAutoPrint } from '../engine/renderHtml.js';
+import { mergeExtractedJob } from '../engine/jobFields.js';
+import { isStampedForThisPage } from '../engine/pageIdentity.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -370,6 +372,26 @@ els.previewClBtn.addEventListener('click', () => savePdf(lastCoverLetterPdf, las
  * partial result is surfaced as a request to review rather than silently
  * trusted, since the body-text fallback always returns *something*.
  */
+/**
+ * Put an extracted job into the form, and say what was read.
+ *
+ * The merge rule -- who wins between the page and whatever is already in the
+ * fields -- lives in engine/jobFields.js, where it can be tested. See that
+ * file for why it had to move out of here.
+ */
+function applyExtractedJob(job, { overwrite }) {
+  const merged = mergeExtractedJob({
+    jobDescription: els.jobDescription.value,
+    jobTitle: els.jobTitle.value,
+    employer: els.employer.value,
+  }, job, { overwrite });
+
+  els.jobDescription.value = merged.jobDescription;
+  els.jobTitle.value = merged.jobTitle;
+  els.employer.value = merged.employer;
+  return merged.note;
+}
+
 async function onReadPageClick() {
   els.readPageBtn.disabled = true;
   els.extractHint.textContent = 'Reading this page...';
@@ -379,24 +401,47 @@ async function onReadPageClick() {
       els.extractHint.textContent = (response && response.error) || 'Could not read this page.';
       return;
     }
-    const { text, employer, jobTitle, source, confidence } = response.job;
-    if (text) els.jobDescription.value = text;
-    if (employer) els.employer.value = employer;
-    // Assigned unconditionally. The extractor blanks a title it does not
-    // trust (a signed-in greeting, a nav label), and leaving the previous
-    // value in place would quietly keep a rejected title alive in the field
-    // and let it reach the cover letter anyway.
-    els.jobTitle.value = jobTitle || '';
-
-    const titleNote = jobTitle ? '' : ' No usable job title found on the page — add one below if you want it on the cover letter.';
-    const note = (confidence === 'high'
-      ? `Read from ${source}. Looks complete.`
-      : `Read from ${source} (${confidence} confidence) — please check the fields below before tailoring.`) + titleNote;
-    els.extractHint.textContent = note;
+    els.extractHint.textContent = applyExtractedJob(response.job, { overwrite: true });
+    saveJobDraft();
   } catch (err) {
     els.extractHint.textContent = `Could not read this page: ${(err && err.message) || err}`;
   } finally {
     els.readPageBtn.disabled = false;
+  }
+}
+
+/**
+ * Read the job from the active tab as soon as the popup opens, so the common
+ * case -- standing on a posting, wanting it tailored -- needs no click.
+ *
+ * Matches v4's rule (popup/script.js: "Auto-extract JD if textarea is empty
+ * and no active tailoring is happening"), and its silence: a page that is
+ * not a job posting stays perfectly usable with pasted details, so a failure
+ * here says nothing at all. The user did not ask, so a red error about a
+ * page they were only browsing would be noise.
+ *
+ * ONLY FILLS WHAT IS EMPTY, and only when the description is empty to begin
+ * with -- this must never overwrite something typed or pasted. The button
+ * remains the way to force a re-read.
+ *
+ * It works at all because opening the popup from the toolbar is what grants
+ * activeTab for that tab; see job-extraction.test.mjs, where the same call
+ * from a popup loaded as an ordinary tab is correctly refused.
+ */
+async function autoDetectJob() {
+  if (els.jobDescription.value.trim()) return null;
+  els.extractHint.textContent = 'Reading this page...';
+  try {
+    const response = await chrome.runtime.sendMessage({ target: 'sw', type: 'job:extract' });
+    if (!response || !response.ok || !response.job || !response.job.text) {
+      els.extractHint.textContent = '';
+      return null;
+    }
+    els.extractHint.textContent = applyExtractedJob(response.job, { overwrite: false });
+    return response.job;
+  } catch {
+    els.extractHint.textContent = '';
+    return null;
   }
 }
 
@@ -817,14 +862,67 @@ const LAST_RUN_KEY = 'tailorune_last_run_v1';
  * status silently would make a stale result look like something that just
  * happened, which is a worse bug than the one being fixed.
  */
-async function restoreLastRun() {
-  let last = null;
+/** The page the popup is open over, or '' if it cannot be read. */
+async function currentPageUrl() {
+  try {
+    const response = await chrome.runtime.sendMessage({ target: 'sw', type: 'tab:url' });
+    return (response && response.ok && response.url) || '';
+  } catch {
+    return '';
+  }
+}
+
+const JOB_DRAFT_KEY = 'tailorune_job_draft_v1';
+
+const JOB_FIELDS = ['jobDescription', 'jobTitle', 'employer'];
+
+async function readJobDraft() {
+  try {
+    const bag = await chrome.storage.local.get(JOB_DRAFT_KEY);
+    return (bag && bag[JOB_DRAFT_KEY]) || null;
+  } catch {
+    return null;
+  }
+}
+
+function applyJobDraft(draft) {
+  for (const id of JOB_FIELDS) {
+    if (draft[id]) els[id].value = draft[id];
+  }
+  if (draft.extractHint) els.extractHint.textContent = draft.extractHint;
+}
+
+async function saveJobDraft() {
+  const draft = { at: Date.now(), pageUrl: await currentPageUrl() };
+  for (const id of JOB_FIELDS) draft[id] = els[id].value;
+  draft.extractHint = els.extractHint.textContent || '';
+  // Nothing typed and nothing read: no draft worth keeping, and storing an
+  // empty one would only give a later open something useless to restore.
+  const empty = JOB_FIELDS.every((id) => !draft[id].trim());
+  try {
+    if (empty) await chrome.storage.local.remove(JOB_DRAFT_KEY);
+    else await chrome.storage.local.set({ [JOB_DRAFT_KEY]: draft });
+  } catch { /* storage unavailable */ }
+}
+
+const JOB_DRAFT_DEBOUNCE_MS = 400;
+let jobDraftTimer = null;
+function scheduleJobDraftSave() {
+  if (jobDraftTimer) clearTimeout(jobDraftTimer);
+  jobDraftTimer = setTimeout(() => { jobDraftTimer = null; saveJobDraft(); }, JOB_DRAFT_DEBOUNCE_MS);
+}
+
+async function readLastRun() {
   try {
     const bag = await chrome.storage.local.get(LAST_RUN_KEY);
-    last = bag && bag[LAST_RUN_KEY];
-  } catch { /* nothing stored, or storage unavailable */ }
-  if (!last) return;
+    return (bag && bag[LAST_RUN_KEY]) || null;
+  } catch {
+    return null; // nothing stored, or storage unavailable
+  }
+}
 
+/** Put a finished run back on screen: previews, findings, and what it was for. */
+function applyLastRun(last) {
   lastResumeHtml = last.htmlPreview || null;
   lastCoverLetterHtml = last.coverLetterHtml || null;
   lastResumePdf = last.resumePdfBase64
@@ -850,6 +948,58 @@ async function restoreLastRun() {
     `Previous run${forJob ? ` — ${forJob}` : ''}: ${last.wordCount} words, `
     + `${files} file${files === 1 ? '' : 's'} in Downloads. ${describeAge(last.at)}`,
   );
+}
+
+/**
+ * Decide what the popup shows on open. Exactly one of three things.
+ *
+ *   SAME POSTING as the stored run -> put the run back. Reading the page
+ *   again would fill the job description underneath its own finished output.
+ *
+ *   A DIFFERENT POSTING -> a fresh start, with this page's job read in. This
+ *   is the reported bug: a finished run used to follow the user to the next
+ *   job, offering "Re-tailor" for a posting they had left, showing its
+ *   findings and its save-as-PDF buttons, and never updating the job
+ *   description until Reset was pressed.
+ *
+ *   NOT A POSTING AT ALL -> put the run back after all. Switching to a mail
+ *   tab and reopening the popup should not cost the user their findings, and
+ *   an empty form is no use on a page with no job on it. This is the case a
+ *   plain URL comparison gets wrong: it treats "somewhere else" and "another
+ *   job" as the same thing, and only one of them means the run is stale.
+ *
+ * The stored run is never deleted here, so returning to its posting brings it
+ * back -- and the files were in Downloads the whole time regardless.
+ */
+async function restoreOrDetect() {
+  const here = await currentPageUrl();
+  const [draft, last] = await Promise.all([readJobDraft(), readLastRun()]);
+  const draftIsHere = Boolean(draft) && isStampedForThisPage(draft, here);
+  const runIsHere = Boolean(last) && isStampedForThisPage(last, here);
+
+  // The user's own words first, and before anything reads the page: a draft
+  // fills the description, which is precisely what stops the automatic read
+  // below from replacing it.
+  if (draftIsHere) applyJobDraft(draft);
+  if (runIsHere) { applyLastRun(last); return; }
+
+  // A draft for this page means the user was already working here, so there
+  // is nothing to detect and no reason to reach for another job's run.
+  if (draftIsHere) return;
+
+  const job = await autoDetectJob();
+  if (job) { saveJobDraft(); return; }
+
+  // This page has no job on it, so nothing here supersedes what the user
+  // already had. Their own words first, then the last run.
+  //
+  // This is what keeps a description pasted out of an email from being lost
+  // by wandering: pasted on one mail message, reopened on another, the stamps
+  // do not match -- but neither page is a posting, so there is nothing to
+  // prefer over the paste. A real posting DOES supersede it, above, because
+  // moving to a new job is the case this whole change exists to fix.
+  if (draft) applyJobDraft(draft);
+  if (last) applyLastRun(last);
 }
 
 /** "2 minutes ago" beats a timestamp for deciding whether this is still yours. */
@@ -983,14 +1133,31 @@ async function onResetClick() {
   // The stored run is the point: without this the previous result would come
   // straight back on the next open, and nothing would have been forgotten.
   try {
-    await chrome.storage.local.remove(LAST_RUN_KEY);
+    await chrome.storage.local.remove([LAST_RUN_KEY, JOB_DRAFT_KEY]);
   } catch { /* nothing stored, or storage unavailable */ }
 
-  setStatus('Cleared. Your resume, keys and preferences are untouched.');
+  setStatus('Cleared. Resume and keys kept.');
   schedulePersist();
+
+  // ...and read this page, because "start a new application" means ready to
+  // work on the posting in front of you, not an empty form with a button to
+  // press. The clearing above is what lets this fill anything: the automatic
+  // read only ever touches empty fields.
+  //
+  //
+  // NOTE, since this is now the only way reset can lose work: on a page with
+  // no readable job -- a description assembled out of an email or a PDF --
+  // clearing finds nothing to replace it with, and that text is gone. An undo
+  // for exactly that case was built and then removed as clutter, the
+  // judgement being that reset gets pressed when moving to a new posting,
+  // where the re-read gives you what you wanted anyway.
+  if (await autoDetectJob()) await saveJobDraft();
 }
 
 els.readPageBtn.addEventListener('click', onReadPageClick);
+// Typing in any job field keeps the draft, so losing popup focus mid-paste
+// costs nothing. Debounced: a long description is a lot of keystrokes.
+for (const id of JOB_FIELDS) els[id].addEventListener('input', scheduleJobDraftSave);
 if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
 if (els.footerResetBtn) els.footerResetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
@@ -1031,7 +1198,7 @@ els.settingsBtn.addEventListener('click', () => showSettings(els.mainView.hidden
 els.settingsBackBtn.addEventListener('click', () => showSettings(false));
 // The pill reports the key, and the key lives in settings, so it goes there.
 els.keyStatus.addEventListener('click', () => showSettings(true));
-restoreLastRun();
+restoreOrDetect();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.

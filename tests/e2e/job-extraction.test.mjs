@@ -24,6 +24,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { BROWSER } from './browser.mjs';
+import { openRealPopup } from './realPopup.mjs';
 import http from 'node:http';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -258,4 +259,138 @@ test('service worker returns an actionable message when activeTab was never gran
     'raw Chrome error leaked to the user');
   assert.match(result.error, /toolbar icon|normal tab|cannot be read/i,
     `expected actionable guidance, got: ${result.error}`);
+});
+
+// --- automatic detection on open ----------------------------------------
+//
+// v4 read the job as soon as the popup opened -- popup/script.js: "Auto-extract
+// JD if textarea is empty and no active tailoring is happening" -- so standing
+// on a posting and wanting it tailored cost no clicks. Tailorune had the same
+// extractor behind a button.
+//
+// WHAT CAN AND CANNOT BE PROVEN HERE, because the first version of these tests
+// got it wrong and passed for the wrong reason.
+//
+// activeTab is granted by a USER invoking the extension. Opening the popup
+// from the toolbar counts; `chrome.action.openPopup()` called from the service
+// worker -- the only way a test can open the real popup -- does NOT. So in
+// this harness the read always fails with the extension's own "click the
+// Tailorune toolbar icon" message, whatever page is in front.
+//
+// A test asserting "a non-posting page fills nothing" therefore passes on a
+// posting too, and proves nothing. What IS provable splits in two:
+//
+//   1. the WIRING -- the popup asks to read the page on open, with no click.
+//      Observed on the service worker, which sees the message either way.
+//   2. the FAILURE CONTRACT -- a read that does not succeed says nothing and
+//      invents nothing. This is the path the harness produces naturally, and
+//      it is the same path a genuine non-posting page takes in production.
+//
+// The extraction itself is covered by the eight tests above, which reach the
+// page through chrome.scripting directly and need no activeTab grant.
+
+test('opening the popup asks to read the page, with no click', async (t) => {
+  const server = await startPageServer();
+  t.after(() => server.close());
+
+  // Counted on the service worker. An extra onMessage listener that returns
+  // undefined does not consume the message, so the real handler still runs.
+  const { popup, sw } = await openRealPopup(t, {
+    hostUrl: server.url('/jsonld'),
+    beforeOpen: async (worker) => {
+      await worker.evaluate(() => {
+        self.__extractCalls = 0;
+        self.__urlCalls = 0;
+        chrome.runtime.onMessage.addListener((m) => {
+          if (!m || m.target !== 'sw') return;
+          if (m.type === 'job:extract') self.__extractCalls += 1;
+          if (m.type === 'tab:url') self.__urlCalls += 1;
+        });
+      });
+    },
+  });
+
+  await popup.waitForTimeout(2000);
+  const calls = await sw.evaluate(() => self.__extractCalls);
+  assert.equal(calls, 1, `the popup should ask to read the page exactly once on open, saw ${calls}`);
+
+
+  // And pressing the button is still a second, separate read -- automatic
+  // detection replaces the need to press it, not the ability to.
+  await popup.click('#readPageBtn');
+  await popup.waitForTimeout(1200);
+  assert.equal(await sw.evaluate(() => self.__extractCalls), 2,
+    'the button must still trigger its own read');
+});
+
+test('a read that finds nothing says nothing, and invents nothing', async (t) => {
+  // The silence is the point, and it is why this is not simply the button
+  // firing itself. The user did not ask for anything -- they opened the popup
+  // while standing on some ordinary page, maybe to paste a description by
+  // hand. An error about a page they were only browsing would be noise, and a
+  // half-filled form would be worse than an empty one.
+  const server = await startPageServer();
+  t.after(() => server.close());
+
+  const { popup } = await openRealPopup(t, { hostUrl: server.url('/bare') });
+  await popup.waitForTimeout(2500);
+
+  const hint = (await popup.textContent('#extractHint')).trim();
+  assert.notEqual(hint, 'Reading this page...', 'the transient notice must be cleared, not left hanging');
+  assert.equal(hint, '', `a failed read should report nothing, got: ${hint}`);
+  assert.equal(await popup.inputValue('#jobDescription'), '', 'no description should be invented');
+  assert.equal(await popup.inputValue('#jobTitle'), '', 'no title should be invented');
+  assert.equal(await popup.inputValue('#employer'), '', 'no employer should be invented');
+  assert.equal(await popup.isEnabled('#readPageBtn'), true, 'and the button must stay usable');
+});
+
+test('a stored run makes the popup check which page it is on', async (t) => {
+  // The staleness wiring. Without it a finished run followed the user to the
+  // next posting: stale "Re-tailor", stale findings, stale save-as-PDF
+  // buttons, and a job description that never updated until Reset.
+  //
+  // ONLY THE WIRING is provable here. Reading a tab's URL needs an activeTab
+  // grant, which comes from a user clicking the toolbar and never from the
+  // programmatic openPopup() a test must use -- measured: chrome.tabs.query
+  // returns url `undefined`, so the popup sees no page and takes the
+  // fail-open path whatever posting is in front. The decision itself is
+  // covered by tests/unit/pageIdentity.test.mjs.
+  //
+  // Note the popup asks ONLY when there is a run to compare against: with
+  // nothing stored there is no question to answer, which is why the test
+  // above deliberately does not expect this call.
+  const server = await startPageServer();
+  t.after(() => server.close());
+
+  const { popup, sw } = await openRealPopup(t, {
+    hostUrl: server.url('/jsonld'),
+    beforeOpen: async (worker) => {
+      await worker.evaluate(() => {
+        self.__urlCalls = 0;
+        chrome.runtime.onMessage.addListener((m) => {
+          if (m && m.target === 'sw' && m.type === 'tab:url') self.__urlCalls += 1;
+        });
+        return chrome.storage.local.set({
+          tailorune_last_run_v1: {
+            at: Date.now(),
+            jobTitle: 'Backend Engineer',
+            employer: 'Acme Corp',
+            pageUrl: 'https://example.test/a-completely-different-posting',
+            wordCount: 431,
+            downloads: ['a.docx'],
+            htmlPreview: '<h1>preview</h1>',
+            resumeStatus: 'approved',
+            resumeWarnings: [],
+            resumeErrors: [],
+          },
+        });
+      });
+    },
+  });
+
+  await popup.waitForTimeout(2000);
+  assert.ok(
+    await sw.evaluate(() => self.__urlCalls) >= 1,
+    'with a run stored, the popup must establish which page it is open over',
+  );
 });

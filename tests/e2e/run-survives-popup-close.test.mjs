@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
+import { openRealPopup, readStorage } from './realPopup.mjs';
 import { getExtensionServiceWorker, fillApiKey,
   waitForNewestDownload, pdfTextOf,
 } from './helpers.mjs';
@@ -126,6 +127,12 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   // The rendered PDF has to survive too, or "Save as PDF" after a reopen
   // silently degrades to the print dialog it was built to replace.
   assert.ok(stored.resumePdfBase64, 'the rendered resume PDF must survive the popup being destroyed');
+  // Stamped with the page it was for, so reopening over a DIFFERENT posting
+  // does not present this run as current. The value is empty here because a
+  // programmatically opened popup gets no activeTab grant and so cannot read
+  // a tab's URL -- the key existing is the wiring; engine/pageIdentity.js
+  // tests the decision it feeds.
+  assert.ok('pageUrl' in stored, 'a finished run must record which page it was for');
   assert.match(stored.resumePdfFilename, /\.pdf$/, 'and it must know what to call itself');
   assert.equal(stored.jobTitle, 'Backend Engineer');
   assert.equal(stored.employer, 'Acme Corp');
@@ -235,4 +242,103 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
   await reopened.waitForTimeout(900);
   assert.ok(!(await reopened.textContent('#status')).includes('Previous run'),
     'the cleared run must not come back on reopen');
+});
+
+// --- the job you were typing ---------------------------------------------
+//
+// Same failure as the run above, one field earlier. A browser-action popup
+// dies the moment it loses focus, and the job fields were never persisted --
+// so pasting a description, glancing at the posting in the tab behind it, and
+// coming back found the form empty.
+//
+// Automatic detection covers the case where the page still has the job on it.
+// It does nothing for a description pasted out of an email, a PDF, or a site
+// the extractor cannot read, which is exactly when retyping hurts most.
+
+const JOB_DRAFT_KEY = 'tailorune_job_draft_v1';
+
+test('a job typed by hand survives the popup being destroyed', async (t) => {
+  const { popup, sw } = await openRealPopup(t);
+
+  const TYPED = 'PASTED FROM AN EMAIL — this posting is on no page anywhere';
+  await popup.fill('#jobDescription', TYPED);
+  await popup.fill('#jobTitle', 'Staff Engineer');
+  await popup.fill('#employer', 'Quiet Corp');
+  await popup.waitForTimeout(900); // past the save debounce
+
+  const draft = await readStorage(sw, JOB_DRAFT_KEY);
+  assert.ok(draft, 'nothing was kept — losing popup focus would cost the whole description');
+  assert.equal(draft.jobDescription, TYPED);
+  assert.equal(draft.jobTitle, 'Staff Engineer');
+  assert.equal(draft.employer, 'Quiet Corp');
+
+  // STAMPED, for the same reason a finished run is. An unstamped draft would
+  // follow the user to the next posting and reintroduce the very bug this
+  // work started from, with the description instead of the results.
+  assert.ok('pageUrl' in draft, 'a draft must record which page it belongs to');
+});
+
+test('a stored draft comes back when the popup reopens', async (t) => {
+  const TYPED = 'A DESCRIPTION THE EXTRACTOR COULD NEVER HAVE FOUND';
+  const { popup } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate(([key, text]) => chrome.storage.local.set({
+        [key]: { at: Date.now(), pageUrl: '', jobDescription: text, jobTitle: 'Staff Engineer', employer: 'Quiet Corp' },
+      }), [JOB_DRAFT_KEY, TYPED]);
+    },
+  });
+
+  await popup.waitForFunction(
+    (text) => document.getElementById('jobDescription').value === text,
+    TYPED, { timeout: 10000 },
+  );
+  assert.equal(await popup.inputValue('#jobTitle'), 'Staff Engineer');
+  assert.equal(await popup.inputValue('#employer'), 'Quiet Corp');
+});
+
+test('reset forgets the draft, or it would come straight back', async (t) => {
+  const { popup, sw } = await openRealPopup(t);
+
+  await popup.fill('#jobDescription', 'SOMETHING TO THROW AWAY');
+  await popup.waitForTimeout(900);
+  assert.ok(await readStorage(sw, JOB_DRAFT_KEY), 'precondition: a draft exists to clear');
+
+  await popup.click('#resetBtn');
+  await popup.waitForTimeout(700);
+
+  // readStorage normalises a missing key to null, not undefined.
+  assert.equal(await readStorage(sw, JOB_DRAFT_KEY), null,
+    'a cleared job must not be restored on the next open');
+  assert.equal(await popup.inputValue('#jobDescription'), '');
+});
+
+test('reset re-reads the page rather than just emptying the form', async (t) => {
+  // "Start a new application" should leave you ready to work on the posting
+  // in front of you, not staring at an empty form with a button to press.
+  //
+  // Only the READ is provable here -- activeTab comes from a real toolbar
+  // click, never the programmatic openPopup() a test must use, so the read
+  // finds nothing in this harness whatever page is in front. Counted on the
+  // service worker, which sees the request regardless.
+  const { popup, sw } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate(() => {
+        self.__extractCalls = 0;
+        chrome.runtime.onMessage.addListener((m) => {
+          if (m && m.target === 'sw' && m.type === 'job:extract') self.__extractCalls += 1;
+        });
+      });
+    },
+  });
+
+  const MINE = 'A DESCRIPTION I ASSEMBLED BY HAND';
+  await popup.fill('#jobDescription', MINE);
+  await popup.waitForTimeout(800);
+  const before = await sw.evaluate(() => self.__extractCalls);
+
+  await popup.click('#resetBtn');
+  await popup.waitForTimeout(1200);
+
+  assert.equal(await sw.evaluate(() => self.__extractCalls), before + 1,
+    'reset must read the current page, not just empty the form');
 });
