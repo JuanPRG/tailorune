@@ -221,13 +221,22 @@
     <footer class="app-footer">
       <div id="warnings"></div>
       <div id="status"></div>
-      <button id="tailorBtn" class="primary-btn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
-        </svg>
-        Tailor resume
-      </button>
+      <div class="cta-row">
+        <button id="tailorBtn" class="primary-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
+          </svg>
+          <!-- Its own element because the button also holds an SVG; setting
+               textContent on the button would delete the icon with it. -->
+          <span id="tailorBtnLabel">Tailor resume</span>
+        </button>
+        <!-- Appears only once there is a finished run to move on from. The
+             pair is the whole point: Re-tailor keeps this job and tries
+             again, Reset starts a different one. -->
+        <button id="footerResetBtn" class="secondary-btn cta-reset" type="button" hidden
+                title="Clear the job and the last result. Your resume and keys stay.">Reset</button>
+      </div>
       <button id="previewBtn" class="secondary-btn" type="button" style="display:none;">Preview / Print resume</button>
       <button id="previewClBtn" class="secondary-btn" type="button" style="display:none;">Preview / Print cover letter</button>
     </footer>

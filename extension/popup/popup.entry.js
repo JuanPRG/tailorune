@@ -59,6 +59,8 @@ const els = {
   keyStatus: $('keyStatus'),
   themeToggle: $('themeToggle'),
   resetBtn: $('resetBtn'),
+  footerResetBtn: $('footerResetBtn'),
+  tailorBtnLabel: $('tailorBtnLabel'),
   resumeEmpty: $('resumeEmpty'),
 };
 
@@ -672,6 +674,7 @@ async function onTailorClick() {
       lastCoverLetterHtml = response.coverLetter ? response.coverLetter.htmlPreview : null;
       els.previewBtn.style.display = lastResumeHtml ? 'block' : 'none';
       els.previewClBtn.style.display = lastCoverLetterHtml ? 'block' : 'none';
+      setHasRun(true);
     } else {
       setStatus(`Failed: ${(response && response.error) || 'unknown error'}`);
     }
@@ -719,6 +722,7 @@ async function restoreLastRun() {
     coverLetter: last.coverLetterStatus ? { status: last.coverLetterStatus } : null,
   });
 
+  setHasRun(true);
   const forJob = [last.jobTitle, last.employer].filter(Boolean).join(' at ');
   const files = (last.downloads || []).length;
   setStatus(
@@ -756,27 +760,39 @@ function describeAge(at) {
  * expensive mistake available. Same four-second arm as the delete button, so
  * there is one confirmation idiom in this popup rather than two.
  */
-let resetArmed = false;
-let resetTimer = null;
-
-function disarmReset() {
-  resetArmed = false;
-  if (resetTimer) { clearTimeout(resetTimer); resetTimer = null; }
-  if (!els.resetBtn) return;
-  delete els.resetBtn.dataset.armed;
-  els.resetBtn.title = 'Start a new application — clears the job and the last result, keeps your resume and keys';
+/**
+ * Whether a finished run is on screen, which is what the footer reflects.
+ *
+ * The CTA and the reset button are a PAIR once a run exists, and each answers
+ * a different question: Re-tailor keeps this job and tries again -- a
+ * different model, a different roll -- while Reset moves on to a different
+ * job. Before the first run there is nothing to move on from, so the reset
+ * stays hidden and the CTA keeps the whole width.
+ */
+function setHasRun(hasRun) {
+  if (els.tailorBtnLabel) els.tailorBtnLabel.textContent = hasRun ? 'Re-tailor' : 'Tailor resume';
+  if (els.footerResetBtn) els.footerResetBtn.hidden = !hasRun;
 }
 
+/**
+ * Start a new application.
+ *
+ * SCOPE IS THE WHOLE DESIGN HERE. It clears what is cheap to get back -- the
+ * job description (pasted, or one click from the page), and the last run
+ * (whose documents are already in Downloads) -- and keeps what is expensive:
+ * the resume, the API keys, the preferences. Clearing the resume would fight
+ * the entire point of the library, which exists because the common case is
+ * one resume across many applications.
+ *
+ * It also deletes the STORED run, so this doubles as the privacy control:
+ * it is how a user removes generated resume content from the extension.
+ *
+ * Single click, by request. It was two-step, on the reasoning that a stray
+ * click could cost a long pasted job description -- that risk is real and is
+ * simply accepted now. What softens it is that the destination is cheap: the
+ * documents are already in Downloads, and the resume and keys never move.
+ */
 async function onResetClick() {
-  if (!resetArmed) {
-    resetArmed = true;
-    els.resetBtn.dataset.armed = 'true';
-    els.resetBtn.title = 'Click again to clear the job and the last result. Your resume and keys stay.';
-    resetTimer = setTimeout(disarmReset, DELETE_ARM_MS);
-    return;
-  }
-  disarmReset();
-
   els.jobDescription.value = '';
   els.jobTitle.value = '';
   els.employer.value = '';
@@ -788,6 +804,7 @@ async function onResetClick() {
   els.previewClBtn.style.display = 'none';
   els.warnings.innerHTML = '';
   els.result.textContent = '';
+  setHasRun(false);
 
   // The stored run is the point: without this the previous result would come
   // straight back on the next open, and nothing would have been forgotten.
@@ -801,6 +818,7 @@ async function onResetClick() {
 
 els.readPageBtn.addEventListener('click', onReadPageClick);
 if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
+if (els.footerResetBtn) els.footerResetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
 els.savedResumes.addEventListener('change', onSelectResume);
 els.saveResumeBtn.addEventListener('click', onSaveResume);

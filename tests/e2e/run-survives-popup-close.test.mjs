@@ -177,15 +177,21 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
   await page.fill('#apiKey', 'my-precious-key');
   await page.waitForTimeout(500);
 
-  // First click ARMS rather than acting.
-  await page.click('#resetBtn');
-  assert.equal(await page.getAttribute('#resetBtn', 'data-armed'), 'true', 'first click should arm, not clear');
-  assert.equal(await page.inputValue('#jobDescription'), 'A very long job description that would be annoying to re-paste.',
-    'nothing should be cleared by the first click');
+  // A finished run puts the footer in its paired state: the CTA offers
+  // another attempt at THIS job, the reset beside it moves on to another.
+  assert.equal(await page.textContent('#tailorBtnLabel'), 'Re-tailor',
+    'with a run on screen the CTA should offer another attempt, not a first one');
+  assert.equal(await page.locator('#footerResetBtn').isVisible(), true,
+    'the footer reset should appear alongside it');
 
-  // Second click commits.
+  // Single click, by request -- no arming step.
   await page.click('#resetBtn');
   await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Cleared'));
+
+  assert.equal(await page.textContent('#tailorBtnLabel'), 'Tailor resume',
+    'with nothing to re-tailor the CTA should go back to its first-run label');
+  assert.equal(await page.locator('#footerResetBtn').isVisible(), false,
+    'and the paired reset should go with it');
 
   assert.equal(await page.inputValue('#jobDescription'), '', 'the job description should be cleared');
   assert.equal(await page.inputValue('#jobTitle'), '', 'the job title should be cleared');

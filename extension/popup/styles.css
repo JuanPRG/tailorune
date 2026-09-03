@@ -224,14 +224,6 @@ body {
 }
 .icon-btn:hover { color: var(--text); border-color: var(--border-2); }
 .icon-btn svg { width: 14px; height: 14px; }
-/* Armed: the second click commits. Warning-coloured rather than red --
-   nothing here is unrecoverable, the documents are already downloaded. */
-.icon-btn[data-armed="true"] {
-  color: var(--warn);
-  border-color: var(--warn);
-  background: var(--warn-soft);
-}
-
 .icon-btn:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
@@ -573,6 +565,18 @@ details.panel .body > label:first-child { margin-top: 0; }
   flex-direction: column;
   gap: 7px;
 }
+
+/* The CTA and its companion. Reset only joins it once a run has finished,
+   so the ordinary state stays a single full-width primary action. */
+.cta-row { display: flex; gap: 8px; align-items: stretch; }
+.cta-row .primary-btn { flex: 1 1 auto; }
+.cta-reset {
+  flex: 0 0 auto;
+  width: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.cta-reset[hidden] { display: none; }
 
 #status {
   color: var(--text-2);
