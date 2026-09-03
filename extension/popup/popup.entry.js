@@ -58,6 +58,7 @@ const els = {
   result: $('result'),
   keyStatus: $('keyStatus'),
   themeToggle: $('themeToggle'),
+  resetBtn: $('resetBtn'),
   resumeEmpty: $('resumeEmpty'),
 };
 
@@ -738,7 +739,68 @@ function describeAge(at) {
   return `${days} day${days === 1 ? '' : 's'} ago.`;
 }
 
+/**
+ * Start a new application.
+ *
+ * SCOPE IS THE WHOLE DESIGN HERE. It clears what is cheap to get back -- the
+ * job description (pasted, or one click from the page), and the last run
+ * (whose documents are already in Downloads) -- and keeps what is expensive:
+ * the resume, the API keys, the preferences. Clearing the resume would fight
+ * the entire point of the library, which exists because the common case is
+ * one resume across many applications.
+ *
+ * It also deletes the STORED run, so this doubles as the privacy control:
+ * it is how a user removes generated resume content from the extension.
+ *
+ * Two-step, because a stray click on a long pasted job description is the one
+ * expensive mistake available. Same four-second arm as the delete button, so
+ * there is one confirmation idiom in this popup rather than two.
+ */
+let resetArmed = false;
+let resetTimer = null;
+
+function disarmReset() {
+  resetArmed = false;
+  if (resetTimer) { clearTimeout(resetTimer); resetTimer = null; }
+  if (!els.resetBtn) return;
+  delete els.resetBtn.dataset.armed;
+  els.resetBtn.title = 'Start a new application — clears the job and the last result, keeps your resume and keys';
+}
+
+async function onResetClick() {
+  if (!resetArmed) {
+    resetArmed = true;
+    els.resetBtn.dataset.armed = 'true';
+    els.resetBtn.title = 'Click again to clear the job and the last result. Your resume and keys stay.';
+    resetTimer = setTimeout(disarmReset, DELETE_ARM_MS);
+    return;
+  }
+  disarmReset();
+
+  els.jobDescription.value = '';
+  els.jobTitle.value = '';
+  els.employer.value = '';
+  els.extractHint.textContent = '';
+
+  lastResumeHtml = null;
+  lastCoverLetterHtml = null;
+  els.previewBtn.style.display = 'none';
+  els.previewClBtn.style.display = 'none';
+  els.warnings.innerHTML = '';
+  els.result.textContent = '';
+
+  // The stored run is the point: without this the previous result would come
+  // straight back on the next open, and nothing would have been forgotten.
+  try {
+    await chrome.storage.local.remove(LAST_RUN_KEY);
+  } catch { /* nothing stored, or storage unavailable */ }
+
+  setStatus('Cleared. Your resume, keys and preferences are untouched.');
+  schedulePersist();
+}
+
 els.readPageBtn.addEventListener('click', onReadPageClick);
+if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
 els.savedResumes.addEventListener('change', onSelectResume);
 els.saveResumeBtn.addEventListener('click', onSaveResume);

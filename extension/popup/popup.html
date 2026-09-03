@@ -26,6 +26,19 @@
              no backend, so the honest thing to report is whether a key is set.
              Driven by popup.entry.js when present; harmless if it is not. -->
         <span id="keyStatus" class="status-pill">No key</span>
+        <!-- Reset sits beside the theme toggle, where HirePilot put its own
+             reset. Two-step: the first click arms it, because losing a long
+             pasted job description to a stray click is the one expensive
+             mistake this button could cause. -->
+        <button id="resetBtn" class="icon-btn" type="button"
+                title="Start a new application — clears the job and the last result, keeps your resume and keys"
+                aria-label="Start a new application">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" />
+            <path d="M20.7 4.2v5.2h-5.2" />
+          </svg>
+        </button>
         <button id="themeToggle" class="icon-btn" type="button"
                 title="Switch between dark and canvas" aria-label="Switch theme">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

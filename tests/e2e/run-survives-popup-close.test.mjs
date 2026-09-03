@@ -134,3 +134,74 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   assert.match(await tab.textContent('body'), /TAILORED BULLET ONE/,
     'the restored preview should contain the tailored resume');
 });
+
+test('reset clears the job and the stored run, and keeps what is expensive', async (t) => {
+  // The scope IS the feature. A reset that took the resume and the API keys
+  // with it would be worse than no reset at all: those are the two things a
+  // user cannot cheaply re-enter, and the library exists precisely because
+  // one resume serves many applications.
+  const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-e2e-reset-'));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    headless: false,
+    acceptDownloads: true,
+    args: [
+      `--disable-extensions-except=${EXTENSION_PATH}`,
+      `--load-extension=${EXTENSION_PATH}`,
+      '--no-first-run',
+    ],
+  });
+  t.after(async () => {
+    await context.close();
+    rmSync(userDataDir, { recursive: true, force: true });
+  });
+
+  const sw = await getExtensionServiceWorker(context);
+  const extensionId = sw.url().split('/')[2];
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+
+  // Seed a finished run and a filled-in form.
+  await sw.evaluate(async (key) => chrome.storage.local.set({
+    [key]: {
+      at: Date.now(), jobTitle: 'Analyst', employer: 'Acme', wordCount: 400,
+      downloads: ['a.docx'], htmlPreview: '<h1>preview</h1>', resumeStatus: 'approved',
+    },
+  }), LAST_RUN_KEY);
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('status').textContent.includes('Previous run'));
+
+  await page.fill('#resumeText', 'MY RESUME TEXT');
+  await page.fill('#jobDescription', 'A very long job description that would be annoying to re-paste.');
+  await page.fill('#jobTitle', 'Analyst');
+  await page.locator('#providerDetails').evaluate((el) => { el.open = true; });
+  await page.fill('#apiKey', 'my-precious-key');
+  await page.waitForTimeout(500);
+
+  // First click ARMS rather than acting.
+  await page.click('#resetBtn');
+  assert.equal(await page.getAttribute('#resetBtn', 'data-armed'), 'true', 'first click should arm, not clear');
+  assert.equal(await page.inputValue('#jobDescription'), 'A very long job description that would be annoying to re-paste.',
+    'nothing should be cleared by the first click');
+
+  // Second click commits.
+  await page.click('#resetBtn');
+  await page.waitForFunction(() => document.getElementById('status').textContent.startsWith('Cleared'));
+
+  assert.equal(await page.inputValue('#jobDescription'), '', 'the job description should be cleared');
+  assert.equal(await page.inputValue('#jobTitle'), '', 'the job title should be cleared');
+  assert.equal(await page.locator('#previewBtn').isVisible(), false, 'the stale preview button should go');
+
+  // The expensive things survive.
+  assert.equal(await page.inputValue('#resumeText'), 'MY RESUME TEXT', 'the resume must NOT be cleared');
+  assert.equal(await page.inputValue('#apiKey'), 'my-precious-key', 'the API key must NOT be cleared');
+
+  // And the stored run is actually gone -- otherwise it would return on open.
+  const stored = await sw.evaluate(async (key) => (await chrome.storage.local.get(key))[key], LAST_RUN_KEY);
+  assert.equal(stored, undefined, 'the stored run should be deleted, not just hidden');
+
+  const reopened = await context.newPage();
+  await reopened.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await reopened.waitForTimeout(900);
+  assert.ok(!(await reopened.textContent('#status')).includes('Previous run'),
+    'the cleared run must not come back on reopen');
+});
