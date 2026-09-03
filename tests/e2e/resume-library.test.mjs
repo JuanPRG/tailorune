@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey } from './helpers.mjs';
+import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey, openResumeManage } from './helpers.mjs';
 import { startMockLlmServer } from './mockLlmServer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -122,6 +122,8 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
   // The name defaults to the uploaded file's base name, which beats the first
   // line of the resume — that is just the person's name, and identical across
   // every resume they own.
+  // Uploading a resume collapses the disclosure, so open it to reach the name.
+  await openResumeManage(first);
   assert.equal(await first.inputValue('#resumeName'), 'juan-rivera-tabstops');
 
   await first.fill('#resumeName', 'Finance CV');
@@ -150,6 +152,7 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
 
   const selectedLabel = await second.$eval('#savedResumes', (el) => el.options[el.selectedIndex].textContent);
   assert.equal(selectedLabel, 'Finance CV', 'the saved resume should be selected on open');
+  await openResumeManage(second);
   assert.equal(await second.inputValue('#resumeName'), 'Finance CV', 'the name field should reflect the selection');
 
   const fileInputValue = await second.inputValue('#resumeFile');
@@ -197,12 +200,14 @@ test('a second saved resume can be switched between, and deleting takes two clic
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Resume B'));
 
   const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(labels, ['— not saved —', 'Resume A', 'Resume B']);
+  assert.deepEqual(labels, ['Load a saved resume…', 'Resume A', 'Resume B']);
 
   // Switching the dropdown loads that resume's text and its name.
   const aValue = await page.$eval('#savedResumes option:nth-child(2)', (o) => o.value);
   await page.selectOption('#savedResumes', aValue);
   await page.waitForFunction(() => document.getElementById('resumeText').value.includes('AAA'));
+  // Switching resumes collapses it again.
+  await openResumeManage(page);
   assert.equal(await page.inputValue('#resumeName'), 'Resume A');
 
   // Deleting is two-step, since confirm() is unavailable in a real popup.
@@ -210,13 +215,13 @@ test('a second saved resume can be switched between, and deleting takes two clic
   await page.click('#deleteResumeBtn');
   await page.waitForFunction(() => document.getElementById('deleteResumeBtn').textContent === 'Confirm');
   const afterArming = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(afterArming, ['— not saved —', 'Resume A', 'Resume B'], 'arming must not delete anything');
+  assert.deepEqual(afterArming, ['Load a saved resume…', 'Resume A', 'Resume B'], 'arming must not delete anything');
 
   await page.click('#deleteResumeBtn');
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Deleted'));
 
   const remaining = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(remaining, ['— not saved —', 'Resume B'], 'the wrong resume was removed');
+  assert.deepEqual(remaining, ['Load a saved resume…', 'Resume B'], 'the wrong resume was removed');
   assert.equal(await page.$eval('#deleteResumeBtn', (el) => el.textContent), 'Delete', 'the button should reset');
   assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
 });
@@ -240,7 +245,7 @@ test('re-saving a loaded resume under the same name updates it instead of duplic
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
 
   const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(labels, ['— not saved —', 'My CV'], 'a duplicate entry was created');
+  assert.deepEqual(labels, ['Load a saved resume…', 'My CV'], 'a duplicate entry was created');
 
   // Reopening proves the edit is what persisted, not the original.
   const reopened = await openPopup(context, extensionId, mockLlm.url);

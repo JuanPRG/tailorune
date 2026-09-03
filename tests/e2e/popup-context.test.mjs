@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { openRealPopup, readStorage, waitForStorage } from './realPopup.mjs';
+import { openResumeManage } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCX_FIXTURE = path.resolve(__dirname, '../fixtures/resumes/juan-rivera-tabstops.docx');
@@ -43,6 +44,7 @@ test('real popup: the name field takes the uploaded file name, replacing whateve
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
+  await openResumeManage(popup);
   assert.equal(await popup.inputValue('#resumeName'), 'juan-rivera-tabstops');
 });
 
@@ -52,6 +54,7 @@ test('real popup: saving actually writes to storage — the flow that silently d
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
+  await openResumeManage(popup);
   await popup.fill('#resumeName', 'Finance CV');
   await popup.click('#saveResumeBtn');
   await popup.waitForFunction(
@@ -81,6 +84,7 @@ test('real popup: a selected file with an empty textarea is recovered by Save, n
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
   await popup.evaluate(() => { document.getElementById('resumeText').value = ''; });
+  await openResumeManage(popup);
   await popup.fill('#resumeName', 'Recovered CV');
 
   await popup.click('#saveResumeBtn');
@@ -94,6 +98,7 @@ test('real popup: a selected file with an empty textarea is recovered by Save, n
   assert.equal(stored.resumes[0].name, 'Recovered CV');
   assert.ok(stored.resumes[0].text.includes('Juan Rivera'));
   // And the textarea is repopulated, so the user can see what was saved.
+  await openResumeManage(popup);
   assert.ok((await popup.inputValue('#resumeText')).includes('Juan Rivera'));
 });
 
@@ -105,4 +110,43 @@ test('real popup: settings persist as you type, without needing a tailor run', a
 
   const settings = await waitForStorage(sw, 'tailorune_settings_v1', (v) => Boolean(v && v.apiKey));
   assert.equal(settings.apiKey, 'popup-context-key');
+});
+
+test('real popup: the resume card stays compact, and says what is loaded', async (t) => {
+  // The contract of the compact resume card, which is easy to regress by
+  // accident because every piece of it still exists in the DOM.
+  //
+  //   EMPTY  -- the disclosure is OPEN. Folding the textarea away is the
+  //             point of the layout, but in an empty card it is also the only
+  //             way to paste a resume; closing it there would hide the
+  //             primary input behind a control labelled "Text & library".
+  //   LOADED -- the disclosure is CLOSED and a pill states the name and word
+  //             count. That pill is the whole argument for the redesign: the
+  //             textarea's real job was reassurance, and it cost 110px to do
+  //             it badly, showing three lines from wherever the document
+  //             happened to be scrolled.
+  const { popup } = await openRealPopup(t);
+  const cardHeight = () => popup.$eval(
+    'main.scroll > section.card:first-of-type',
+    (el) => Math.round(el.getBoundingClientRect().height),
+  );
+
+  assert.equal(await popup.$eval('#resumeManage', (el) => el.open), true,
+    'an empty resume card must leave the paste box reachable');
+  assert.equal(await popup.isVisible('#resumeMeta'), false, 'nothing is loaded, so nothing to summarise');
+
+  await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
+  await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
+
+  assert.equal(await popup.$eval('#resumeManage', (el) => el.open), false,
+    'loading a resume must fold the text away -- that is the request this implements');
+  assert.match(
+    await popup.textContent('#resumeMeta'), /juan-rivera-tabstops · \d+ words/,
+    'the pill must name the loaded resume and count its words',
+  );
+
+  // A number, so "compact" is a claim the suite can check rather than a
+  // matter of opinion. The card was 317px with the textarea exposed.
+  const height = await cardHeight();
+  assert.ok(height < 170, `the loaded resume card should stay compact, measured ${height}px`);
 });

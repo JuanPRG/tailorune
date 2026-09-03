@@ -99,3 +99,17 @@ export async function pdfTextOf(filePath) {
   }
   return out.replace(/\s+/g, ' ');
 }
+
+/**
+ * Open the resume card's "Text & library" disclosure.
+ *
+ * The textarea, the name field and Save/Delete live behind it: the point of
+ * that layout is that a loaded resume shows a name and a word count rather
+ * than 110px of scrolled document. It opens itself while the card is empty
+ * and closes when a resume arrives, so any test that drives those controls
+ * AFTER loading one has to open it -- the same click a user makes, and the
+ * same reason fillApiKey() forces #providerDetails open.
+ */
+export async function openResumeManage(page) {
+  await page.locator('#resumeManage').evaluate((el) => { el.open = true; });
+}

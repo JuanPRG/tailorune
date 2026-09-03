@@ -55,20 +55,11 @@
       <section class="card">
         <div class="section-title-row">
           <span class="section-heading"><span class="step-no">1</span> Resume</span>
+          <!-- What the textarea used to do, in 20px instead of 110: confirm
+               the right resume is loaded. A name and a word count answer that;
+               three scrolled lines from the middle of the document do not. -->
+          <span id="resumeMeta" class="meta-pill" hidden></span>
         </div>
-
-        <label for="savedResumes">Saved resumes</label>
-        <div class="row">
-          <select id="savedResumes" style="flex:2;">
-            <option value="">— none saved —</option>
-          </select>
-          <button id="deleteResumeBtn" class="secondary-btn mini-btn" type="button">Delete</button>
-        </div>
-        <div class="row tight">
-          <input id="resumeName" placeholder="Name this resume" style="flex:2;" />
-          <button id="saveResumeBtn" class="secondary-btn mini-btn" type="button">Save</button>
-        </div>
-        <div id="libraryHint" class="hint"></div>
 
         <!-- Empty state. The one place in this UI a mascot earns its keep: a
              genuinely blank moment that otherwise shows nothing. It is
@@ -81,10 +72,38 @@
           <p class="empty-copy">Drop in your resume and a job posting.<br>Everything runs in your browser.</p>
         </div>
 
-        <label for="resumeText">Resume text</label>
-        <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
-        <div class="hint">or upload .txt / .docx / .pdf — uploading replaces the text above</div>
-        <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" style="margin-top:6px;" />
+        <!-- The whole working state: WHICH resume, and how to bring in
+             another. Everything else is either rare (naming, deleting) or
+             something the user explicitly does not want on screen (the text
+             itself), so it lives one click away. -->
+        <div class="row">
+          <select id="savedResumes" style="flex:2;">
+            <option value="">No saved resumes</option>
+          </select>
+          <button id="uploadBtn" class="secondary-btn mini-btn" type="button">Upload</button>
+        </div>
+
+        <details class="sub" id="resumeManage">
+          <summary>Text &amp; library</summary>
+          <div class="body">
+            <div class="row">
+              <input id="resumeName" placeholder="Name this resume" style="flex:2;" />
+              <button id="saveResumeBtn" class="secondary-btn mini-btn" type="button">Save</button>
+              <button id="deleteResumeBtn" class="secondary-btn mini-btn" type="button">Delete</button>
+            </div>
+            <div id="libraryHint" class="hint"></div>
+            <label for="resumeText">Resume text</label>
+            <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
+            <div class="hint">Uploading a file replaces this text.</div>
+          </div>
+        </details>
+
+        <!-- The real file input, driven by the Upload button above.
+             Deliberately OUTSIDE the disclosure and only visually hidden: a
+             file input inside a closed <details> is display:none, and both
+             Playwright's setInputFiles() and a screen reader need it live. -->
+        <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" class="visually-hidden"
+               aria-label="Upload a resume file (.txt, .docx or .pdf)" />
       </section>
 
       <section class="card">

@@ -318,7 +318,7 @@ input[type="text"], input[type="password"], input:not([type]), textarea, select 
 }
 textarea { resize: vertical; line-height: 1.5; }
 #jobDescription { height: 72px; }
-#resumeText { height: 78px; }
+#resumeText { height: 108px; }
 
 input::placeholder, textarea::placeholder { color: var(--text-3); }
 
@@ -374,6 +374,78 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-2); 
   letter-spacing: 0;
   text-transform: none;
   line-height: 1.45;
+}
+
+/* ---------- summary pill ---------- */
+
+/* Sits in a section's title row and states what is loaded. It replaced a
+   110px textarea whose only real job was reassurance -- and which showed
+   three lines from wherever the document happened to be scrolled, so it was
+   bad at that job too. */
+.meta-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.meta-pill[hidden] { display: none; }
+
+/* ---------- disclosure inside a card ---------- */
+
+/* details.panel is a card in its own right. This is the lighter version for
+   folding rarely-used controls away INSIDE a card: no border, no fill, just a
+   label and a chevron. */
+details.sub { margin-top: 9px; }
+details.sub > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  list-style: none;
+}
+details.sub > summary::-webkit-details-marker { display: none; }
+details.sub > summary::after {
+  content: "";
+  width: 5px; height: 5px;
+  border: solid var(--text-3);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.18s ease;
+}
+details.sub[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+details.sub > summary:hover { color: var(--text-2); }
+details.sub > summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: 4px; }
+details.sub .body > label:first-child { margin-top: 9px; }
+
+/* Present for the DOM and for assistive tech, absent from the layout. The
+   file input needs this rather than [hidden]: it is clicked programmatically
+   by the Upload button and its files are set directly by the e2e suite, and
+   display:none would break neither of those in an obvious way -- it would
+   break them quietly. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* ---------- empty state ---------- */

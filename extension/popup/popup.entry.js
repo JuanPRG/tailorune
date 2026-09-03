@@ -64,6 +64,9 @@ const els = {
   footerResetBtn: $('footerResetBtn'),
   tailorBtnLabel: $('tailorBtnLabel'),
   resumeEmpty: $('resumeEmpty'),
+  resumeMeta: $('resumeMeta'),
+  uploadBtn: $('uploadBtn'),
+  resumeManage: $('resumeManage'),
 };
 
 let lastResumeHtml = null;
@@ -101,7 +104,10 @@ async function refreshLibrary({ selectId, loadText = false } = {}) {
   els.savedResumes.innerHTML = '';
   const none = document.createElement('option');
   none.value = '';
-  none.textContent = library.resumes.length ? '— not saved —' : '— none saved —';
+  // Reads as a PICKER, not as a status. The pill in the title row now says
+  // what is loaded, and a placeholder reading "— not saved —" directly beside
+  // "Juan Rivera · 163 words" invited the opposite conclusion.
+  none.textContent = library.resumes.length ? 'Load a saved resume…' : 'No saved resumes';
   els.savedResumes.appendChild(none);
   for (const resume of library.resumes) {
     const option = document.createElement('option');
@@ -113,7 +119,7 @@ async function refreshLibrary({ selectId, loadText = false } = {}) {
   const match = library.resumes.find((r) => r.id === chosen);
   els.savedResumes.value = match ? match.id : '';
   if (match) els.resumeName.value = match.name;
-  if (match && loadText) { els.resumeText.value = match.text; refreshEmptyState(); }
+  if (match && loadText) { els.resumeText.value = match.text; refreshResumeSummary(); }
   return library;
 }
 
@@ -127,8 +133,9 @@ async function onSelectResume() {
   const match = library.resumes.find((r) => r.id === id);
   if (!match) return;
   els.resumeText.value = match.text;
-  refreshEmptyState();
   els.resumeName.value = match.name;
+  refreshResumeSummary();
+  syncManageDisclosure();
   // Clear any staged upload: the textarea is now the source of truth, and
   // leaving a file selected would silently override the resume just chosen.
   els.resumeFile.value = '';
@@ -261,11 +268,12 @@ async function extractSelectedFile({ renameFromFile = false } = {}) {
         throw new Error('that file contained no readable text.');
       }
       els.resumeText.value = text;
-      refreshEmptyState();
       els.savedResumes.value = '';
       if (renameFromFile || !els.resumeName.value.trim()) {
         els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
       }
+      refreshResumeSummary();
+      syncManageDisclosure();
       setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
       setStatus('');
       return text;
@@ -498,15 +506,53 @@ function applyTheme(theme) {
 }
 
 /**
- * Show the mascot only while there is no resume.
+ * Show the mascot only while there is no resume, and say what IS loaded.
  *
  * Driven from the textarea rather than from the library, because a resume can
  * arrive four ways -- typed, pasted, uploaded, or loaded from the library --
- * and the textarea is the one place all four converge.
+ * and the textarea is the one place all four converge. That is also why the
+ * textarea still exists now that it is folded away: it is the model, not
+ * merely a control.
+ *
+ * The pill carries the reassurance the visible textarea used to provide, and
+ * carries it better. A name and a word count say "the right document is
+ * loaded"; three lines from wherever the document happened to be scrolled --
+ * which is all the textarea actually showed -- say very little.
+ *
+ * MUST BE CALLED AFTER #resumeName is set, never before. Three call sites had
+ * it the other way round. That cost nothing while this function only toggled
+ * a mascot, and would have quietly dropped the name from the pill.
  */
-function refreshEmptyState() {
+/**
+ * Open the text-and-library disclosure only while there is nothing loaded.
+ *
+ * Folding the textarea away is the point of this layout, but in an EMPTY
+ * popup it is also the only way to paste a resume -- collapsing it there
+ * would hide the primary input behind a control labelled "Text & library"
+ * and leave Upload as the only visible way in. So: open when empty, closed
+ * once a resume exists.
+ *
+ * Called when a resume ARRIVES FROM ELSEWHERE -- boot, an upload, a library
+ * pick -- and deliberately not while the user is typing, since collapsing
+ * the box someone is typing into would be absurd.
+ */
+function syncManageDisclosure() {
+  if (!els.resumeManage) return;
+  els.resumeManage.open = !els.resumeText.value.trim();
+}
+
+function refreshResumeSummary() {
   if (!els.resumeEmpty) return;
-  els.resumeEmpty.hidden = Boolean(els.resumeText.value.trim());
+  const text = els.resumeText.value.trim();
+  els.resumeEmpty.hidden = Boolean(text);
+
+  if (!els.resumeMeta) return;
+  els.resumeMeta.hidden = !text;
+  if (!text) return;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const name = els.resumeName.value.trim();
+  els.resumeMeta.textContent = name ? `${name} · ${words} words` : `${words} words`;
+  els.resumeMeta.title = els.resumeMeta.textContent;
 }
 
 function currentTheme() {
@@ -555,7 +601,7 @@ const PERSIST_DEBOUNCE_MS = 250;
 let persistTimer = null;
 function schedulePersist() {
   refreshKeyStatus();
-  refreshEmptyState();
+  refreshResumeSummary();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => { persistTimer = null; persistSettings(); }, PERSIST_DEBOUNCE_MS);
 }
@@ -939,10 +985,16 @@ if (els.themeToggle) {
 
 applyTheme('system');
 refreshKeyStatus();
-refreshEmptyState();
-els.resumeText.addEventListener('input', refreshEmptyState);
+refreshResumeSummary();
+syncManageDisclosure();
+els.resumeText.addEventListener('input', refreshResumeSummary);
+els.resumeName.addEventListener('input', refreshResumeSummary);
+
+// The file input is visually hidden, so this is the control the user actually
+// presses; clicking it opens the same OS picker.
+els.uploadBtn.addEventListener('click', () => els.resumeFile.click());
 restoreLastRun();
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.
-refreshLibrary({ loadText: true });
+refreshLibrary({ loadText: true }).then(syncManageDisclosure);
