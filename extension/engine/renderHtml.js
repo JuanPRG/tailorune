@@ -127,7 +127,18 @@ export function renderResumeHtml(model) {
   ul { margin: 0 0 6px; padding-left: 18px; }
   li { margin-bottom: 2px; }
   .print-hint { background: #e0edee; border: 1px solid #0f6e78; border-radius: 4px; padding: 10px 14px; margin-bottom: 16px; font-size: 10pt; }
-  @media print { .print-hint, .print-actions { display: none; } }
+  /* The screen page and the PRINTED page are different geometries, and
+     conflating them silently changed the document. .sheet pads 0.4in to
+     look like paper on screen; @page sets the real print margin. Without
+     this override both applied, so a printed PDF measured 1.00in sides
+     against the DOCX's 0.60in -- a 0.40in narrower text block, different
+     line breaks, and a one-page budget (measured against the DOCX) that no
+     longer describes the PDF. Verified by printing and measuring the text
+     bbox, not by reading the CSS. */
+  @media print {
+    .print-hint, .print-actions { display: none; }
+    .sheet { max-width: none; margin: 0; padding: 0; }
+  }
 </style>
 </head>
 <body>
@@ -148,4 +159,22 @@ export function renderResumeHtml(model) {
   </div>
 </body>
 </html>`;
+}
+
+/**
+ * Open the print dialog as soon as the preview loads.
+ *
+ * Applied when the tab is opened rather than baked into the stored HTML, so
+ * there is one copy of each preview in storage rather than two. Verified
+ * empirically that inline handlers DO run in the data: URL tab the popup
+ * creates -- that is not obvious, and the whole feature depends on it.
+ *
+ * Cancelling the dialog leaves the user on the preview page, so this button
+ * still does both jobs: the dialog IS the preview for anyone who just wants
+ * the PDF, and the page is there for anyone who wants to read it first.
+ */
+export function withAutoPrint(html) {
+  if (typeof html !== 'string' || !html) return html;
+  if (html.includes('onload="window.print()"')) return html;
+  return html.replace('<body>', '<body onload="window.print()">');
 }

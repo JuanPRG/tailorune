@@ -19,6 +19,7 @@ import { extractPdfText } from '../engine/extractPdfText.js';
 // The same resolver the offscreen document uses to build the run's chain, so
 // the header pill and the actual run cannot report different things.
 import { resolveProviderChain, chainLabels } from '../engine/providers.js';
+import { withAutoPrint } from '../engine/renderHtml.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -310,8 +311,14 @@ function openHtmlInTab(html) {
   chrome.tabs.create({ url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}` });
 }
 
-els.previewBtn.addEventListener('click', () => lastResumeHtml && openHtmlInTab(lastResumeHtml));
-els.previewClBtn.addEventListener('click', () => lastCoverLetterHtml && openHtmlInTab(lastCoverLetterHtml));
+// Opening the preview fires the print dialog straight away, which is the
+// whole point: v4's PDFs came from Chromium's print-to-PDF, and this is the
+// same Skia renderer -- the only thing that ever separated Tailorune from
+// v4's PDF output was four clicks. Cancelling the dialog leaves the preview
+// page open, so one button still serves both "give me the PDF" and "let me
+// read it first".
+els.previewBtn.addEventListener('click', () => lastResumeHtml && openHtmlInTab(withAutoPrint(lastResumeHtml)));
+els.previewClBtn.addEventListener('click', () => lastCoverLetterHtml && openHtmlInTab(withAutoPrint(lastCoverLetterHtml)));
 
 /** {providerId: key} for every provider the user supplied a fallback key for. */
 /**

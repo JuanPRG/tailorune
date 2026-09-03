@@ -303,7 +303,18 @@ export function renderCoverLetterHtml({ bodyParagraphs, model, job }) {
   .cl-job { margin-top: 2px; }
   .bold-line { font-weight: 700; }
   .print-hint { background: #e0edee; border: 1px solid #0f6e78; border-radius: 4px; padding: 10px 14px; margin-bottom: 16px; font-size: 10pt; }
-  @media print { .print-hint, .print-actions { display: none; } }
+  /* The screen page and the PRINTED page are different geometries, and
+     conflating them silently changed the document. .sheet pads 0.4in to
+     look like paper on screen; @page sets the real print margin. Without
+     this override both applied, so a printed PDF measured 1.00in sides
+     against the letter template's 0.85in -- a 0.40in narrower text block, different
+     line breaks, and a one-page budget (measured against the DOCX) that no
+     longer describes the PDF. Verified by printing and measuring the text
+     bbox, not by reading the CSS. */
+  @media print {
+    .print-hint, .print-actions { display: none; }
+    .sheet { max-width: none; margin: 0; padding: 0; }
+  }
 </style>
 </head>
 <body>
