@@ -272,28 +272,38 @@ test('the front page fits in the 600px Chrome allows a popup', async (t) => {
   await page.close();
 });
 
-test('real popup: the CTA survives a window shorter than 600px', async (t) => {
-  // `html, body { height: 600px }` is a REQUEST. A short browser window or
-  // page zoom gets less, and with `overflow: hidden` there is then no way to
-  // reach what falls off the bottom -- which was the Tailor button itself,
-  // clipped and unclickable. Measured at 510px before `max-height: 100vh`.
+test('the popup renders at a usable size, not a sliver', async (t) => {
+  // THE REGRESSION THIS EXISTS FOR, and it shipped past a fully green suite.
   //
-  // Driven through a tab rather than the real popup, because the popup's own
-  // window size is Chrome's to decide and cannot be set from a test.
+  // `html, body { height: 600px }` was given `max-height: 100vh` to stop a
+  // short browser window clipping the footer. Chrome sizes the popup window
+  // FROM the document, so during that measurement 100vh resolved against a
+  // viewport that did not exist yet, max-height clamped the body to it, and
+  // the popup was sized to the clamp: 420x25px. A sliver showing the header
+  // and nothing else -- "i cant see the extension".
+  //
+  // Nothing caught it. No console error, no exception, and every other test
+  // here drives either a tab (which has a real viewport) or a popup whose
+  // CONTENT it inspects rather than its SIZE. So: assert the size, in the
+  // real popup, because that is the one context where the bug exists.
   const { popup } = await openRealPopup(t);
-  const url = popup.url();
-  const page = await popup.context().newPage();
+  await popup.waitForTimeout(400);
 
-  for (const height of [600, 510, 420]) {
-    await page.setViewportSize({ width: 420, height });
-    await page.goto(url);
-    await page.waitForTimeout(150);
-    const seen = await page.evaluate(() => {
-      const r = document.getElementById('tailorBtn').getBoundingClientRect();
-      return { visible: r.bottom <= window.innerHeight && r.top >= 0, bottom: Math.round(r.bottom) };
-    });
-    assert.equal(seen.visible, true,
-      `at a ${height}px window the CTA must stay on screen, but its bottom was ${seen.bottom}px`);
-  }
-  await page.close();
+  const box = await popup.evaluate(() => {
+    const r = document.body.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  });
+
+  assert.equal(box.w, 420, `the popup should be 420px wide, got ${box.w}px`);
+  assert.ok(box.h > 400, `the popup collapsed to ${box.h}px tall -- it must not be a sliver`);
+
+  // And the whole app is really laid out inside it, not merely present.
+  const laid = await popup.evaluate(() => ({
+    header: document.querySelector('.app-header').getBoundingClientRect().height > 0,
+    cards: [...document.querySelectorAll('#mainView > section.card')]
+      .filter((el) => el.getBoundingClientRect().height > 0).length,
+    cta: document.getElementById('tailorBtn').getBoundingClientRect().height > 0,
+  }));
+  assert.deepEqual(laid, { header: true, cards: 3, cta: true },
+    'header, all three cards and the CTA must have real height');
 });

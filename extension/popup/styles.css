@@ -127,15 +127,16 @@ html, body {
   padding: 0;
   width: 420px;
   height: 600px;
-  /* 600px is what Chrome allows and what this layout budgets for, but it is
-     a REQUEST, not a guarantee -- a short browser window, or page zoom, and
-     the popup gets less. Without a ceiling the 600px column simply overflows
-     a smaller window, and since `overflow: hidden` forbids scrolling the
-     footer becomes unreachable: the Tailor button clipped off the bottom
-     edge with no way to get to it. Measured at 510px in a small window.
-     `100vh` is the real window, so the column now shrinks to fit and the
-     scroll region absorbs the difference. */
-  max-height: 100vh;
+  /* NO `max-height: 100vh` HERE, however tempting it looks.
+     A short browser window does give the popup less than 600px, and the
+     fixed height then clips the footer -- but the cure destroys the patient.
+     Chrome sizes the popup window FROM the document, so during that
+     measurement `100vh` resolves against a viewport that does not exist yet,
+     max-height clamps the body to it, and the popup is sized to the clamp:
+     measured 420x25px, a sliver with the header alone and no way to reach
+     anything. The collapse is self-reinforcing, there is no console error,
+     and every tab-based test still passes because a tab has a real viewport.
+     A rare clipped footer is the better failure. */
   overflow: hidden;
 }
 
