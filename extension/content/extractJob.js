@@ -337,6 +337,64 @@ function _withCheckedTitle(result) {
   return Object.assign({}, result, { jobTitle: _plausibleJobTitle(result && result.jobTitle) });
 }
 
+// A page heading that is the SECTION, not the job. Whole-string matches only:
+// "Careers" is not a job title, "Careers Advisor" very much is.
+var _GENERIC_HEADING_RE = /^(careers?|jobs?|job search|search results|open (positions|roles)|opportunities|vacancies|job details?|job description|apply|apply now)$/i;
+
+/**
+ * The part of "Job Title - Company | Board" before the separator.
+ *
+ * ONLY when there IS a separator. A tab title without one is whatever the
+ * site chose to call the page -- "Some Page", "Home", a product name -- and
+ * accepting that put junk in the job title field on every page with no job
+ * metadata, which is the same failure as the greeting it replaced. The
+ * separator is the page structuring the title itself, and that structure is
+ * the only reason to trust the first half of it.
+ */
+function _titleFromDocumentTitle() {
+  var raw = String(document.title || '');
+  if (!/[|–—]| - | at /.test(raw)) return '';
+  return raw.split(/[|–—]| - | at /)[0].trim();
+}
+
+/**
+ * The job title, from whatever the page is willing to say.
+ *
+ * JSON-LD was the ONLY source, which is why a posting without it produced no
+ * title at all -- and why a stale one, once in the field, was never replaced
+ * by anything. The description already had three tiers; the title had one.
+ *
+ * Ordered by how much the page is actually claiming: structured data, then
+ * the social preview, then the main heading, then the tab. Every candidate
+ * goes through the same plausibility check, so a greeting cannot enter here
+ * either, and none may simply repeat the employer -- a heading that names the
+ * company is a banner, not a role.
+ */
+function _extractJobTitle(employer) {
+  var posting = _extractJsonLdJobPosting();
+  var candidates = [];
+  if (posting && typeof posting.title === 'string') candidates.push(posting.title);
+
+  var og = document.querySelector('meta[property="og:title"], meta[name="og:title"]');
+  if (og && og.content) candidates.push(og.content);
+
+  var heading = document.querySelector('h1');
+  if (heading && heading.textContent) candidates.push(heading.textContent);
+
+  candidates.push(_titleFromDocumentTitle());
+
+  var company = String(employer || '').trim().toLowerCase();
+  for (var i = 0; i < candidates.length; i++) {
+    var candidate = _plausibleJobTitle(candidates[i]);
+    if (!candidate) continue;
+    if (_GENERIC_HEADING_RE.test(candidate)) continue;
+    if (company && candidate.toLowerCase() === company) continue;
+    if (_JOB_BOARD_NAMES.some(function (b) { return candidate.toLowerCase() === b; })) continue;
+    return candidate;
+  }
+  return '';
+}
+
 async function extractJobContext() {
   if (_isIndeedPage()) {
     const complete = await _waitForDom(_findCompleteIndeedSelectedJob);
@@ -349,11 +407,10 @@ async function extractJobContext() {
     _extractJobDescriptionResult(),
     _extractEmployerName(),
   ]);
-  const posting = _extractJsonLdJobPosting();
   return _withCheckedTitle({
     text: descriptionResult.text,
     employer,
-    jobTitle: (posting && typeof posting.title === 'string') ? posting.title.trim() : '',
+    jobTitle: _extractJobTitle(employer),
     source: descriptionResult.source,
     // Overall confidence is the description's, downgraded when no employer
     // was found -- the popup uses this to decide whether to ask for review.

@@ -75,6 +75,20 @@ const PAGES = {
       }, 350);
     </script></body></html>`,
 
+  '/h1only': `<!doctype html><html><head><meta charset="utf-8"><title>Mobile Sales Expert - The Mobile Shop | JobBoard</title>
+    <meta property="og:site_name" content="The Mobile Shop" /></head>
+    <body><header><h1>Mobile Sales Expert</h1></header>
+    <div class="job-description"><p>${JD_TEXT}</p><ul><li>Sell phones</li><li>Serve customers</li></ul></div>
+    </body></html>`,
+  '/genericheading': `<!doctype html><html><head><meta charset="utf-8"><title>Careers</title></head>
+    <body><h1>Careers</h1>
+    <div class="job-description"><p>${JD_TEXT}</p><ul><li>Do the work</li><li>Own outcomes</li></ul></div>
+    </body></html>`,
+  '/ogtitle': `<!doctype html><html><head><meta charset="utf-8"><title>JobBoard</title>
+    <meta property="og:title" content="Highway Maintenance Technician" /></head>
+    <body><h1>Apply now</h1>
+    <div class="job-description"><p>${JD_TEXT}</p><ul><li>Maintain highways</li><li>Report faults</li></ul></div>
+    </body></html>`,
   '/bare': `<!doctype html><html><head><meta charset="utf-8"><title>Some Page</title></head>
     <body><nav>ignore this nav</nav><main><p>${JD_TEXT}</p></main><footer>ignore this footer</footer></body></html>`,
 
@@ -393,4 +407,55 @@ test('a stored run makes the popup check which page it is on', async (t) => {
     await sw.evaluate(() => self.__urlCalls) >= 1,
     'with a run stored, the popup must establish which page it is open over',
   );
+});
+
+// --- the title has tiers now, like the description always did -------------
+//
+// Reported after the greeting fix: "now there's no job title". The guard was
+// not rejecting real titles -- JSON-LD was the ONLY place a title could come
+// from, so a posting without it had never produced one. The stale greeting
+// had been hiding that, because an automatic read never overwrites.
+
+async function titleOf(t, route) {
+  const server = await startPageServer();
+  const browser = await chromium.launch();
+  t.after(async () => { await browser.close(); await server.close(); });
+  const page = await browser.newPage();
+  await page.goto(server.url(route));
+  return { page, result: await runExtractor(page) };
+}
+
+test('title: falls back to the page heading when there is no JSON-LD', async (t) => {
+  const { result } = await titleOf(t, '/h1only');
+  assert.equal(result.jobTitle, 'Mobile Sales Expert');
+  assert.equal(result.employer, 'The Mobile Shop', 'and the employer still comes from its own source');
+});
+
+test('title: a section heading is not a job title', async (t) => {
+  // "Careers" as a whole string is a banner. "Careers Advisor" is a real job,
+  // which is why that match is anchored at both ends.
+  const { result } = await titleOf(t, '/genericheading');
+  assert.equal(result.jobTitle, '');
+});
+
+test('title: prefers og:title over a heading that says "Apply now"', async (t) => {
+  // Also the regression guard for the missing word boundary: "Highway" starts
+  // with "hi" and was being discarded as a greeting.
+  const { result } = await titleOf(t, '/ogtitle');
+  assert.equal(result.jobTitle, 'Highway Maintenance Technician');
+});
+
+test('title: a greeting is refused whichever tier offers it', async (t) => {
+  const server = await startPageServer();
+  const browser = await chromium.launch();
+  t.after(async () => { await browser.close(); await server.close(); });
+  const page = await browser.newPage();
+  await page.goto(server.url('/bare'));
+  await page.evaluate(() => {
+    const h = document.createElement('h1');
+    h.textContent = 'Welcome, Juan';
+    document.body.prepend(h);
+  });
+  assert.equal((await runExtractor(page)).jobTitle, '',
+    'the reported string must never reach the field');
 });
