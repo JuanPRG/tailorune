@@ -810,6 +810,51 @@ details.panel .body > label:first-child { margin-top: 0; }
 #warnings ul { margin: 4px 0 0; padding-left: 17px; }
 #warnings li { margin-bottom: 2px; }
 
+/* One collapsible group per source. Collapsed, a finding is a single line
+   that still says what it is and how many notes it holds -- these sit in the
+   footer above the CTA, and a five-line vocabulary note pushed the work off
+   screen on every open. */
+.finding + .finding {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--warn-soft);
+}
+.finding > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+.finding > summary::-webkit-details-marker { display: none; }
+.finding > summary::after {
+  content: "";
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 5px; height: 5px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  opacity: 0.75;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.18s ease;
+}
+.finding[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+.finding > summary:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; border-radius: 4px; }
+
+/* The count carries the weight when the group is shut, so it must stay
+   legible without the detail behind it. */
+.finding-count {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--warn-soft);
+  background: var(--warn-soft);
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
 #result { display: none; }
 
 @media (prefers-reduced-motion: reduce) {

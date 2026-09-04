@@ -725,22 +725,51 @@ ${(llm.ms / 1000).toFixed(0)}s in ${llm.calls} AI call${llm.calls === 1 ? '' : '
 }
 
 /** Surface validation findings honestly instead of only reporting success. */
-function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudge, coverLetter, skills }) {
-  const blocks = [];
+/**
+ * Findings go through innerHTML, and some of them are written by a language
+ * model -- the accuracy review's issues are its own prose. Unescaped, a
+ * model that emitted a tag would have it parsed as markup inside the popup.
+ * Nothing has, but "nothing has yet" is not a security property.
+ */
+function escapeHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Show what the run wants the user to know, one collapsible group per source.
+ *
+ * These can run long -- a vocabulary note lists every word it wants kept --
+ * and they live in the footer, above the CTA, so a five-line finding pushes
+ * the work off screen every time the popup opens. Collapsed, a group is one
+ * line that still says what it is and how many notes it holds.
+ *
+ * OPEN AFTER A RUN, CLOSED WHEN RESTORING ONE. A finding you have not seen
+ * should be readable without a click; the same finding on the fourth reopen
+ * should not cost the same space as the resume card.
+ */
+function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudge, coverLetter, skills },
+  { collapsed = false } = {}) {
+  const groups = [];
+
   // The judge is advisory: its findings are shown so the user can decide,
   // never used to withhold the document.
   if (resumeJudge && !resumeJudge.passed && resumeJudge.issues && resumeJudge.issues.length) {
-    blocks.push(
-      '<strong>Accuracy review (advisory — nothing was changed):</strong>'
-      + `<ul>${resumeJudge.issues.map((i) => `<li>${i}</li>`).join('')}</ul>`,
-    );
+    groups.push({ label: 'Accuracy review — advisory, nothing was changed', items: resumeJudge.issues });
   }
   if (resumeJudge && resumeJudge.judgeError) {
-    blocks.push(`<strong>Accuracy review skipped:</strong><ul><li>${resumeJudge.judgeError}</li></ul>`);
+    groups.push({ label: 'Accuracy review skipped', items: [resumeJudge.judgeError] });
   }
   if (skills && skills.reverted && skills.reverted.length) {
-    blocks.push(`<strong>Skills:</strong><ul><li>${skills.reverted.length} line(s) reverted — the rewrite dropped too much of your original list.</li></ul>`);
+    groups.push({
+      label: 'Skills',
+      items: [`${skills.reverted.length} line(s) reverted — the rewrite dropped or invented a skill.`],
+    });
   }
+
   // Shown even on an approved run. The repair pass reverts an overreaching
   // bullet to its original and lets the run succeed, so "approved" can still
   // mean "one of your bullets was silently rolled back" -- which the user
@@ -751,16 +780,23 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
     // approved_with_judge_warning is an approved outcome -- the judge is
     // advisory -- so it must not be labelled as though something went wrong.
     const approved = !resumeStatus || resumeStatus.startsWith('approved');
-    const label = approved ? 'Resume' : `Resume (${resumeStatus})`;
-    blocks.push(`<strong>${label}:</strong><ul>${resumeIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+    groups.push({ label: approved ? 'Resume' : `Resume (${resumeStatus})`, items: resumeIssues });
   }
   if (coverLetter) {
     const clIssues = [...(coverLetter.errors || []), ...(coverLetter.warnings || [])];
     if (coverLetter.status !== 'approved' && clIssues.length) {
-      blocks.push(`<strong>Cover letter (${coverLetter.status}):</strong><ul>${clIssues.map((i) => `<li>${i}</li>`).join('')}</ul>`);
+      groups.push({ label: `Cover letter (${coverLetter.status})`, items: clIssues });
     }
   }
-  els.warnings.innerHTML = blocks.join('');
+
+  els.warnings.innerHTML = groups.map((group) => {
+    const count = group.items.length;
+    return `<details class="finding"${collapsed ? '' : ' open'}>`
+      + `<summary>${escapeHtml(group.label)}`
+      + `<span class="finding-count">${count} note${count === 1 ? '' : 's'}</span></summary>`
+      + `<ul>${group.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      + '</details>';
+  }).join('');
 }
 
 async function onTailorClick() {
@@ -946,7 +982,7 @@ function applyLastRun(last) {
     resumeJudge: last.resumeJudge,
     skills: last.skills,
     coverLetter: last.coverLetterStatus ? { status: last.coverLetterStatus } : null,
-  });
+  }, { collapsed: true });
 
   setHasRun(true);
   const forJob = [last.jobTitle, last.employer].filter(Boolean).join(' at ');

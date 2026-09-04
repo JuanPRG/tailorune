@@ -307,3 +307,78 @@ test('the popup renders at a usable size, not a sliver', async (t) => {
   assert.deepEqual(laid, { header: true, cards: 3, cta: true },
     'header, all three cards and the CTA must have real height');
 });
+
+const RUN_WITH_FINDINGS = {
+  at: Date.now(),
+  jobTitle: 'Backend Engineer',
+  employer: 'Acme Corp',
+  jobDescription: 'A job description',
+  pageUrl: '',
+  wordCount: 402,
+  downloads: ['a.docx', 'a.pdf'],
+  htmlPreview: '<h1>preview</h1>',
+  resumeStatus: 'approved',
+  resumeWarnings: ["Role 2 kept only 39% of the original's specific vocabulary (aiming for 45%). "
+    + 'Rephrase around these instead of replacing them: day-to-day, maintenance, owned, accountable, '
+    + 'property, financial, results, grew, adjusting, seasonal, expanding, onto.'],
+  resumeErrors: [],
+  resumeJudge: { passed: false, issues: ['a first note', 'a second note'] },
+};
+
+test('findings collapse, and a restored run opens with them shut', async (t) => {
+  // These sit in the FOOTER, above the CTA, and they run long -- a vocabulary
+  // note lists every word it wants kept. Reported as five lines of amber
+  // pushing the work off screen on every open.
+  //
+  // Shut, a group is still one legible line: what it is, and how many notes
+  // it holds. A finding nobody has read yet stays open; the same finding on
+  // the fourth reopen does not cost the same room as the resume card.
+  const { popup } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate((run) => chrome.storage.local.set({ tailorune_last_run_v1: run }), RUN_WITH_FINDINGS);
+    },
+  });
+
+  await popup.waitForSelector('#warnings .finding', { timeout: 10000 });
+  const groups = await popup.$$eval('#warnings .finding', (els) => els.map((el) => ({
+    open: el.open,
+    summary: el.querySelector('summary').textContent,
+  })));
+
+  assert.equal(groups.length, 2, 'the judge and the resume are separate groups');
+  assert.deepEqual(groups.map((g) => g.open), [false, false], 'a run being RESTORED has already been read');
+  assert.match(groups[0].summary, /2 notes/, 'a shut group must still say how much it is hiding');
+  assert.ok(groups[1].summary.endsWith('1 note'), 'and say it in the singular when there is one');
+
+  // Shut is worth real space here, which is the whole point.
+  const shut = await popup.$eval('#warnings', (el) => Math.round(el.getBoundingClientRect().height));
+  await popup.click('#warnings .finding:last-of-type summary');
+  await popup.waitForTimeout(350);
+  const open = await popup.$eval('#warnings', (el) => Math.round(el.getBoundingClientRect().height));
+
+  assert.ok(open > shut + 30, `expanding should reveal the notes: ${shut}px -> ${open}px`);
+  assert.match(await popup.textContent('#warnings'), /specific vocabulary/, 'and the note itself is readable');
+});
+
+test('a finding cannot inject markup into the popup', async (t) => {
+  // Findings go through innerHTML and some of them are written by a language
+  // model -- the accuracy review's issues are its own prose. Unescaped, a
+  // model that emitted a tag would have it parsed as markup in a document
+  // holding the user's API keys. Nothing has emitted one; "nothing has yet"
+  // is not a security property.
+  const { popup } = await openRealPopup(t, {
+    beforeOpen: async (worker) => {
+      await worker.evaluate((run) => chrome.storage.local.set({
+        tailorune_last_run_v1: {
+          ...run,
+          resumeJudge: { passed: false, issues: ['<img src=x onerror="window.__pwned = 1"> note'] },
+        },
+      }), RUN_WITH_FINDINGS);
+    },
+  });
+
+  await popup.waitForSelector('#warnings .finding', { timeout: 10000 });
+  assert.equal(await popup.$$eval('#warnings img', (els) => els.length), 0, 'no element was created');
+  assert.equal(await popup.evaluate(() => window.__pwned), undefined, 'and nothing ran');
+  assert.match(await popup.textContent('#warnings'), /<img src=x/, 'the text is shown verbatim instead');
+});
