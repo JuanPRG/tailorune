@@ -89,6 +89,11 @@ const PAGES = {
     <body><h1>Apply now</h1>
     <div class="job-description"><p>${JD_TEXT}</p><ul><li>Maintain highways</li><li>Report faults</li></ul></div>
     </body></html>`,
+  '/indeedhome': `<!doctype html><html><head><meta charset="utf-8"><title>Job Search Canada | Indeed</title>
+    <meta property="og:title" content="Job Search Canada | Indeed" /></head>
+    <body><h1>Welcome, Juan</h1>
+    <main><p>${JD_TEXT}</p><p>Responsibilities include serving customers and meeting sales targets.</p></main>
+    </body></html>`,
   '/bare': `<!doctype html><html><head><meta charset="utf-8"><title>Some Page</title></head>
     <body><nav>ignore this nav</nav><main><p>${JD_TEXT}</p></main><footer>ignore this footer</footer></body></html>`,
 
@@ -458,4 +463,20 @@ test('title: a greeting is refused whichever tier offers it', async (t) => {
   });
   assert.equal((await runExtractor(page)).jobTitle, '',
     'the reported string must never reach the field');
+});
+
+test('title: a job board home page supplies no title, from any tier', async (t) => {
+  // THE REPORTED PAGE: ca.indeed.com/?vjk=... is the HOME page with the job
+  // in a side pane, not /viewjob. Measured on the real one -- signed out, its
+  // og:title and document.title both read "Job Search Canada | Indeed", and
+  // signed in its h1 is the greeting that started this.
+  //
+  // Every page-level tier here is describing the SITE. The description falls
+  // back to body text, which is precisely the signal that no job container
+  // was found, so none of them may be trusted. Better no title than a
+  // confident wrong one on someone's cover letter.
+  const { result } = await titleOf(t, '/indeedhome');
+  assert.equal(result.confidence, 'low', 'precondition: this page has no job container');
+  assert.equal(result.jobTitle, '',
+    'neither the greeting nor the site name may become the job title');
 });

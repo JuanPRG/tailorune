@@ -189,11 +189,14 @@ function _extractIndeedSelectedJob() {
     '[data-testid="inlineHeader-companyName"]',
     '.jobsearch-InlineCompanyRating-companyHeader a',
   ]);
-  const titleElement = _queryFirst(scope, [
-    '[data-testid="vj-job-title"]',
-    '[data-testid="company-info-title-row"]',
-    'h1',
-  ]);
+  // NO unscoped 'h1' here. `scope` falls back to `document` when the detail
+  // pane selector misses, and on ca.indeed.com/?vjk=... -- the HOMEPAGE with
+  // a job in a side pane, not /viewjob -- the page's own h1 is the signed-in
+  // greeting. That is where "Welcome, Juan" came from. An h1 is only the job
+  // when it is inside the job's own pane.
+  const titleElement = detailRoot
+    ? _queryFirst(scope, ['[data-testid="vj-job-title"]', '[data-testid="company-info-title-row"]', 'h1'])
+    : _queryFirst(scope, ['[data-testid="vj-job-title"]', '[data-testid="company-info-title-row"]']);
   const descriptionElement = _queryFirst(scope, [
     '#jobDescriptionText',
     '[data-testid="jobsearch-JobComponent-description"]',
@@ -369,19 +372,33 @@ function _titleFromDocumentTitle() {
  * goes through the same plausibility check, so a greeting cannot enter here
  * either, and none may simply repeat the employer -- a heading that names the
  * company is a banner, not a role.
+ *
+ * TIED TO THE DESCRIPTION'S CONFIDENCE, which is the part that matters. Every
+ * source below the first describes the PAGE, and on a job board's search or
+ * home page the page is not the job: ca.indeed.com/?vjk=... has og:title and
+ * document.title both reading "Job Search Canada | Indeed", and a signed-in
+ * h1 reading "Welcome, Juan". Taking any of them would trade one wrong title
+ * for another.
+ *
+ * A body-text fallback description is exactly the signal that no job
+ * container was found, so the page's own headings are chrome. Structured data
+ * still counts -- a JobPosting is a claim about the job, not the page.
  */
-function _extractJobTitle(employer) {
+function _extractJobTitle(employer, descriptionResult) {
   var posting = _extractJsonLdJobPosting();
   var candidates = [];
   if (posting && typeof posting.title === 'string') candidates.push(posting.title);
 
-  var og = document.querySelector('meta[property="og:title"], meta[name="og:title"]');
-  if (og && og.content) candidates.push(og.content);
+  var pageIsThePosting = descriptionResult && descriptionResult.confidence !== 'low';
+  if (pageIsThePosting) {
+    var og = document.querySelector('meta[property="og:title"], meta[name="og:title"]');
+    if (og && og.content) candidates.push(og.content);
 
-  var heading = document.querySelector('h1');
-  if (heading && heading.textContent) candidates.push(heading.textContent);
+    var heading = document.querySelector('h1');
+    if (heading && heading.textContent) candidates.push(heading.textContent);
 
-  candidates.push(_titleFromDocumentTitle());
+    candidates.push(_titleFromDocumentTitle());
+  }
 
   var company = String(employer || '').trim().toLowerCase();
   for (var i = 0; i < candidates.length; i++) {
@@ -410,7 +427,7 @@ async function extractJobContext() {
   return _withCheckedTitle({
     text: descriptionResult.text,
     employer,
-    jobTitle: _extractJobTitle(employer),
+    jobTitle: _extractJobTitle(employer, descriptionResult),
     source: descriptionResult.source,
     // Overall confidence is the description's, downgraded when no employer
     // was found -- the popup uses this to decide whether to ask for review.
