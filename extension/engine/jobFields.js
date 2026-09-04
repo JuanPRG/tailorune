@@ -11,6 +11,27 @@
 // It is a pure function over strings. No DOM, no chrome.*, and the caller
 // does the assigning.
 
+import { isPlausibleJobTitle } from './textUtils.js';
+
+/**
+ * A job title, or nothing if it is plainly not one.
+ *
+ * The extractor already refuses to hand over a greeting -- "Welcome, Juan"
+ * scraped from a signed-in Indeed page is the case it was written for. What
+ * it could not do is remove one that had ALREADY reached the field: an
+ * automatic read only fills what is empty, so a bad title survived every
+ * subsequent read, and once runs began carrying their job it was persisted
+ * and restored forever. The check has to run on the way IN to the field, not
+ * only on the way out of the page.
+ *
+ * The candidate-name half of isPlausibleJobTitle is skipped here; the popup
+ * does not have the parsed resume, and coverLetter.js applies it where the
+ * name is known.
+ */
+export function cleanJobTitle(title) {
+  return isPlausibleJobTitle(title) ? String(title).trim() : '';
+}
+
 /**
  * Decide what the job fields should become after a read.
  *
@@ -46,7 +67,13 @@ export function mergeExtractedJob(current, job, { overwrite }) {
   return {
     jobDescription: keep(current.jobDescription, text),
     // The only field that can be CLEARED, and only by an explicit re-read.
-    jobTitle: overwrite ? (has(title) ? String(title) : '') : keep(current.jobTitle, title),
+    // Cleaned on BOTH paths: an explicit re-read must not reinstate a
+    // greeting, and an automatic one must not preserve a greeting already in
+    // the field. That second case is the one that made "Welcome, Juan"
+    // permanent.
+    jobTitle: cleanJobTitle(
+      overwrite ? (has(title) ? String(title) : '') : keep(current.jobTitle, title),
+    ),
     employer: keep(current.employer, employer),
     note: describeExtraction(job),
   };

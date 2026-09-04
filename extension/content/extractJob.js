@@ -321,7 +321,7 @@ async function _extractEmployerName() {
 // rejection test as textUtils.js's isPlausibleJobTitle, duplicated because a
 // content script is injected as a standalone file and cannot import; the
 // candidate-name half of that check runs later, where the name is known.
-var _TITLE_REJECT_RE = /^\s*(welcome|hello|hi|hey|dear|greetings|thanks|thank you|good (morning|afternoon|evening)|sign in|log in|apply now|save this job)/i;
+var _TITLE_REJECT_RE = /^\s*(welcome|hello|hi|hey|dear|greetings|thanks|thank you|good (morning|afternoon|evening)|sign in|log in|apply now|save this job)\b/i;
 
 function _plausibleJobTitle(title) {
   var text = String(title || '').trim();

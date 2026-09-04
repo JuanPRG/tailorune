@@ -19,7 +19,7 @@ import { extractPdfText } from '../engine/extractPdfText.js';
 // The same resolver the offscreen document uses to build the run's chain, so
 // the header pill and the actual run cannot report different things.
 import { resolveProviderChain, chainLabels } from '../engine/providers.js';
-import { mergeExtractedJob } from '../engine/jobFields.js';
+import { mergeExtractedJob, cleanJobTitle } from '../engine/jobFields.js';
 import { isStampedForThisPage } from '../engine/pageIdentity.js';
 
 const $ = (id) => document.getElementById(id);
@@ -864,6 +864,9 @@ function applyJobDraft(draft) {
   for (const id of JOB_FIELDS) {
     if (draft[id]) els[id].value = draft[id];
   }
+  // A draft saved before the title check existed can still be carrying a
+  // greeting; restoring is a way INTO the field like any other.
+  els.jobTitle.value = cleanJobTitle(els.jobTitle.value);
   if (draft.extractHint) els.extractHint.textContent = draft.extractHint;
 }
 
@@ -904,6 +907,7 @@ function applyLastRun(last) {
   for (const id of JOB_FIELDS) {
     if (last[id] && !els[id].value.trim()) els[id].value = last[id];
   }
+  els.jobTitle.value = cleanJobTitle(els.jobTitle.value);
 
   renderFindings({
     resumeStatus: last.resumeStatus,
