@@ -19,7 +19,6 @@ import { extractPdfText } from '../engine/extractPdfText.js';
 // The same resolver the offscreen document uses to build the run's chain, so
 // the header pill and the actual run cannot report different things.
 import { resolveProviderChain, chainLabels } from '../engine/providers.js';
-import { withAutoPrint } from '../engine/renderHtml.js';
 import { mergeExtractedJob } from '../engine/jobFields.js';
 import { isStampedForThisPage } from '../engine/pageIdentity.js';
 
@@ -52,7 +51,6 @@ const els = {
   apiKey: $('apiKey'),
   mainView: $('mainView'),
   appFooter: $('appFooter'),
-  pdfRow: $('pdfRow'),
   settingsView: $('settingsView'),
   settingsBtn: $('settingsBtn'),
   settingsBackBtn: $('settingsBackBtn'),
@@ -60,8 +58,6 @@ const els = {
   fallbackGroq: $('fallbackGroq'),
   fallbackOpenrouter: $('fallbackOpenrouter'),
   tailorBtn: $('tailorBtn'),
-  previewBtn: $('previewBtn'),
-  previewClBtn: $('previewClBtn'),
   status: $('status'),
   warnings: $('warnings'),
   result: $('result'),
@@ -75,11 +71,6 @@ const els = {
   uploadBtn: $('uploadBtn'),
   resumeManage: $('resumeManage'),
 };
-
-let lastResumeHtml = null;
-let lastCoverLetterHtml = null;
-let lastResumePdf = null;        // { base64, filename }
-let lastCoverLetterPdf = null;
 
 const storage = chromeStorageAdapter();
 
@@ -324,44 +315,6 @@ async function onResumeFileChange() {
   if (!els.resumeFile.files[0]) return;
   await extractSelectedFile({ renameFromFile: true });
 }
-
-function openHtmlInTab(html) {
-  chrome.tabs.create({ url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}` });
-}
-
-/**
- * Save a rendered PDF straight to Downloads.
- *
- * The bytes were produced during the run by renderPdf.js, so this is one
- * message and no dialog -- the DOCX has always behaved this way and the PDF
- * now matches it.
- *
- * If the run produced no PDF (the renderer threw on some unusual resume) the
- * old path is still there: the HTML preview opens in a tab with the print
- * dialog already up. Degrading to two clicks beats losing the artifact.
- */
-async function savePdf(pdf, fallbackHtml, label) {
-  if (!pdf || !pdf.base64) {
-    if (fallbackHtml) openHtmlInTab(withAutoPrint(fallbackHtml));
-    return;
-  }
-  try {
-    const response = await chrome.runtime.sendMessage({
-      target: 'sw', type: 'pdf:save', base64: pdf.base64, filename: pdf.filename,
-    });
-    if (!response || !response.ok) throw new Error((response && response.error) || 'Download failed');
-    setStatus(`Saved ${pdf.filename} to your Downloads.`);
-  } catch (err) {
-    if (fallbackHtml) {
-      openHtmlInTab(withAutoPrint(fallbackHtml));
-      return;
-    }
-    setStatus(`Could not save the ${label} PDF: ${String((err && err.message) || err)}`);
-  }
-}
-
-els.previewBtn.addEventListener('click', () => savePdf(lastResumePdf, lastResumeHtml, 'resume'));
-els.previewClBtn.addEventListener('click', () => savePdf(lastCoverLetterPdf, lastCoverLetterHtml, 'cover letter'));
 
 /** {providerId: key} for every provider the user supplied a fallback key for. */
 /**
@@ -825,12 +778,7 @@ async function onTailorClick() {
   await persistSettings();
 
   setBusy(true);
-  setPdfButtons(false, false);
   // The restored previous run must not linger next to a running one.
-  lastResumeHtml = null;
-  lastCoverLetterHtml = null;
-  lastResumePdf = null;
-  lastCoverLetterPdf = null;
   els.warnings.innerHTML = '';
   els.result.textContent = '';
   setStatus(includeCoverLetter
@@ -862,15 +810,6 @@ async function onTailorClick() {
         + formatTimings(response),
       );
       renderFindings(response);
-      lastResumeHtml = response.htmlPreview || null;
-      lastCoverLetterHtml = response.coverLetter ? response.coverLetter.htmlPreview : null;
-      lastResumePdf = response.resumePdfBase64
-        ? { base64: response.resumePdfBase64, filename: response.resumePdfFilename }
-        : null;
-      lastCoverLetterPdf = response.coverLetter && response.coverLetter.pdfBase64
-        ? { base64: response.coverLetter.pdfBase64, filename: response.coverLetter.pdfFilename }
-        : null;
-      setPdfButtons(lastResumeHtml, lastCoverLetterHtml);
       setHasRun(true);
     } else {
       setStatus(`Failed: ${(response && response.error) || 'unknown error'}`);
@@ -966,15 +905,6 @@ function applyLastRun(last) {
     if (last[id] && !els[id].value.trim()) els[id].value = last[id];
   }
 
-  lastResumeHtml = last.htmlPreview || null;
-  lastCoverLetterHtml = last.coverLetterHtml || null;
-  lastResumePdf = last.resumePdfBase64
-    ? { base64: last.resumePdfBase64, filename: last.resumePdfFilename }
-    : null;
-  lastCoverLetterPdf = last.coverLetterPdfBase64
-    ? { base64: last.coverLetterPdfBase64, filename: last.coverLetterPdfFilename }
-    : null;
-  setPdfButtons(lastResumeHtml, lastCoverLetterHtml);
   renderFindings({
     resumeStatus: last.resumeStatus,
     resumeWarnings: last.resumeWarnings,
@@ -1130,18 +1060,6 @@ function setBusy(busy) {
   renderCta();
 }
 
-/**
- * Show or hide the pair of save-as-PDF buttons.
- *
- * The row collapses when neither is offered: an empty flex row is 0px tall
- * but still draws the footer's 7px gap, which is 7px of a 478px column.
- */
-function setPdfButtons(resume, letter) {
-  els.previewBtn.style.display = resume ? 'block' : 'none';
-  els.previewClBtn.style.display = letter ? 'block' : 'none';
-  els.pdfRow.hidden = !resume && !letter;
-}
-
 function setHasRun(hasRun) {
   ctaHasRun = hasRun;
   renderCta();
@@ -1171,11 +1089,6 @@ async function onResetClick() {
   els.employer.value = '';
   els.extractHint.textContent = '';
 
-  lastResumeHtml = null;
-  lastCoverLetterHtml = null;
-  lastResumePdf = null;
-  lastCoverLetterPdf = null;
-  setPdfButtons(false, false);
   els.warnings.innerHTML = '';
   els.result.textContent = '';
   setHasRun(false);

@@ -107,15 +107,6 @@ async function saveLastRun(payload, request) {
         jobDescription: (request && request.jobDescription) || '',
         wordCount: payload.wordCount,
         downloads: (payload.downloads || []).map((d) => d.filename),
-        htmlPreview: payload.htmlPreview || null,
-        coverLetterHtml: (payload.coverLetter && payload.coverLetter.htmlPreview) || null,
-        // The rendered PDFs, so "Save as PDF" still works after the popup has
-        // been destroyed and reopened. About 19KB and 13KB of base64 -- the
-        // same order as the HTML previews already stored beside them.
-        resumePdfBase64: payload.resumePdfBase64 || null,
-        resumePdfFilename: payload.resumePdfFilename || null,
-        coverLetterPdfBase64: (payload.coverLetter && payload.coverLetter.pdfBase64) || null,
-        coverLetterPdfFilename: (payload.coverLetter && payload.coverLetter.pdfFilename) || null,
         resumeStatus: payload.resumeStatus,
         resumeWarnings: payload.resumeWarnings,
         resumeErrors: payload.resumeErrors,
@@ -221,22 +212,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
-    // Saving a PDF is a download, and chrome.downloads lives only here --
-    // see this file's header. The popup holds the bytes; the service worker
-    // is the only thing allowed to write them to disk.
-    if (message.type === 'pdf:save') {
-      try {
-        if (!message.base64) throw new Error('No PDF was generated for this run.');
-        sendResponse({
-          ok: true,
-          downloadId: await triggerDownload(message.base64, message.filename || 'tailorune.pdf'),
-        });
-      } catch (err) {
-        sendResponse({ ok: false, error: String((err && err.message) || err) });
-      }
-      return;
-    }
-
     if (message.type === 'tailor:run') {
       try {
         await ensureOffscreenDocument();
@@ -255,9 +230,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           wordCount: result.wordCount,
           compactionIterations: result.compactionIterations,
           downloads,
-          htmlPreview: result.htmlPreview,
-          resumePdfBase64: result.resumePdfBase64,
-          resumePdfFilename: result.resumePdfFilename,
           resumeStatus: result.resumeStatus,
           resumeWarnings: result.resumeWarnings,
           resumeErrors: result.resumeErrors,

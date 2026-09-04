@@ -9,9 +9,8 @@
 import { parseTxt } from '../engine/parseTxt.js';
 import { tailorResume } from '../engine/tailor.js';
 import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js';
-import { renderResumeHtml } from '../engine/renderHtml.js';
 import { renderResumePdf, renderCoverLetterPdf } from '../engine/renderPdf.js';
-import { generateCoverLetter, renderCoverLetterHtml } from '../engine/coverLetter.js';
+import { generateCoverLetter } from '../engine/coverLetter.js';
 import { tailorSkills } from '../engine/tailorSkills.js';
 import { judgeTailoredModel } from '../engine/judge.js';
 import {
@@ -209,21 +208,11 @@ async function runTailor(payload) {
     base64: await bytesToBase64(resumeDocx),
   });
 
-  // Secondary output path (MIGRATION_PLAN.md §3): one content model, two
-  // exits. The DOCX above auto-downloads; this HTML is opened as a real page
-  // so the user can preview it and, if they want a PDF, use the browser's own
-  // print-to-PDF -- the same Skia/PDF renderer as the v4 backend's Playwright
-  // path, per SPIKE_FINDINGS.md.
-  const htmlPreview = renderResumeHtml(tailoredModel);
-
-  // ...and the PDF, which is what the button actually saves. Rendered here
-  // rather than on demand because the popup is destroyed when it loses focus,
-  // so "on demand" would mean waking the offscreen document again with a
-  // model it no longer holds. It costs about 80ms against a 7-17s run.
+  // The PDF, when the "PDF copy" chip asks for one.
   //
-  // A failure here is NOT fatal: htmlPreview above still reaches the print
-  // dialog, so a resume that somehow defeats the layout engine degrades to
-  // the old two-click path instead of losing the run.
+  // A failure here is NOT fatal: the .docx is the primary artifact and goes
+  // out regardless, so a resume that somehow defeats the layout engine costs
+  // a format, never the run.
   let resumePdfBase64 = null;
   const resumePdfFilename = `${slug}_tailored_resume.pdf`;
   try {
@@ -259,7 +248,6 @@ async function runTailor(payload) {
       wordCount: report.validator ? report.validator.wordCount : null,
       warnings: report.validator ? report.validator.warnings : [],
       errors: report.validator ? report.validator.errors : [],
-      htmlPreview: renderCoverLetterHtml({ bodyParagraphs: paragraphs, model: tailoredModel, job }),
       pdfBase64: await (async () => {
         try {
           return await bytesToBase64(await renderCoverLetterPdf(
@@ -284,9 +272,6 @@ async function runTailor(payload) {
   return {
     ok: true,
     outputs,
-    htmlPreview,
-    resumePdfBase64,
-    resumePdfFilename,
     wordCount,
     compactionIterations,
     resumeStatus: resumeReport.status,

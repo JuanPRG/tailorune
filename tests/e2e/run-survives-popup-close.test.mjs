@@ -122,18 +122,13 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   assert.ok(stored, 'the finished run should have been persisted by the service worker');
   assert.ok((stored.downloads || []).length >= 1, 'at least the resume should have been downloaded');
 
-  // 2. And it is all still there: previews, findings, context.
-  assert.ok(stored.htmlPreview, 'the resume preview HTML must survive');
-  // The rendered PDF has to survive too, or "Save as PDF" after a reopen
-  // silently degrades to the print dialog it was built to replace.
-  assert.ok(stored.resumePdfBase64, 'the rendered resume PDF must survive the popup being destroyed');
+  // 2. And the context is all still there.
   // Stamped with the page it was for, so reopening over a DIFFERENT posting
   // does not present this run as current. The value is empty here because a
   // programmatically opened popup gets no activeTab grant and so cannot read
   // a tab's URL -- the key existing is the wiring; engine/pageIdentity.js
   // tests the decision it feeds.
   assert.ok('pageUrl' in stored, 'a finished run must record which page it was for');
-  assert.match(stored.resumePdfFilename, /\.pdf$/, 'and it must know what to call itself');
   assert.equal(stored.jobTitle, 'Backend Engineer');
   assert.equal(stored.employer, 'Acme Corp');
   assert.ok(stored.wordCount > 0);
@@ -150,22 +145,6 @@ test('a finished run is recoverable after the popup is gone', async (t) => {
   assert.match(status, /Backend Engineer at Acme Corp/, 'it should say which job the run was for');
   assert.match(status, /file/, 'and that the files are in Downloads');
 
-  assert.equal(
-    await reopened.locator('#previewBtn').isVisible(), true,
-    'the resume preview button must come back -- losing it was the reported bug',
-  );
-
-  // The restored button must actually SAVE, not just be visible -- and save
-  // the PDF directly, the way the .docx already did, rather than reopening
-  // the print dialog.
-  await reopened.click('#previewBtn');
-  const pdfItem = await waitForNewestDownload(sw, 'application/pdf');
-  const pdfText = await pdfTextOf(pdfItem.filename);
-  assert.ok(
-    pdfText.includes('TAILORED BULLET ONE'),
-    'the PDF saved from a RESTORED run should contain the tailored resume',
-  );
-  assert.ok(pdfText.includes('Juan Rivera'), 'and the candidate name');
 });
 
 test('reset clears the job and the stored run, and keeps what is expensive', async (t) => {
@@ -227,7 +206,6 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
 
   assert.equal(await page.inputValue('#jobDescription'), '', 'the job description should be cleared');
   assert.equal(await page.inputValue('#jobTitle'), '', 'the job title should be cleared');
-  assert.equal(await page.locator('#previewBtn').isVisible(), false, 'the stale preview button should go');
 
   // The expensive things survive.
   assert.equal(await page.inputValue('#resumeText'), 'MY RESUME TEXT', 'the resume must NOT be cleared');

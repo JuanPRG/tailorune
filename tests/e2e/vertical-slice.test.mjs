@@ -17,7 +17,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { startMockLlmServer } from './mockLlmServer.mjs';
 import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey,
-  waitForNewestDownload, pdfTextOf, configureProvider } from './helpers.mjs';
+    configureProvider } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
@@ -135,32 +135,10 @@ test('Phase 2 vertical slice: TXT in -> mocked LLM call -> real DOCX in Download
   assert.ok(text.includes('Seneca Polytechnic'), 'locked education missing from rendered docx');
   assert.ok(text.includes('Advanced Diploma in Computer Programming'), 'locked education missing from rendered docx');
 
-  // Secondary output path: the SAME tailored content as a PDF, saved in one
-  // click.
-  //
-  // This used to open a tab and raise the print dialog -- the only way to get
-  // a PDF before renderPdf.js existed, and four clicks away from a file. The
-  // button now hands real bytes to chrome.downloads, so the PDF lands in
-  // Downloads exactly as the .docx above it does. What is asserted is the
-  // file on disk, and specifically that it carries the LOCKED fields and the
-  // TAILORED summary -- the same pair the .docx is checked for, because two
-  // formats of one resume disagreeing about the phone number is the failure
-  // that matters.
   // With the chip off, nothing but the .docx should have been downloaded.
   assert.deepEqual(
     resultJson.downloads.map((d) => d.kind).sort(), ['resume'],
     'with "PDF copy" unchecked a run must download the .docx only',
   );
 
-  assert.equal(await page.locator('#previewBtn').isVisible(), true, 'resume PDF button should appear after a successful tailor');
-  await page.click('#previewBtn');
-
-  // Matched by MIME: Playwright renames downloads to extensionless GUIDs.
-  const pdfItem = await waitForNewestDownload(sw, 'application/pdf');
-  const pdfText = await pdfTextOf(pdfItem.filename);
-  assert.ok(pdfText.includes('Juan Rivera'), 'PDF missing locked name');
-  assert.ok(pdfText.includes('647-555-0142'), 'PDF missing locked phone');
-  assert.ok(pdfText.includes('j.rivera@example.com'), 'PDF missing locked email');
-  assert.ok(pdfText.includes('Seneca Polytechnic'), 'PDF missing locked education');
-  assert.ok(pdfText.includes(MOCKED_SUMMARY), 'PDF missing the tailored summary');
 });
