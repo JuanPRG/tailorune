@@ -94,6 +94,22 @@ const PAGES = {
     <body><h1>Welcome, Juan</h1>
     <main><p>${JD_TEXT}</p><p>Responsibilities include serving customers and meeting sales targets.</p></main>
     </body></html>`,
+  '/indeedpane': `<!doctype html><html><head><meta charset="utf-8"><title>Job Search Canada | Indeed</title>
+    <meta property="og:title" content="Job Search Canada | Indeed" /></head>
+    <body>
+      <h1>Welcome, Juan</h1>
+      <div class="jobsearch-JobComponent">
+        <div class="jobsearch-HeaderContainer"><div class="jobsearch-InfoHeaderContainer">
+          <div class="jobsearch-JobInfoHeader-title-container">
+            <h2 class="jobsearch-JobInfoHeader-title" data-testid="jobsearch-JobInfoHeader-title">Wireless Sales Representative - job post</h2>
+          </div>
+          <div data-testid="jobsearch-CompanyInfoContainer">
+            <span data-testid="inlineHeader-companyName"><a href="/cmp/The-Mobile-Shop">The Mobile Shop</a></span>
+          </div>
+        </div></div>
+        <div id="jobDescriptionText"><p>${JD_TEXT}</p><ul><li>Sell wireless plans</li><li>Serve customers in store</li></ul></div>
+      </div>
+    </body></html>`,
   '/bare': `<!doctype html><html><head><meta charset="utf-8"><title>Some Page</title></head>
     <body><nav>ignore this nav</nav><main><p>${JD_TEXT}</p></main><footer>ignore this footer</footer></body></html>`,
 
@@ -479,4 +495,40 @@ test('title: a job board home page supplies no title, from any tier', async (t) 
   assert.equal(result.confidence, 'low', 'precondition: this page has no job container');
   assert.equal(result.jobTitle, '',
     'neither the greeting nor the site name may become the job title');
+});
+
+test('indeed: the selected job pane yields its title, not the page greeting', async (t) => {
+  // COPIED FROM THE LIVE PAGE, ca.indeed.com/?vjk=dedf2818f6008655, read
+  // through the signed-in session that produced the report. Everything the
+  // extractor used to look for is absent there: no viewjob-main-content, no
+  // vj-job-title, no company-info-title-row. What exists is
+  // jobsearch-JobInfoHeader-title inside .jobsearch-JobComponent -- and
+  // inlineHeader-companyName, which WAS on the employer list, which is
+  // exactly why the company resolved while the title came back empty.
+  //
+  // SERVED UNDER THE REAL HOSTNAME. _isIndeedPage() reads location.hostname,
+  // so the same markup on 127.0.0.1 takes the generic path instead and this
+  // test proves nothing -- the first version of it returned the og:title,
+  // "Job Search Canada | Indeed", which is the site and not the job.
+  //
+  // Two earlier fixes were reasoned from invented fixtures that behaved.
+  // This one is the page.
+  const server = await startPageServer();
+  const browser = await chromium.launch();
+  t.after(async () => { await browser.close(); await server.close(); });
+  const page = await browser.newPage();
+
+  const markup = await (await fetch(server.url('/indeedpane'))).text();
+  await page.route('https://ca.indeed.com/**', (route) => route.fulfill({
+    status: 200, contentType: 'text/html', body: markup,
+  }));
+  await page.goto('https://ca.indeed.com/?vjk=dedf2818f6008655');
+
+  const result = await runExtractor(page);
+  assert.equal(result.source, 'indeed_selected_pane', 'the Indeed adapter must be the one answering');
+  assert.equal(result.jobTitle, 'Wireless Sales Representative',
+    'the pane title, with the Indeed suffix stripped');
+  assert.equal(result.employer, 'The Mobile Shop');
+  assert.notEqual(result.jobTitle, 'Welcome, Juan', 'the greeting h1 must never win');
+  assert.match(result.text, /Sell wireless plans/, 'and the description comes from the pane, not the page');
 });

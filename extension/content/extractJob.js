@@ -25,7 +25,17 @@ var _MIN_JSON_LD_DESCRIPTION_LENGTH = 100;
 var _MIN_JD_CONTAINER_TEXT_LENGTH = 40;
 var _DOM_WAIT_TIMEOUT_MS = 1500;
 var _JOB_BOARD_NAMES = ['linkedin', 'indeed', 'glassdoor', 'ziprecruiter', 'monster', 'dice'];
-var _INDEED_DETAIL_ROOT_SELECTOR = '[data-testid="viewjob-main-content"]';
+// Ordered, and read with _queryFirst rather than a comma-separated
+// querySelector, because that returns the first match in DOCUMENT order
+// rather than selector order -- which is not the same preference at all.
+//
+// .jobsearch-JobComponent is what ca.indeed.com/?vjk=... actually renders:
+// measured on the signed-in page, viewjob-main-content is absent, and this
+// one wraps both the title header and #jobDescriptionText, exactly once.
+var _INDEED_DETAIL_ROOT_SELECTORS = [
+  '[data-testid="viewjob-main-content"]',
+  '.jobsearch-JobComponent',
+];
 
 var _JD_CONTAINER_SELECTORS = [
   '#job-details',
@@ -179,8 +189,17 @@ function _stripSectionHeading(text, heading) {
  * many company-name nodes, so every selector here is scoped to the focused
  * job rather than the document.
  */
+/**
+ * Indeed appends " - job post" to the heading, for screen readers announcing
+ * what the heading introduces. It is page furniture, and it would otherwise
+ * ride along onto the cover letter.
+ */
+function _stripIndeedTitleSuffix(title) {
+  return String(title || '').replace(/\s*[-–—]\s*job post\s*$/i, '').trim();
+}
+
 function _extractIndeedSelectedJob() {
-  const detailRoot = document.querySelector(_INDEED_DETAIL_ROOT_SELECTOR);
+  const detailRoot = _queryFirst(document, _INDEED_DETAIL_ROOT_SELECTORS);
   const scope = detailRoot || document;
 
   const employerElement = _queryFirst(scope, [
@@ -194,9 +213,18 @@ function _extractIndeedSelectedJob() {
   // a job in a side pane, not /viewjob -- the page's own h1 is the signed-in
   // greeting. That is where "Welcome, Juan" came from. An h1 is only the job
   // when it is inside the job's own pane.
+  // jobsearch-JobInfoHeader-title is the one this page actually uses, and it
+  // was missing from every list here -- which is why the employer resolved
+  // (inlineHeader-companyName WAS listed) while the title came back empty.
+  const _titleSelectors = [
+    '[data-testid="jobsearch-JobInfoHeader-title"]',
+    '.jobsearch-JobInfoHeader-title',
+    '[data-testid="vj-job-title"]',
+    '[data-testid="company-info-title-row"]',
+  ];
   const titleElement = detailRoot
-    ? _queryFirst(scope, ['[data-testid="vj-job-title"]', '[data-testid="company-info-title-row"]', 'h1'])
-    : _queryFirst(scope, ['[data-testid="vj-job-title"]', '[data-testid="company-info-title-row"]']);
+    ? _queryFirst(scope, _titleSelectors.concat(['h1']))
+    : _queryFirst(scope, _titleSelectors);
   const descriptionElement = _queryFirst(scope, [
     '#jobDescriptionText',
     '[data-testid="jobsearch-JobComponent-description"]',
@@ -211,7 +239,7 @@ function _extractIndeedSelectedJob() {
   return {
     text: description,
     employer,
-    jobTitle: _elementText(titleElement),
+    jobTitle: _stripIndeedTitleSuffix(_elementText(titleElement)),
     source: detailRoot ? 'indeed_selected_pane' : 'indeed_job_page',
     confidence: employer ? 'high' : 'partial',
   };
