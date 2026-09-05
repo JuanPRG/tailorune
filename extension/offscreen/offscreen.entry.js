@@ -161,10 +161,16 @@ async function runTailor(payload) {
 
   const job = { title: payload.jobTitle, company: payload.employer, description: jobDescription };
 
-  // The judge is a real extra call per attempt, so it is opt-out rather than
-  // mandatory -- but defaults ON, because it is the only check that catches a
-  // rewrite swapping in a different-but-plausible activity (see judge.js).
-  const useJudge = payload.useJudge !== false;
+  // The judge is a real extra call per attempt, and it is OPT-IN: it now
+  // lives in Settings, unchecked. It is the only check that catches a rewrite
+  // swapping in a different-but-plausible activity (see judge.js), so this
+  // trades that safety net for a cheaper, faster default run -- worth knowing
+  // if a fabrication ever gets through.
+  //
+  // Default-deny, not `!== false`. The popup always sends the flag, so the
+  // two spellings behave identically today; this one means a caller that
+  // FORGETS it cannot silently spend an extra call per attempt.
+  const useJudge = payload.useJudge === true;
   const judge = useJudge ? (args) => judgeTailoredModel({ ...args, callLlm }) : undefined;
 
   const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await timed('resume', () => tailorResume({

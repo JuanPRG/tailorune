@@ -54,6 +54,12 @@
   --cta-bg:     #51A68B;
   --cta-ink:    #0E1412;
 
+  /* Pinned, and likewise identical in both themes: charcoal on this red is
+     6.31:1, within a hair of the CTA's 6.37:1. It is the --error hue rather
+     than a new one -- the palette does not need a seventh colour. */
+  --pin-bg:     #E0796B;
+  --pin-ink:    #0E1412;
+
   --radius-card: 12px;
   --radius-field: 9px;
   color-scheme: dark;
@@ -458,30 +464,78 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-2); 
   font-size: 11px;
 }
 
-/* The pin sits in a section title row, so it is smaller than the header's
-   icon buttons and carries its state in colour rather than in a label. */
+/* Read job description fills the field from the tab in front, which is the
+   alternative to selecting and pasting several hundred words by hand -- the
+   single biggest chore this popup can spare anyone. As a grey outline button
+   in a heading row it read as a minor utility and got scrolled past, so
+   people pasted.
+   AMBER, and a full-strength border rather than the soft one Reset carries.
+   It is deliberately not jade: the only jade fill in this popup is Tailor,
+   and a second brand-coloured control beside it would blur which one is the
+   thing you came here to press. */
+.secondary-btn.read-btn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  font-weight: 800;
+}
+.secondary-btn.read-btn:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.secondary-btn.read-btn:focus-visible { outline-color: var(--warn); }
+
+/* A lone chip inside a settings card, rather than one of a row of them. It
+   needs the line to itself and the breathing room the .chips flex container
+   would otherwise have given it. */
+.settings-chip {
+  display: flex;
+  width: fit-content;
+  margin: 13px 0 3px;
+}
+
+/* ---------- the pin: a mode, not an action ---------- */
+
+/* RED, sitting next to an amber Reset, and the comment above .caution says
+   amber-not-red because red is being saved for something worse. Both hold.
+   That rule is about ACTIONS competing to look dangerous; the pin is a STATE,
+   and it is the one piece of this UI that can quietly be wrong. Pinned means
+   the popup has stopped following the tab, so the job on screen may have
+   nothing to do with the posting the user is looking at -- and they will tailor
+   against it anyway. That deserves a colour you cannot miss and cannot mistake
+   for its neighbour. */
 .pin-btn {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  margin-left: auto;
+  color: var(--error);
+  border-color: var(--error-soft);
+  background: var(--error-soft);
 }
-.pin-btn svg { width: 12px; height: 12px; }
+.pin-btn:hover { color: var(--error); border-color: var(--error); }
+.pin-btn:focus-visible { outline-color: var(--error); }
 
-/* PRESSED IS A FILL, not a tint. Pinned is a mode the whole popup is in --
-   nothing will follow the tab while it holds -- and a mode needs to be
-   unmistakable at a glance, not a slightly different grey. */
+/* PRESSED IS A FILL, not a tint -- pinned is a mode the whole popup is in,
+   and a mode needs to be unmistakable at a glance, not a slightly different
+   shade of the same button. */
 .pin-btn[aria-pressed="true"] {
-  color: var(--cta-ink);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--pin-ink);
+  background: var(--pin-bg);
+  border-color: var(--pin-bg);
 }
-.pin-btn[aria-pressed="true"]:hover { border-color: var(--accent); }
-.pin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.pin-btn:disabled:hover { color: var(--text-2); border-color: var(--border); }
+.pin-btn[aria-pressed="true"]:hover {
+  color: var(--pin-ink);
+  border-color: var(--pin-bg);
+}
 
-/* The row-btn beside it must not absorb the space the pin pushed away. */
-.section-title-row .pin-btn + .row-btn { margin-left: 8px; }
+/* Disabled means there is no job to pin yet. Drop the red entirely: an
+   alarming colour on a control that does nothing is just noise. */
+.pin-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: var(--text-2);
+  border-color: var(--border);
+  background: var(--raised);
+}
+.pin-btn:disabled:hover { color: var(--text-2); border-color: var(--border); }
 
 /* ---------- summary pill ---------- */
 
@@ -822,6 +876,34 @@ details.panel .body > label:first-child { margin-top: 0; }
   overflow-y: auto;
 }
 #status:empty { display: none; }
+
+/* "You already tailored for this job." Amber like #warnings, because it is
+   the same KIND of thing -- something to look at before pressing the big
+   button -- and a fourth colour would say it is a fourth kind.
+   It reuses amber without competing with Reset or Read job description: a
+   filled block spanning the card is not mistakable for a 26px icon or a pill
+   in a heading row, whatever colour they share.
+   A LEFT RULE rather than a full border, so it reads as an annotation on the
+   job below it and not as another control. */
+/* Separates the privacy control from the preferences above it: the things
+   above change how a run behaves, this one throws something away. */
+.settings-divider {
+  height: 1px;
+  margin: 15px 0 11px;
+  background: var(--border);
+}
+
+.prior-notice {
+  margin-top: 7px;
+  padding: 7px 10px;
+  border-radius: var(--radius-field);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}
 
 #warnings {
   font-size: 11.5px;

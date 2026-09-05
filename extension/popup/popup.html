@@ -29,6 +29,33 @@
              key now lives behind the gear -- so the thing that tells you
              something is missing is also the thing that takes you to it. -->
         <button id="keyStatus" class="status-pill" type="button">No key</button>
+        <!-- Pin fixes THIS job in place. Everything else in the popup
+             follows whatever tab is in front -- the description is read on
+             open, and a job belonging to another posting is put away. That
+             is right by default and wrong when you are comparing two
+             postings, or drafting against a description pasted from an
+             email. The pin turns the automatic behaviour off for one job.
+             It never blocks an explicit action: Read this page and Reset
+             still do exactly what they say.
+             IN THE HEADER, beside Reset, because it is not a property of
+             the Job details section -- it governs the whole popup, and it
+             has to stay readable when that section is scrolled off. It is
+             also the control that decides what Reset will re-read, so the
+             two belong within a glance of each other. -->
+        <!-- A STABLE aria-label, and aria-pressed carries the state. The title
+             is rewritten on every toggle to explain what the click will do,
+             which is right for a tooltip and wrong for an accessible name --
+             a toggle whose name changes as you press it is announced as a
+             different control each time. -->
+        <button id="pinBtn" class="icon-btn pin-btn" type="button" aria-pressed="false"
+                aria-label="Pin this job"
+                title="Pin this job so switching tabs does not change it">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 17v5" />
+            <path d="M9 10.8V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5.8a2 2 0 0 0 .6 1.4l1.7 1.7a1 1 0 0 1-.7 1.7H6.4a1 1 0 0 1-.7-1.7l1.7-1.7a2 2 0 0 0 .6-1.4z" />
+          </svg>
+        </button>
         <!-- Reset sits beside the theme toggle, where HirePilot put its own
              reset. Tinted amber rather than left to look like the other two:
              it is the only control in this header that DISCARDS anything, and
@@ -126,25 +153,17 @@
           <!-- In the title row rather than a full-width button below it: the
                action belongs to this section's heading, and the row already
                exists. Worth 35px of a 485px column. -->
-          <!-- Pin fixes THIS job in place. Everything else in the popup
-               follows whatever tab is in front -- the description is read on
-               open, and a job belonging to another posting is put away. That
-               is right by default and wrong when you are comparing two
-               postings, or drafting against a description pasted from an
-               email. The pin turns the automatic behaviour off for one job.
-               It never blocks an explicit action: Read this page and Reset
-               still do exactly what they say. -->
-          <button id="pinBtn" class="icon-btn pin-btn" type="button" aria-pressed="false"
-                  title="Pin this job so switching tabs does not change it">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 17v5" />
-              <path d="M9 10.8V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5.8a2 2 0 0 0 .6 1.4l1.7 1.7a1 1 0 0 1-.7 1.7H6.4a1 1 0 0 1-.7-1.7l1.7-1.7a2 2 0 0 0 .6-1.4z" />
-            </svg>
-          </button>
-          <button id="readPageBtn" class="secondary-btn row-btn" type="button">Read this page</button>
+          <button id="readPageBtn" class="secondary-btn row-btn read-btn" type="button">Read job description</button>
         </div>
         <div id="extractHint" class="hint"></div>
+
+        <!-- "You already tailored for this job." Shown only when the job in
+             the form matches an earlier run AND there is no finished run on
+             screen -- a restored run already says so in the status line, and
+             being told twice is worse than not being told.
+             role="status" so it is announced when it appears: it arrives
+             after the page is read, which is well after the popup opened. -->
+        <div id="priorTailorNotice" class="prior-notice" hidden role="status"></div>
 
         <textarea id="jobDescription" aria-label="Job description"
                   placeholder="Paste the job description, or read it from the current tab..."></textarea>
@@ -170,11 +189,6 @@
           <label class="chip" for="includeCoverLetter">
             <input id="includeCoverLetter" type="checkbox" checked />
             Cover letter
-          </label>
-          <label class="chip" for="useJudge"
-                 title="Costs one extra AI call. Advisory only — it flags rewrites that drift from your original wording, but never changes, weakens or withholds the document. Yours to judge.">
-            <input id="useJudge" type="checkbox" checked />
-            Accuracy review
           </label>
           <label class="chip" for="autoDownloadPdf">
             <input id="autoDownloadPdf" type="checkbox" checked />
@@ -287,12 +301,40 @@
             </select>
           </div>
         </div>
+        <!-- OFF BY DEFAULT, and no longer a chip beside "Cover letter" and
+             "PDF copy". Those two decide which FILES a run produces; this
+             one buys a second opinion for an extra AI call, and standing
+             among them it read as part of the output rather than as a cost.
+             Advisory either way -- it has never changed, weakened or withheld
+             a document -- so defaulting it off costs a run nothing but the
+             call. -->
+        <label class="chip settings-chip" for="useJudge"
+               title="Costs one extra AI call. Advisory only — it flags rewrites that drift from your original wording, but never changes, weakens or withholds the document. Yours to judge.">
+          <input id="useJudge" type="checkbox" />
+          Accuracy review
+        </label>
+
         <label for="preservePoints">Points to preserve</label>
         <input id="preservePoints" placeholder="e.g. keep the AWS work prominent" />
         <label for="resumeNotes">Resume notes</label>
         <input id="resumeNotes" placeholder="optional guidance for the resume" />
         <label for="coverLetterNotes">Cover letter notes</label>
         <input id="coverLetterNotes" placeholder="optional guidance for the letter" />
+
+        <!-- Reset used to be the whole privacy story: it deleted the stored
+             run, and that was the only record a finished run left behind. The
+             tailoring history has to OUTLIVE Reset or it could not do its job
+             -- so it needs its own way out, and the user needs somewhere to
+             see that it exists at all. -->
+        <div class="settings-divider"></div>
+        <button id="clearHistoryBtn" class="secondary-btn caution" type="button">
+          Clear tailoring history
+        </button>
+        <div class="hint">
+          Tailorune remembers which jobs you have tailored for — the employer, the title
+          and the page — so it can tell you when you come back to one. It never keeps the
+          job description or the documents. Nothing leaves this browser.
+        </div>
       </section>
     </section>
 

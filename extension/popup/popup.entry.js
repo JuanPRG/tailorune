@@ -21,6 +21,10 @@ import { extractPdfText } from '../engine/extractPdfText.js';
 import { resolveProviderChain, chainLabels } from '../engine/providers.js';
 import { mergeExtractedJob, cleanJobTitle } from '../engine/jobFields.js';
 import { isStampedForThisPage } from '../engine/pageIdentity.js';
+import { nextTheme } from '../engine/theme.js';
+import {
+  HISTORY_KEY, findPriorTailoring, describePriorTailoring,
+} from '../engine/jobHistory.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -63,6 +67,8 @@ const els = {
   warnings: $('warnings'),
   result: $('result'),
   keyStatus: $('keyStatus'),
+  priorTailorNotice: $('priorTailorNotice'),
+  clearHistoryBtn: $('clearHistoryBtn'),
   themeToggle: $('themeToggle'),
   resetBtn: $('resetBtn'),
   footerResetBtn: $('footerResetBtn'),
@@ -343,6 +349,17 @@ function applyExtractedJob(job, { overwrite }) {
   els.jobDescription.value = merged.jobDescription;
   els.jobTitle.value = merged.jobTitle;
   els.employer.value = merged.employer;
+  // The pin is DERIVED from the description, and assigning `.value` fires no
+  // `input` event -- so the listener that keeps it honest while someone types
+  // hears nothing when the extension fills the field itself. Boot survived
+  // that by rendering the pin after restoreOrDetect settles; Reset did not,
+  // and it is the one path that disables the button first: it emptied the
+  // form, greyed the pin out, re-read the page, and left a full form with a
+  // dead button still offering to wait for a job.
+  //
+  // Here rather than at the two call sites because this is the only place the
+  // job fields are written from a read -- one rule, where the write is.
+  renderJobDerived();
   return merged.note;
 }
 
@@ -496,8 +513,6 @@ const PERSIST_ON_CHANGE = [
  * once under the media query guarded against an explicit dark, and once under
  * [data-theme="light"].
  */
-const THEMES = ['system', 'dark', 'light'];
-
 function applyTheme(theme) {
   if (theme === 'dark' || theme === 'light') {
     document.documentElement.dataset.theme = theme;
@@ -982,13 +997,18 @@ async function restoreOrDetect() {
   // A PINNED job short-circuits every page check below. That is the whole
   // feature: the popup stops caring which tab is in front.
   if (draft && draft.pinned) {
+    // The page the job was pinned ON, not the tab in front -- that is the
+    // whole point of the pin, and it is also the right identity to match a
+    // previous run against.
+    herePageUrl = draft.pageUrl || '';
     applyJobDraft(draft);
     if (last && isStampedForThisPage(last, draft.pageUrl)) applyLastRun(last);
-    renderPin();
+    renderJobDerived();
     return;
   }
 
   const here = await currentPageUrl();
+  herePageUrl = here;
   const draftIsHere = Boolean(draft) && isStampedForThisPage(draft, here);
   const runIsHere = Boolean(last) && isStampedForThisPage(last, here);
 
@@ -1078,6 +1098,58 @@ function describeAge(at) {
 let ctaBusy = false;
 let ctaHasRun = false;
 
+/**
+ * Every job tailored for before, read once when the popup opens.
+ *
+ * Cached rather than re-read per render: it only ever changes when a run
+ * finishes, and a browser-action popup is destroyed on focus loss anyway, so
+ * "once per open" is already "every time it could have changed".
+ */
+let tailoringHistory = [];
+
+/** The page this popup is open over, as far as it was able to find out. */
+let herePageUrl = '';
+
+async function loadTailoringHistory() {
+  try {
+    const stored = await chrome.storage.local.get(HISTORY_KEY);
+    tailoringHistory = Array.isArray(stored[HISTORY_KEY]) ? stored[HISTORY_KEY] : [];
+  } catch {
+    tailoringHistory = [];   // nothing stored, or storage unavailable
+  }
+}
+
+/**
+ * Say so when this job has been tailored for before.
+ *
+ * SILENT while a finished run is on screen. That case is already covered --
+ * the status line reads "Previous run -- Backend Engineer at Acme" or "Done
+ * -- 393 words" -- and the job it covers is the job that would match here, so
+ * the notice would be a second voice saying the same thing. What it is for is
+ * the case nothing else covers: tailor this posting, tailor five others so
+ * the single last-run slot has moved on, then come back.
+ */
+function renderPriorNotice() {
+  const el = els.priorTailorNotice;
+  if (!el) return;
+
+  const match = ctaHasRun ? null : findPriorTailoring(tailoringHistory, {
+    pageUrl: herePageUrl,
+    employer: els.employer.value,
+    jobTitle: els.jobTitle.value,
+  });
+
+  el.hidden = !match;
+  // textContent, not innerHTML: employer and title come off a web page.
+  el.textContent = match ? describePriorTailoring(match, describeAge(match.at)) : '';
+}
+
+/** The pin and the prior-run notice are both derived from the job fields. */
+function renderJobDerived() {
+  renderPin();
+  renderPriorNotice();
+}
+
 function renderPin() {
   if (!els.pinBtn) return;
   const hasJob = Boolean(els.jobDescription.value.trim());
@@ -1093,7 +1165,7 @@ function renderPin() {
 async function onPinClick() {
   jobPinned = !jobPinned;
   jobPinnedPageUrl = jobPinned ? await currentPageUrl() : '';
-  renderPin();
+  renderJobDerived();
   await saveJobDraft();
   setStatus(jobPinned
     ? 'Pinned. This job stays put until you unpin it.'
@@ -1126,6 +1198,9 @@ function setBusy(busy) {
 
 function setHasRun(hasRun) {
   ctaHasRun = hasRun;
+  // The notice stays quiet while a run is on screen, so this flag is one of
+  // its inputs -- and Reset flips it back with the job still in the form.
+  renderPriorNotice();
   renderCta();
 }
 
@@ -1155,7 +1230,7 @@ async function onResetClick() {
   // Reset discards the job, so there is nothing left to hold in place.
   jobPinned = false;
   jobPinnedPageUrl = '';
-  renderPin();
+  renderJobDerived();
 
   els.warnings.innerHTML = '';
   els.result.textContent = '';
@@ -1189,8 +1264,20 @@ els.readPageBtn.addEventListener('click', onReadPageClick);
 // Typing in any job field keeps the draft, so losing popup focus mid-paste
 // costs nothing. Debounced: a long description is a lot of keystrokes.
 for (const id of JOB_FIELDS) els[id].addEventListener('input', scheduleJobDraftSave);
-els.jobDescription.addEventListener('input', renderPin);
+// Every job field, not just the description: the pin follows the
+// description, and the prior-run notice is matched on employer and title.
+for (const id of JOB_FIELDS) els[id].addEventListener('input', renderJobDerived);
 els.pinBtn.addEventListener('click', onPinClick);
+if (els.clearHistoryBtn) {
+  els.clearHistoryBtn.addEventListener('click', async () => {
+    try {
+      await chrome.storage.local.remove(HISTORY_KEY);
+    } catch { /* nothing stored, or storage unavailable */ }
+    tailoringHistory = [];
+    renderPriorNotice();
+    setStatus('Tailoring history cleared.');
+  });
+}
 if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
 if (els.footerResetBtn) els.footerResetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
@@ -1211,8 +1298,11 @@ for (const id of PERSIST_ON_CHANGE) {
 
 if (els.themeToggle) {
   els.themeToggle.addEventListener('click', () => {
-    const next = THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length];
-    applyTheme(next);
+    // The machine is asked EVERY press rather than read once at startup: a
+    // popup can outlive an OS theme change, and a stale answer here is the
+    // dead press all over again.
+    const systemIsDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(nextTheme(currentTheme(), systemIsDark));
     schedulePersist();
   });
 }
@@ -1231,7 +1321,9 @@ els.settingsBtn.addEventListener('click', () => showSettings(els.mainView.hidden
 els.settingsBackBtn.addEventListener('click', () => showSettings(false));
 // The pill reports the key, and the key lives in settings, so it goes there.
 els.keyStatus.addEventListener('click', () => showSettings(true));
-restoreOrDetect().then(renderPin);
+loadTailoringHistory()
+  .then(restoreOrDetect)
+  .then(renderJobDerived);
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.

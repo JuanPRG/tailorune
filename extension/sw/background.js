@@ -14,6 +14,7 @@
 // the standard pattern for MV3 offscreen documents.
 
 import { normalizePageUrl } from '../engine/pageIdentity.js';
+import { HISTORY_KEY, rememberTailoring } from '../engine/jobHistory.js';
 
 const OFFSCREEN_URL = chrome.runtime.getURL('offscreen/offscreen.html');
 
@@ -80,16 +81,18 @@ const LAST_RUN_KEY = 'tailorune_last_run_v1';
  */
 async function saveLastRun(payload, request) {
   try {
+    const at = Date.now();
+    const pageUrl = await activePageUrl();
     await chrome.storage.local.set({
       [LAST_RUN_KEY]: {
-        at: Date.now(),
+        at,
         jobTitle: (request && request.jobTitle) || '',
         // The page this run was FOR. Without it the popup cannot tell
         // "reopened on the same posting" from "moved on to a different job",
         // and a finished run stayed on screen -- stale Re-tailor, stale
         // findings, stale save-as-PDF buttons -- over a posting it had
         // nothing to do with.
-        pageUrl: await activePageUrl(),
+        pageUrl,
         employer: (request && request.employer) || '',
         // The description this run was actually tailored against.
         //
@@ -116,6 +119,21 @@ async function saveLastRun(payload, request) {
         timings: payload.timings,
         llm: payload.llm,
       },
+    });
+
+    // ...and a LASTING note that this job has been tailored for, which the
+    // single last-run slot cannot be. Tailor five other postings and come
+    // back, and the slot has long since moved on; this is what still knows.
+    //
+    // Identity only -- no description, no output. See jobHistory.js.
+    const stored = await chrome.storage.local.get(HISTORY_KEY);
+    await chrome.storage.local.set({
+      [HISTORY_KEY]: rememberTailoring(stored[HISTORY_KEY], {
+        at,
+        pageUrl,
+        jobTitle: (request && request.jobTitle) || '',
+        employer: (request && request.employer) || '',
+      }),
     });
   } catch (err) {
     // Never fail a finished run over bookkeeping: the documents are already

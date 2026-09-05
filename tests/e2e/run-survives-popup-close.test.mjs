@@ -416,6 +416,83 @@ test('pin needs a job, and remembers being pinned', async (t) => {
   assert.equal((await readStorage(sw, JOB_DRAFT_KEY)).pinned, false);
 });
 
+// A read that SUCCEEDS, which the harness cannot otherwise produce: activeTab
+// is granted by a real toolbar click and never by the programmatic openPopup()
+// a test must use, so a genuine extraction finds nothing here whatever page is
+// in front. A read that finds nothing leaves the pin correctly disabled, which
+// is precisely what hid the bug below. Stubbed on the service worker, ahead of
+// the real handler -- that one answers after an await, so this wins the race.
+// What is under test is what the POPUP does with a successful read.
+const FOUND = {
+  text: 'A JOB THE PAGE HANDED BACK',
+  jobTitle: 'Backend Engineer',
+  employer: 'Acme Corp',
+  source: 'JSON-LD',
+  confidence: 'high',
+};
+const stubExtract = async (worker) => {
+  await worker.evaluate((job) => {
+    chrome.runtime.onMessage.addListener((m, _s, sendResponse) => {
+      if (!m || m.target !== 'sw' || m.type !== 'job:extract') return undefined;
+      sendResponse({ ok: true, job });
+      return true;
+    });
+  }, FOUND);
+};
+
+test('reset leaves the pin usable for the job it just re-read', async (t) => {
+  // REPORTED. Finish a run, press Reset, and the job comes straight back off
+  // the page -- into a form whose pin is greyed out and still offering to
+  // wait for a job that is sitting right there.
+  //
+  // Reset disables the pin the moment it empties the fields, which is right,
+  // and then never asks again once the re-read fills them. Nothing did: the
+  // pin was recomputed on the description's `input` event, which a user
+  // typing fires and `.value = ...` does not. Boot got away with it because
+  // it renders the pin after restoreOrDetect settles; Reset had no such
+  // backstop, so it is the one path that could disable the button and then
+  // leave it that way.
+  const { popup } = await openRealPopup(t, { beforeOpen: stubExtract });
+  await popup.fill('#jobDescription', 'THE JOB I HAVE FINISHED WITH');
+  await popup.waitForTimeout(700);
+
+  await popup.click('#resetBtn');
+  await popup.waitForTimeout(1500);
+
+  assert.equal(await popup.inputValue('#jobDescription'), FOUND.text,
+    'precondition: reset re-read the page and refilled the form');
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), false,
+    'the job is back, so the pin must be usable again');
+  assert.doesNotMatch(await popup.$eval('#pinBtn', (el) => el.title), /nothing to pin/i,
+    'and must not still be waiting for one');
+});
+
+test('reading the page makes its job pinnable', async (t) => {
+  // The same defect through the other door: both fills run through
+  // applyExtractedJob, which is why the fix belongs there and not at each
+  // caller -- one rule, at the write, instead of three call sites to
+  // remember.
+  //
+  // The form is emptied by TYPING rather than by Reset, which with a read
+  // that succeeds would simply refill it. Clearing it this way fires the
+  // `input` event, so the pin greys out honestly and the button click that
+  // follows is the only thing that can bring it back.
+  const { popup } = await openRealPopup(t, { beforeOpen: stubExtract });
+  await popup.waitForTimeout(1200);
+
+  await popup.fill('#jobDescription', '');
+  await popup.waitForTimeout(700);
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), true,
+    'precondition: an empty form has nothing to pin');
+
+  await popup.click('#readPageBtn');
+  await popup.waitForTimeout(1200);
+
+  assert.equal(await popup.inputValue('#jobDescription'), FOUND.text);
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), false,
+    'a job read from the page is a job, and must be pinnable');
+});
+
 test('a pinned job never asks which page it is on', async (t) => {
   // THE POINT OF THE FEATURE, and the one part of it this harness can prove.
   //

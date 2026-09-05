@@ -194,6 +194,44 @@ test('real popup: the gear swaps views, and never shows two at once', async (t) 
   }
 });
 
+test('one press of the theme toggle changes the theme', async (t) => {
+  // REPORTED: "the dark theme button has to be pressed twice to turn it
+  // light, one to turn it back black."
+  //
+  // The toggle walked ['system', 'dark', 'light'] by index, knowing nothing
+  // about what any of them LOOKED like. On a dark-mode machine "system" and
+  // "dark" render identically, so one press of every three moved a stored
+  // string and not a pixel.
+  //
+  // Asserted on the painted background rather than on the data-theme
+  // attribute: the attribute is the implementation, and it was changing
+  // correctly the whole time. What was wrong is what the user saw.
+  const { popup } = await openRealPopup(t);
+
+  for (const colorScheme of ['dark', 'light']) {
+    await popup.emulateMedia({ colorScheme });
+    await popup.waitForTimeout(400);
+
+    const painted = () => popup.evaluate(
+      () => getComputedStyle(document.body).backgroundColor,
+    );
+
+    const before = await painted();
+    await popup.click('#themeToggle');
+    await popup.waitForTimeout(400);
+    const after = await painted();
+
+    assert.notEqual(after, before,
+      `on a ${colorScheme} machine one press changed nothing: still ${before}`);
+
+    // And it is a toggle, not a three-stop tour: pressing again comes back.
+    await popup.click('#themeToggle');
+    await popup.waitForTimeout(400);
+    assert.equal(await painted(), before,
+      `on a ${colorScheme} machine a second press did not return to ${before}`);
+  }
+});
+
 test('real popup: reset is the only control tinted as caution', async (t) => {
   // Reset is the one control here that discards work, and it used to look
   // exactly like the controls that do not. Amber rather than red: it keeps
