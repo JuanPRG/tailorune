@@ -37,6 +37,13 @@ var _INDEED_DETAIL_ROOT_SELECTORS = [
   '.jobsearch-JobComponent',
 ];
 
+// Measured against live postings, not guessed. Greenhouse's container is
+// `.job__description` with a DOUBLE underscore -- the `.job-description`
+// above is a different, hyphenated class, and that one character was the
+// whole failure: no container matched, the description fell back to body
+// text, that scored `low`, and a low-confidence description now gates the
+// title tiers. So a Greenhouse posting produced no title even though its h1
+// and its og:title both carry it exactly.
 var _JD_CONTAINER_SELECTORS = [
   '#job-details',
   '.job-description',
@@ -44,6 +51,7 @@ var _JD_CONTAINER_SELECTORS = [
   '.description__text',
   '#jobDescriptionText',            // Indeed
   '.show-more-less-html__markup',   // LinkedIn
+  '.job__description',              // Greenhouse -- DOUBLE underscore
   '.app-description',
 ];
 

@@ -110,6 +110,19 @@ const PAGES = {
         <div id="jobDescriptionText"><p>${JD_TEXT}</p><ul><li>Sell wireless plans</li><li>Serve customers in store</li></ul></div>
       </div>
     </body></html>`,
+  '/greenhouse': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Job Application for Department Executive Assistant at The New York Times</title>
+    <meta property="og:title" content="Department Executive Assistant, NYT Wirecutter" /></head>
+    <body>
+      <div class="job-post-container">
+        <div class="job__header">
+          <div class="job__title"><h1>Department Executive Assistant, NYT Wirecutter</h1>
+            <div class="job__location">New York, NY</div></div>
+        </div>
+        <div class="company-name">The New York Times</div>
+        <div class="job__description"><p>${JD_TEXT}</p><ul><li>Manage calendars</li><li>Coordinate travel</li></ul></div>
+      </div>
+    </body></html>`,
   '/bare': `<!doctype html><html><head><meta charset="utf-8"><title>Some Page</title></head>
     <body><nav>ignore this nav</nav><main><p>${JD_TEXT}</p></main><footer>ignore this footer</footer></body></html>`,
 
@@ -531,4 +544,27 @@ test('indeed: the selected job pane yields its title, not the page greeting', as
   assert.equal(result.employer, 'The Mobile Shop');
   assert.notEqual(result.jobTitle, 'Welcome, Juan', 'the greeting h1 must never win');
   assert.match(result.text, /Sell wireless plans/, 'and the description comes from the pane, not the page');
+});
+
+test('greenhouse: the description container is job__description, with two underscores', async (t) => {
+  // MEASURED ON LIVE POSTINGS. Greenhouse emits no JSON-LD at all, and its
+  // container is `.job__description` -- a DOUBLE underscore. The selector
+  // list had `.job-description`, hyphenated, which is a different class.
+  //
+  // That one character was the whole failure, and it cost the title too: no
+  // container matched, so the description fell back to body text, which
+  // scores `low`, and a low-confidence description gates the page-level title
+  // tiers on purpose. So a Greenhouse posting produced NO title even though
+  // its h1 and og:title both carry it exactly.
+  //
+  // Verified after the fix on two live New York Times postings: title,
+  // employer, ~8.5k chars, job_container, high.
+  const { result } = await titleOf(t, '/greenhouse');
+
+  assert.equal(result.source, 'job_container', 'the container must be found, not fallen back from');
+  assert.notEqual(result.confidence, 'low', 'and a found container is what un-gates the title');
+  assert.equal(result.jobTitle, 'Department Executive Assistant, NYT Wirecutter');
+  assert.equal(result.employer, 'The New York Times');
+  assert.match(result.text, /Manage calendars/, 'the description comes from the container');
+  assert.doesNotMatch(result.jobTitle, /New York, NY/, 'the location must not ride along on the title');
 });
