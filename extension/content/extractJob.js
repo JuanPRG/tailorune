@@ -24,6 +24,10 @@
 var _MIN_JSON_LD_DESCRIPTION_LENGTH = 100;
 var _MIN_JD_CONTAINER_TEXT_LENGTH = 40;
 var _DOM_WAIT_TIMEOUT_MS = 1500;
+// A separator between title and company in a page title. Spaced, deliberately:
+// a bare hyphen belongs to words like "Back-End", not to the layout.
+var _TITLE_SEPARATOR_RE = /[|–—]| - | at /;
+
 var _JOB_BOARD_NAMES = ['linkedin', 'indeed', 'glassdoor', 'ziprecruiter', 'monster', 'dice'];
 // Ordered, and read with _queryFirst rather than a comma-separated
 // querySelector, because that returns the first match in DOCUMENT order
@@ -275,6 +279,46 @@ function _bodyTextFallback() {
   return bodyClone.innerText.substring(0, 5000).trim();
 }
 
+// A job description is LONG PROSE WITH ALMOST NO LINKS. Navigation, related
+// jobs and footers are the opposite: short and link-dense. That difference is
+// what lets a container be found on a page whose every class name is hashed.
+//
+// Measured on a signed-in LinkedIn posting, where no selector can help: the
+// description block scored 7528 chars / 0 links, while every nav and
+// "More jobs" block scored far lower. LinkedIn ships class names like
+// `_5bf80336 _455432d1` that change on deploy, so hardcoding one would be
+// broken by the next release; this needs no class names at all.
+var _MIN_PROSE_BLOCK_CHARS = 1200;
+
+/** At most one link per this many characters, or it is a list, not prose. */
+var _PROSE_CHARS_PER_LINK = 300;
+
+function _findDenseProseBlock() {
+  var scope = document.querySelector('main') || document.body;
+  var nodes = scope.querySelectorAll('div, section, article');
+  var best = null;
+
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    var text = (el.innerText || '').trim();
+    if (text.length < _MIN_PROSE_BLOCK_CHARS) continue;
+
+    var links = el.querySelectorAll('a').length;
+    if (links > text.length / _PROSE_CHARS_PER_LINK) continue;
+
+    var depth = 0;
+    for (var n = el; n; n = n.parentElement) depth++;
+    // Text per link: a long block with no links beats a longer one full of
+    // them. Ties go to the DEEPEST element, which is the tightest wrapper
+    // around the same text rather than a layout div three levels up.
+    var score = text.length / (1 + links);
+    if (!best || score > best.score || (score === best.score && depth > best.depth)) {
+      best = { el: el, score: score, depth: depth };
+    }
+  }
+  return best ? best.el : null;
+}
+
 async function _extractJobDescriptionResult() {
   // Tier 1: JSON-LD. Most ATS embed this for Google for Jobs indexing, so
   // it beats guessing CSS class names that change across redesigns -- and
@@ -294,7 +338,19 @@ async function _extractJobDescriptionResult() {
     return { text: containerText.trim(), source: 'job_container', confidence: 'medium' };
   }
 
-  // Tier 3: stripped body text. Always produces something, which is why
+  // Tier 3: the densest block of link-free prose on the page. This is still
+  // a container DISCOVERY -- it just found one without being told its name --
+  // so it earns the same 'medium' as a named selector, and with it the
+  // page-level title tiers that a body-text fallback deliberately gates off.
+  var proseBlock = await _waitForDom(_findDenseProseBlock);
+  if (proseBlock) {
+    var proseText = _elementText(proseBlock);
+    if (proseText.length >= _MIN_PROSE_BLOCK_CHARS) {
+      return { text: proseText, source: 'dense_prose_block', confidence: 'medium' };
+    }
+  }
+
+  // Tier 4: stripped body text. Always produces something, which is why
   // `confidence: 'low'` matters downstream -- the popup asks the user to
   // review rather than trusting it.
   return { text: _bodyTextFallback(), source: 'body_fallback', confidence: 'low' };
@@ -337,17 +393,39 @@ async function _extractEmployerName() {
   if (reliable) return reliable;
 
   // Last resort, not waited for (see _findReliableEmployerName's comment):
-  // "Job Title at Company" / "Job Title - Company".
-  const title = document.title || '';
-  const atMatch = title.match(/(?:at|@)\s+([^|\-–—]+)/i);
-  if (atMatch) return atMatch[1].trim();
+  // "Job Title at Company" / "Job Title - Company" / "Job Title | Company | Board".
+  //
+  // SPACED separators only. The previous pattern treated a bare hyphen as one,
+  // so any hyphenated job title split itself: LinkedIn's
+  // "Developpeur(se) Back-End Senior(e) | Eugeria | LinkedIn" returned the
+  // employer "End Senior(e)". A hyphen inside a word is part of the word; a
+  // separator has spaces around it.
+  //
+  // The same segmenting as _titleFromDocumentTitle, so the two halves of one
+  // title cannot disagree about where it divides.
+  const title = String(document.title || '');
+  const usable = (value) => {
+    const candidate = String(value || '').trim();
+    if (candidate.length < 2 || candidate.length >= 60) return '';
+    if (_JOB_BOARD_NAMES.some((b) => candidate.toLowerCase().includes(b))) return '';
+    return candidate;
+  };
 
-  const dashMatch = title.match(/^[^|\-–—]+[|\-–—]\s*([^|\-–—]+)/i);
-  if (dashMatch) {
-    const candidate = dashMatch[1].trim();
-    if (!_JOB_BOARD_NAMES.some((b) => candidate.toLowerCase().includes(b)) && candidate.length < 60) {
-      return candidate;
-    }
+  // " at " WINS over a plain separator, because it names the relationship
+  // rather than merely dividing. Greenhouse titles read "<role> - <arrangement>
+  // at <Company>", so taking the segment after the first separator returned
+  // the arrangement -- a live posting came back with the employer
+  // "Temp to Perm".
+  const atIndex = title.toLowerCase().lastIndexOf(' at ');
+  if (atIndex !== -1) {
+    const afterAt = usable(title.slice(atIndex + 4).split(/[|–—]/)[0]);
+    if (afterAt) return afterAt;
+  }
+
+  const segments = title.split(_TITLE_SEPARATOR_RE).map((part) => part.trim()).filter(Boolean);
+  for (let i = 1; i < segments.length; i++) {
+    const candidate = usable(segments[i]);
+    if (candidate) return candidate;
   }
   return '';
 }
@@ -392,8 +470,8 @@ var _GENERIC_HEADING_RE = /^(careers?|jobs?|job search|search results|open (posi
  */
 function _titleFromDocumentTitle() {
   var raw = String(document.title || '');
-  if (!/[|–—]| - | at /.test(raw)) return '';
-  return raw.split(/[|–—]| - | at /)[0].trim();
+  if (!_TITLE_SEPARATOR_RE.test(raw)) return '';
+  return raw.split(_TITLE_SEPARATOR_RE)[0].trim();
 }
 
 /**
@@ -424,6 +502,17 @@ function _extractJobTitle(employer, descriptionResult) {
   var posting = _extractJsonLdJobPosting();
   var candidates = [];
   if (posting && typeof posting.title === 'string') candidates.push(posting.title);
+
+  // Platform selectors, ahead of anything page-level. Employer has had a list
+  // like this all along; title never did, which is why LinkedIn's og:title --
+  // "<title> at <Company> - <City>, <Region> | LinkedIn Jobs" -- was winning
+  // over an h1 that carried the title alone.
+  var platformTitle = _queryFirst(document, [
+    '.topcard__title',            // LinkedIn, signed out
+    '.top-card-layout__title',    // LinkedIn, signed out
+    '.job__title h1',             // Greenhouse (the div also holds the location)
+  ]);
+  if (platformTitle) candidates.push(_elementText(platformTitle));
 
   var pageIsThePosting = descriptionResult && descriptionResult.confidence !== 'low';
   if (pageIsThePosting) {

@@ -123,6 +123,30 @@ const PAGES = {
         <div class="job__description"><p>${JD_TEXT}</p><ul><li>Manage calendars</li><li>Coordinate travel</li></ul></div>
       </div>
     </body></html>`,
+  // A modern SPA: every class hashed, no known container, the description in
+  // link-free prose and the chrome in link-dense blocks. Copied in shape from
+  // a signed-in LinkedIn posting.
+  '/hashedspa': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Senior Back-End Developer | Eugeria | LinkedIn</title></head>
+    <body><main>
+      <nav class="_0c4f8c26"><a href="/a">Home</a><a href="/b">My Network</a><a href="/c">Jobs</a>
+        <a href="/d">Messaging</a><a href="/e">Notifications</a><a href="/f">Me</a><a href="/g">Business</a></nav>
+      <div class="_5bf80336 _455432d1"><div class="_46f248c1"><h2>About the job</h2></div>
+        <div class="_799d43a3">${JD_TEXT} ${JD_TEXT} ${JD_TEXT} ${JD_TEXT} ${JD_TEXT}</div></div>
+      <div class="_1b608c33"><h2>More jobs</h2>
+        <a href="/1">Job one</a><a href="/2">Job two</a><a href="/3">Job three</a><a href="/4">Job four</a>
+        <a href="/5">Job five</a><a href="/6">Job six</a><a href="/7">Job seven</a><a href="/8">Job eight</a></div>
+    </main></body></html>`,
+  // LinkedIn signed out: a clean title in .topcard__title, and an og:title
+  // that carries the company and the location too.
+  '/linkedinout': `<!doctype html><html><head><meta charset="utf-8">
+    <title>Senior Back-End Developer at Eugeria — Montreal, Quebec, Canada | LinkedIn Jobs</title>
+    <meta property="og:title" content="Senior Back-End Developer at Eugeria — Montreal, Quebec, Canada | LinkedIn Jobs" /></head>
+    <body>
+      <h2 class="topcard__title">Senior Back-End Developer</h2>
+      <a class="topcard__org-name-link" href="/company/eugeria">Eugeria</a>
+      <div class="show-more-less-html__markup"><p>${JD_TEXT}</p><ul><li>Build APIs</li><li>Own reliability</li></ul></div>
+    </body></html>`,
   '/bare': `<!doctype html><html><head><meta charset="utf-8"><title>Some Page</title></head>
     <body><nav>ignore this nav</nav><main><p>${JD_TEXT}</p></main><footer>ignore this footer</footer></body></html>`,
 
@@ -567,4 +591,53 @@ test('greenhouse: the description container is job__description, with two unders
   assert.equal(result.employer, 'The New York Times');
   assert.match(result.text, /Manage calendars/, 'the description comes from the container');
   assert.doesNotMatch(result.jobTitle, /New York, NY/, 'the location must not ride along on the title');
+});
+
+test('a page with only hashed class names still yields its description', async (t) => {
+  // MEASURED ON A SIGNED-IN LINKEDIN POSTING. Its description sits in
+  // `_5bf80336 _455432d1` -- names that change on deploy, so hardcoding one
+  // buys nothing. What does not change is the SHAPE: a job description is
+  // long prose with almost no links, while navigation and "More jobs" are
+  // short and link-dense. On the live page the description scored 7528 chars
+  // against 0 links and won outright.
+  const { result } = await titleOf(t, '/hashedspa');
+
+  assert.equal(result.source, 'dense_prose_block', 'the prose block must be found by shape');
+  assert.notEqual(result.confidence, 'low', 'finding a container is what un-gates the title');
+  assert.ok(result.text.length > 1200, `expected the description, got ${result.text.length} chars`);
+  assert.doesNotMatch(result.text, /My Network|Notifications/, 'the nav must not be swept in');
+  assert.doesNotMatch(result.text, /Job seven|Job eight/, 'nor the related-jobs list');
+
+  // And with the description found, the tab title supplies both fields.
+  assert.equal(result.jobTitle, 'Senior Back-End Developer');
+  assert.equal(result.employer, 'Eugeria');
+});
+
+test('linkedin: the clean topcard title beats a polluted og:title', async (t) => {
+  // Signed out, LinkedIn og:title reads
+  // "<role> at <Company> - <City>, <Region> | LinkedIn Jobs" -- measured on a
+  // live posting, where the whole string was landing in the job title field.
+  // Employer had a platform selector list all along; title never did.
+  const { result } = await titleOf(t, '/linkedinout');
+
+  assert.equal(result.jobTitle, 'Senior Back-End Developer');
+  assert.equal(result.employer, 'Eugeria');
+  assert.doesNotMatch(result.jobTitle, /LinkedIn|Montreal/, 'no company, location or board name');
+});
+
+test('employer: a hyphen inside a word is not a separator', async (t) => {
+  // "Developpeur(se) Back-End Senior(e) | Eugeria | LinkedIn" returned the
+  // employer "End Senior(e)": the pattern treated the hyphen in "Back-End" as
+  // a title/company divider. Separators have spaces around them.
+  const { result } = await titleOf(t, '/hashedspa');
+  assert.equal(result.employer, 'Eugeria');
+  assert.doesNotMatch(result.employer, /End|Back/, 'the title must not be split mid-word');
+});
+
+test('employer: " at " outranks a plain separator', async (t) => {
+  // Greenhouse titles read "<role> - <arrangement> at <Company>". Taking the
+  // segment after the first separator returned the ARRANGEMENT: a live
+  // posting came back with the employer "Temp to Perm".
+  const { result } = await titleOf(t, '/greenhouse');
+  assert.equal(result.employer, 'The New York Times');
 });
