@@ -458,6 +458,31 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-2); 
   font-size: 11px;
 }
 
+/* The pin sits in a section title row, so it is smaller than the header's
+   icon buttons and carries its state in colour rather than in a label. */
+.pin-btn {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.pin-btn svg { width: 12px; height: 12px; }
+
+/* PRESSED IS A FILL, not a tint. Pinned is a mode the whole popup is in --
+   nothing will follow the tab while it holds -- and a mode needs to be
+   unmistakable at a glance, not a slightly different grey. */
+.pin-btn[aria-pressed="true"] {
+  color: var(--cta-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pin-btn[aria-pressed="true"]:hover { border-color: var(--accent); }
+.pin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pin-btn:disabled:hover { color: var(--text-2); border-color: var(--border); }
+
+/* The row-btn beside it must not absorb the space the pin pushed away. */
+.section-title-row .pin-btn + .row-btn { margin-left: 8px; }
+
 /* ---------- summary pill ---------- */
 
 /* Sits in a section's title row and states what is loaded. It replaced a

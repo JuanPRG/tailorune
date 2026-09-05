@@ -33,6 +33,7 @@ const els = {
   libraryHint: $('libraryHint'),
   jobDescription: $('jobDescription'),
   readPageBtn: $('readPageBtn'),
+  pinBtn: $('pinBtn'),
   extractHint: $('extractHint'),
   jobTitle: $('jobTitle'),
   employer: $('employer'),
@@ -849,6 +850,24 @@ async function currentPageUrl() {
 
 const JOB_DRAFT_KEY = 'tailorune_job_draft_v1';
 
+/**
+ * Whether this job is pinned, and to which page.
+ *
+ * Everything else in the popup follows the tab in front of it: the job is
+ * read on open, and one belonging to a different posting is put away. That is
+ * right by default and wrong in two ordinary cases -- comparing two postings
+ * in adjacent tabs, and drafting against a description pasted out of an email
+ * while the tab shows something else entirely.
+ *
+ * A pin turns the AUTOMATIC behaviour off for one job. It never overrides an
+ * explicit action: Read this page still re-reads, Reset still clears.
+ *
+ * The page is remembered alongside the flag so a finished run can still be
+ * matched to the pinned job, and so unpinning lands somewhere sensible.
+ */
+let jobPinned = false;
+let jobPinnedPageUrl = '';
+
 const JOB_FIELDS = ['jobDescription', 'jobTitle', 'employer'];
 
 async function readJobDraft() {
@@ -861,6 +880,8 @@ async function readJobDraft() {
 }
 
 function applyJobDraft(draft) {
+  jobPinned = Boolean(draft.pinned);
+  jobPinnedPageUrl = jobPinned ? (draft.pageUrl || '') : '';
   for (const id of JOB_FIELDS) {
     if (draft[id]) els[id].value = draft[id];
   }
@@ -871,7 +892,14 @@ function applyJobDraft(draft) {
 }
 
 async function saveJobDraft() {
-  const draft = { at: Date.now(), pageUrl: await currentPageUrl() };
+  // While pinned the draft keeps the page it was pinned ON. Re-stamping it to
+  // whatever tab is in front would make the pin travel with the user, which
+  // is the exact opposite of fixing a job in place.
+  const draft = {
+    at: Date.now(),
+    pageUrl: jobPinned ? jobPinnedPageUrl : await currentPageUrl(),
+    pinned: jobPinned,
+  };
   for (const id of JOB_FIELDS) draft[id] = els[id].value;
   draft.extractHint = els.extractHint.textContent || '';
   // Nothing typed and nothing read: no draft worth keeping, and storing an
@@ -949,8 +977,18 @@ function applyLastRun(last) {
  * back -- and the files were in Downloads the whole time regardless.
  */
 async function restoreOrDetect() {
-  const here = await currentPageUrl();
   const [draft, last] = await Promise.all([readJobDraft(), readLastRun()]);
+
+  // A PINNED job short-circuits every page check below. That is the whole
+  // feature: the popup stops caring which tab is in front.
+  if (draft && draft.pinned) {
+    applyJobDraft(draft);
+    if (last && isStampedForThisPage(last, draft.pageUrl)) applyLastRun(last);
+    renderPin();
+    return;
+  }
+
+  const here = await currentPageUrl();
   const draftIsHere = Boolean(draft) && isStampedForThisPage(draft, here);
   const runIsHere = Boolean(last) && isStampedForThisPage(last, here);
 
@@ -1040,6 +1078,28 @@ function describeAge(at) {
 let ctaBusy = false;
 let ctaHasRun = false;
 
+function renderPin() {
+  if (!els.pinBtn) return;
+  const hasJob = Boolean(els.jobDescription.value.trim());
+  els.pinBtn.disabled = !hasJob && !jobPinned;
+  els.pinBtn.setAttribute('aria-pressed', String(jobPinned));
+  els.pinBtn.title = jobPinned
+    ? 'Pinned. This job stays put while you switch tabs — click to unpin.'
+    : (hasJob
+      ? 'Pin this job so switching tabs does not change it'
+      : 'Nothing to pin yet — read or paste a job first');
+}
+
+async function onPinClick() {
+  jobPinned = !jobPinned;
+  jobPinnedPageUrl = jobPinned ? await currentPageUrl() : '';
+  renderPin();
+  await saveJobDraft();
+  setStatus(jobPinned
+    ? 'Pinned. This job stays put until you unpin it.'
+    : 'Unpinned. The job will follow the tab again.');
+}
+
 function renderCta() {
   if (!els.tailorBtnLabel) return;
   els.tailorBtnLabel.textContent = ctaBusy ? 'Tailoring…'
@@ -1092,6 +1152,10 @@ async function onResetClick() {
   els.jobTitle.value = '';
   els.employer.value = '';
   els.extractHint.textContent = '';
+  // Reset discards the job, so there is nothing left to hold in place.
+  jobPinned = false;
+  jobPinnedPageUrl = '';
+  renderPin();
 
   els.warnings.innerHTML = '';
   els.result.textContent = '';
@@ -1125,6 +1189,8 @@ els.readPageBtn.addEventListener('click', onReadPageClick);
 // Typing in any job field keeps the draft, so losing popup focus mid-paste
 // costs nothing. Debounced: a long description is a lot of keystrokes.
 for (const id of JOB_FIELDS) els[id].addEventListener('input', scheduleJobDraftSave);
+els.jobDescription.addEventListener('input', renderPin);
+els.pinBtn.addEventListener('click', onPinClick);
 if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
 if (els.footerResetBtn) els.footerResetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
@@ -1165,7 +1231,7 @@ els.settingsBtn.addEventListener('click', () => showSettings(els.mainView.hidden
 els.settingsBackBtn.addEventListener('click', () => showSettings(false));
 // The pill reports the key, and the key lives in settings, so it goes there.
 els.keyStatus.addEventListener('click', () => showSettings(true));
-restoreOrDetect();
+restoreOrDetect().then(renderPin);
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.

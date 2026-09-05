@@ -381,3 +381,106 @@ test('later edits beat the snapshot the run was tailored from', async (t) => {
     { timeout: 10000 },
   );
 });
+
+// --- pinning a job ---------------------------------------------------------
+//
+// Everything else in the popup follows the tab in front of it: the job is read
+// on open, and one belonging to a different posting is put away. Right by
+// default, wrong when comparing two postings in adjacent tabs, or drafting
+// against a description pasted out of an email while the tab shows something
+// else. A pin turns the AUTOMATIC behaviour off for one job.
+
+test('pin needs a job, and remembers being pinned', async (t) => {
+  const { popup, sw } = await openRealPopup(t);
+  const pressed = () => popup.$eval('#pinBtn', (el) => el.getAttribute('aria-pressed'));
+
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), true,
+    'there is nothing to pin before a job exists');
+
+  await popup.fill('#jobDescription', 'A JOB WORTH HOLDING ON TO');
+  await popup.waitForTimeout(700);
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), false);
+  assert.equal(await pressed(), 'false');
+
+  await popup.click('#pinBtn');
+  await popup.waitForTimeout(700);
+  assert.equal(await pressed(), 'true');
+
+  const draft = await readStorage(sw, JOB_DRAFT_KEY);
+  assert.equal(draft.pinned, true, 'the pin must outlive the popup, like the draft it belongs to');
+  assert.ok('pageUrl' in draft, 'and remember the page, so a finished run can still be matched to it');
+
+  await popup.click('#pinBtn');
+  await popup.waitForTimeout(700);
+  assert.equal(await pressed(), 'false');
+  assert.equal((await readStorage(sw, JOB_DRAFT_KEY)).pinned, false);
+});
+
+test('a pinned job never asks which page it is on', async (t) => {
+  // THE POINT OF THE FEATURE, and the one part of it this harness can prove.
+  //
+  // Page identity cannot be exercised here -- reading a tab's URL needs an
+  // activeTab grant that a programmatically opened popup never gets, so every
+  // comparison takes the fail-open path and pinned and unpinned look alike.
+  //
+  // What IS observable is that a pinned job short-circuits before any of it:
+  // it asks the service worker neither which page this is nor to read one.
+  // Unpinned, with a draft stored, it asks.
+  const spy = async (worker) => {
+    await worker.evaluate(() => {
+      self.__urlCalls = 0;
+      self.__extractCalls = 0;
+      chrome.runtime.onMessage.addListener((m) => {
+        if (!m || m.target !== 'sw') return;
+        if (m.type === 'tab:url') self.__urlCalls += 1;
+        if (m.type === 'job:extract') self.__extractCalls += 1;
+      });
+    });
+  };
+  const seed = (pinned) => async (worker) => {
+    await spy(worker);
+    await worker.evaluate(([key, isPinned]) => chrome.storage.local.set({
+      [key]: {
+        at: Date.now(),
+        pageUrl: 'https://jobs.example.com/roles/42',
+        pinned: isPinned,
+        jobDescription: 'THE PINNED JOB',
+        jobTitle: 'Backend Engineer',
+        employer: 'Acme Corp',
+      },
+    }), [JOB_DRAFT_KEY, pinned]);
+  };
+
+  const pinnedPopup = await openRealPopup(t, { beforeOpen: seed(true) });
+  await pinnedPopup.popup.waitForTimeout(2000);
+  assert.equal(await pinnedPopup.sw.evaluate(() => self.__urlCalls), 0,
+    'a pinned job must not care which tab is in front');
+  assert.equal(await pinnedPopup.sw.evaluate(() => self.__extractCalls), 0,
+    'nor let the page read over it');
+  assert.equal(await pinnedPopup.popup.inputValue('#jobDescription'), 'THE PINNED JOB');
+  assert.equal(await pinnedPopup.popup.$eval('#pinBtn', (el) => el.getAttribute('aria-pressed')), 'true',
+    'and it must come back looking pinned');
+
+  const loosePopup = await openRealPopup(t, { beforeOpen: seed(false) });
+  await loosePopup.popup.waitForTimeout(2000);
+  assert.ok(await loosePopup.sw.evaluate(() => self.__urlCalls) >= 1,
+    'unpinned, the same draft DOES get checked against the page');
+});
+
+test('reset releases the pin along with the job', async (t) => {
+  // Reset discards the job, so there is nothing left to hold in place. Leaving
+  // the pin set would silently suppress the read on the next posting.
+  const { popup, sw } = await openRealPopup(t);
+  await popup.fill('#jobDescription', 'SOMETHING PINNED THEN DISCARDED');
+  await popup.waitForTimeout(700);
+  await popup.click('#pinBtn');
+  await popup.waitForTimeout(700);
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.getAttribute('aria-pressed')), 'true');
+
+  await popup.click('#resetBtn');
+  await popup.waitForTimeout(900);
+
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.getAttribute('aria-pressed')), 'false');
+  assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), true, 'and back to nothing to pin');
+  assert.equal(await readStorage(sw, JOB_DRAFT_KEY), null);
+});

@@ -126,6 +126,22 @@
           <!-- In the title row rather than a full-width button below it: the
                action belongs to this section's heading, and the row already
                exists. Worth 35px of a 485px column. -->
+          <!-- Pin fixes THIS job in place. Everything else in the popup
+               follows whatever tab is in front -- the description is read on
+               open, and a job belonging to another posting is put away. That
+               is right by default and wrong when you are comparing two
+               postings, or drafting against a description pasted from an
+               email. The pin turns the automatic behaviour off for one job.
+               It never blocks an explicit action: Read this page and Reset
+               still do exactly what they say. -->
+          <button id="pinBtn" class="icon-btn pin-btn" type="button" aria-pressed="false"
+                  title="Pin this job so switching tabs does not change it">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 17v5" />
+              <path d="M9 10.8V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5.8a2 2 0 0 0 .6 1.4l1.7 1.7a1 1 0 0 1-.7 1.7H6.4a1 1 0 0 1-.7-1.7l1.7-1.7a2 2 0 0 0 .6-1.4z" />
+            </svg>
+          </button>
           <button id="readPageBtn" class="secondary-btn row-btn" type="button">Read this page</button>
         </div>
         <div id="extractHint" class="hint"></div>
