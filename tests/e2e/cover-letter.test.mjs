@@ -115,9 +115,31 @@ test('cover letter path: two LLM calls, two DOCX files, greeting and sign-off bu
     kinds, ['cover_letter', 'cover_letter_pdf', 'resume', 'resume_pdf'],
     `expected both documents in both formats, got ${JSON.stringify(result.downloads)}`,
   );
-  assert.match(result.downloads.find((d) => d.kind === 'cover_letter').filename, /_cover_letter\.docx$/);
-  assert.match(result.downloads.find((d) => d.kind === 'cover_letter_pdf').filename, /_cover_letter\.pdf$/);
-  assert.match(result.downloads.find((d) => d.kind === 'resume_pdf').filename, /_tailored_resume\.pdf$/);
+  // The filenames, which is the only place the employer typed at the top of
+  // this test can be observed reaching the offscreen document. artifactName
+  // is unit-tested on its own; what is checked here is the WIRING -- every
+  // run used to produce "juan_rivera_tailored_resume.docx" whatever the job
+  // was, and three applications in an afternoon left Chrome to tell them
+  // apart with "(1)" and "(2)".
+  const named = (kind) => result.downloads.find((d) => d.kind === kind).filename;
+  const stamp = (() => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  })();
+
+  assert.equal(named('resume'), `Juan_Rivera_Acme_Corp_Resume_${stamp}.docx`);
+  assert.equal(named('resume_pdf'), `Juan_Rivera_Acme_Corp_Resume_${stamp}.pdf`);
+  assert.equal(named('cover_letter'), `Juan_Rivera_Acme_Corp_Cover_${stamp}.docx`);
+  assert.equal(named('cover_letter_pdf'), `Juan_Rivera_Acme_Corp_Cover_${stamp}.pdf`);
+
+  for (const { filename } of result.downloads) {
+    // The audience is an ATS upload form, which truncates or rejects long
+    // names and mangles anything that is not plain ASCII.
+    assert.ok(filename.length <= 64, `${filename.length} chars: ${filename}`);
+    assert.doesNotMatch(filename, /[^A-Za-z0-9_.]/, filename);
+    assert.doesNotMatch(filename, /tailored/i, `"tailored" describes the process, not the file: ${filename}`);
+  }
 
   // Both LLM calls really happened, and were distinguishable.
   const calls = mockLlm.calls();

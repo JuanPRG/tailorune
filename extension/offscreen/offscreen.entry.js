@@ -20,6 +20,7 @@ import { resolveProviderChain } from '../engine/providers.js';
 import { validatePreferences } from '../engine/preferences.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
+import { artifactName } from '../engine/artifactName.js';
 
 function base64ToBytes(base64) {
   const binary = atob(base64);
@@ -36,13 +37,6 @@ async function resolveResumeText({ resumeText, resumeFileBase64, resumeFileExt }
   if (resumeFileExt === '.pdf') return extractPdfText(bytes);
   if (resumeFileExt === '.txt') return new TextDecoder('utf-8').decode(bytes);
   throw new Error(`Unsupported resume file type: ${resumeFileExt}`);
-}
-
-function slugify(text) {
-  return String(text || 'resume')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'resume';
 }
 
 /**
@@ -198,13 +192,19 @@ async function runTailor(payload) {
     skillsReport = report;
   }
 
-  const slug = slugify(model.name);
+  // One timestamp for the whole run. The cover letter is generated seconds
+  // after the resume, and a run started at 23:59:58 would otherwise hand the
+  // user two files stamped different days.
+  const stamp = Date.now();
+  const nameFor = (kind, ext) => artifactName({
+    candidateName: model.name, employer: payload.employer, kind, ext, at: stamp,
+  });
   const outputs = [];
 
   const resumeDocx = await timed('render', () => renderResumeDocx(tailoredModel));
   outputs.push({
     kind: 'resume',
-    filename: `${slug}_tailored_resume.docx`,
+    filename: nameFor('resume', '.docx'),
     base64: await bytesToBase64(resumeDocx),
   });
 
@@ -214,7 +214,7 @@ async function runTailor(payload) {
   // out regardless, so a resume that somehow defeats the layout engine costs
   // a format, never the run.
   let resumePdfBase64 = null;
-  const resumePdfFilename = `${slug}_tailored_resume.pdf`;
+  const resumePdfFilename = nameFor('resume', '.pdf');
   try {
     resumePdfBase64 = await bytesToBase64(await renderResumePdf(tailoredModel, await loadPdfFonts()));
   } catch (err) {
@@ -240,7 +240,7 @@ async function runTailor(payload) {
     const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
     outputs.push({
       kind: 'cover_letter',
-      filename: `${slug}_cover_letter.docx`,
+      filename: nameFor('cover', '.docx'),
       base64: await bytesToBase64(clDocx),
     });
     coverLetter = {
@@ -258,7 +258,7 @@ async function runTailor(payload) {
           return null;
         }
       })(),
-      pdfFilename: `${slug}_cover_letter.pdf`,
+      pdfFilename: nameFor('cover', '.pdf'),
     };
     if (coverLetter.pdfBase64 && payload.autoDownloadPdf) {
       outputs.push({
