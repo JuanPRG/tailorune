@@ -63,34 +63,39 @@ purpose — the two appear side by side and disagreeing reads as carelessness.
 
 ### Detailed description
 
+Structured like HirePilot's, which passed review: what it does, features, the
+user-control paragraph, the requirement, then the data-flow disclosure. Three
+claims from the old copy are now FALSE and are gone — the Windows companion at
+127.0.0.1, the local-model option (only three hosted providers are wired), and
+autofill.
+
 ```
-Tailorune rewrites your resume for one specific job posting, and drafts a cover letter to match.
+Tailorune adapts a resume and cover letter to the job posting you are viewing. Open Tailorune on a job page, read the posting into the form, review the detected details, and start tailoring. A tailored resume and cover letter are written to your Downloads as .docx and .pdf files.
 
-Open a job posting, click Tailorune, and press "Read job description" — it pulls the posting off the page for you. Press Tailor, and four files land in your Downloads: a resume and a cover letter, each as .docx and .pdf.
+Version 2.3.0 replaces the previous HirePilot release and removes its requirement for a separate Windows companion application. Tailoring now runs entirely inside the extension: there is no local server to install, no companion download, and no operating-system restriction.
 
-They are named for the employer and the day — Ada_Lovelace_Northwind_Resume_0906.docx — because applicant tracking systems truncate long filenames, and because three applications in an afternoon otherwise become resume(1).docx and resume(2).docx.
+Features:
 
-IT DOES NOT INVENT THINGS
+- Tailor a resume to the job posting in the active tab.
+- Generate a resume and a cover letter, each as .docx and .pdf, in any combination.
+- Save generated documents directly to Downloads, named for the employer and the date so several applications remain distinguishable.
+- Keep a library of saved resumes, so a resume is uploaded once and reused.
+- Lock a job so that switching browser tabs does not change it.
+- See a notice on returning to a posting you have already tailored for.
+- Optional accuracy review that flags rewrites drifting from your original wording. It is advisory and never edits or withholds a document.
+- Read .txt, .docx, and .pdf resumes.
 
-Your name, contact details, employers, job titles, dates and education are locked. They are copied through exactly as you wrote them and are never handed to the model for rewriting. Only your summary and the wording of your bullet points change.
+Tailorune does not fabricate experience. Your name, contact details, employers, job titles, dates, and education are treated as locked fields: they are copied through exactly as written and are never included in the part of the request the model may rewrite. Only your summary and the wording of your bullet points change.
 
-There is an optional accuracy review that flags any rewrite drifting from your original wording. It is advisory — it never edits or withholds a document. You decide.
+Tailorune is user-controlled. It accesses the active tab only after you invoke the extension and press Read job description. It declares no content scripts and holds no standing access to any website. It does not read passwords, payment fields, authentication codes, government identifier fields, or file uploads. Review all generated text before submitting an application.
 
-BRING YOUR OWN KEY
+You provide your own API key for one of three supported providers: Google Gemini, Groq, or OpenRouter. Gemini and Groq offer free tiers that require no payment method. Provider availability, quotas, and pricing are controlled by each provider.
 
-There is no account and no server of ours. You supply an API key from Gemini, Groq or OpenRouter — Gemini and Groq both have free tiers that need no card — and the extension talks to that provider directly from your browser.
+Your resume, your API keys, your preferences, and the list of jobs you have tailored for are stored locally in your browser. They are not synced and are never sent to the developer. There is no developer-operated server.
 
-Your resume, your keys and your preferences are stored on your own machine and are never synced or sent to us. To tailor anything, your resume text and the job description are sent to the AI provider you chose, using your key; that provider's privacy policy then applies. That is the only thing that leaves your machine, and the privacy policy says so in full.
+When you tailor, your resume text and the job description are sent directly from your browser to the AI provider you selected, authenticated with your own key. That provider's privacy policy then applies to that request. This is the only data that leaves your computer.
 
-ALSO
-
-• Keeps a library of resumes, so you upload once
-• Lock a job so switching tabs cannot change it
-• Tells you when you return to a posting you already tailored for
-• Reads .txt, .docx and .pdf resumes
-• Light and dark themes
-
-Tailorune reads a job posting only from the tab you are on, and only when you click its icon. It declares no content scripts and has no standing access to any website.
+Autofill was part of the previous HirePilot release and is not included in Tailorune. Resume tailoring and cover-letter generation are this extension's only functions.
 
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
