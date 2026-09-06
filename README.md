@@ -89,8 +89,8 @@ full.
 ## Getting started
 
 **1. [Install it](https://chromewebstore.google.com/detail/chnibpoikgjckekkgpoeejdnmempllkh).** That is the whole installation. There is no companion
-app, no local server, and no operating-system restriction — the previous
-previous release needed a 490 MB Windows companion; this one needs nothing.
+app, no local server, and no operating-system restriction — the version this
+replaces needed a 490 MB Windows companion; this one needs nothing.
 
 **2. Get a free AI key.** This is the only fiddly step, and it takes about two
 minutes. Tailorune has no server and no model of its own, so it uses yours:
