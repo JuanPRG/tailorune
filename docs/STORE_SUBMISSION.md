@@ -153,10 +153,17 @@ Paste these into the matching fields.
 
 **Host permissions — `generativelanguage.googleapis.com`, `api.groq.com`,
 `openrouter.ai`**
-> The three AI providers the user can choose between. The extension calls their
-> chat endpoints directly from the user's browser with the user's own API key.
-> There is no backend, so these are the only servers involved, and no other
-> host can be contacted.
+
+THE ONE THAT CHANGED MOST. The live listing justifies `127.0.0.1` — a Windows
+companion that no longer exists. Replace it entirely:
+
+> Three hosts, one per supported AI provider: generativelanguage.googleapis.com
+> (Google Gemini), api.groq.com (Groq), and openrouter.ai (OpenRouter).
+> Tailorune has no backend, so the extension calls the selected provider's chat
+> endpoint directly from the user's browser, authenticated with the API key the
+> user supplied for that provider. Only the provider the user selected is
+> contacted. These permissions grant no access to job boards or any other
+> website; reading a job posting uses activeTab instead.
 
 ## Remote code
 
@@ -166,25 +173,26 @@ Function`, and no remotely-loaded script anywhere in the extension.
 
 ## Data use disclosures
 
-Tick these, and no others:
+Tick these four, and no others:
 
-| Category | Collected | Why |
+| Category | Tick | Why |
 |---|---|---|
-| Personally identifiable information | **Yes** | The resume the user supplies contains their name, contact details and work history |
-| Authentication information | **Yes** | The user's own AI provider API keys, stored locally |
-| Web history | **No** | The job history stores the URLs of postings the user *chose to tailor for*, on their device only. It is not browsing history and is never transmitted |
-| Location, health, financial, personal communications, user activity | **No** | — |
+| Personally identifiable information | **YES** | The resume carries the user's name, contact details and work history, and it is transmitted to the AI provider |
+| Authentication information | **YES** | The user's own API key, stored locally and sent as the Authorization header on each provider call |
+| **Website content** | **YES** | The job-posting **text is read from the page** and transmitted to the provider. This is the disclosure most easily missed, because it feels like the user typed it — they did not, the extension read it |
+| Web history | **NO** | The tailoring history stores the URL, employer and title of postings the user *chose to tailor for*, on their device only. Chrome defines collection as transmitting off the device, and this never leaves it |
+| Health, financial, personal communications, location, user activity | **NO** | — |
+
+Web history is the one judgement call. The stored shape — a page URL plus a
+title plus a timestamp — resembles the category's wording. It is answered NO
+because it is never transmitted, and the privacy policy describes it plainly
+anyway, so nothing is hidden either way.
 
 Certifications — all three are true:
 
 - Not sold or transferred to third parties outside approved use cases.
 - Not used or transferred for any purpose unrelated to the single purpose above.
 - Not used or transferred to determine creditworthiness or for lending.
-
-**The one thing to state plainly:** resume text and the job description are
-transmitted to the AI provider the user selects, using the user's own key. That
-is the product working as described, not a hidden transfer — but it must appear
-in the privacy policy, and it does.
 
 ## Privacy policy URL
 
