@@ -1,0 +1,21 @@
+# Line-ending conversion must never touch a binary fixture.
+#
+# core.autocrlf is on for most Windows checkouts, and git decides text-vs-binary
+# by looking for NUL bytes in the first 8000. A .docx or a .ttf is full of them
+# and is detected correctly. A PDF is not: juan-rivera.pdf is 2.4KB of ASCII85
+# with no NUL anywhere, so git called it text and rewrote its 67 LF bytes to
+# CRLF on checkout -- 2367 bytes in the repository, 2434 in a fresh clone, with
+# the ASCII85 stream and every xref offset broken.
+#
+# Nothing caught it because the file was only ever WRITTEN here, never checked
+# out again; it corrupts on clone, so it would have failed for the first person
+# who cloned the repository and ran the tests, and for nobody working in it.
+#
+# Marked by extension rather than by path so a new fixture is safe by default.
+
+*.pdf   binary
+*.docx  binary
+*.ttf   binary
+*.png   binary
+*.zip   binary
+*.ico   binary
