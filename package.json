@@ -1,8 +1,9 @@
 {
   "name": "tailorune",
-  "version": "0.1.0",
+  "version": "2.3.0",
   "private": true,
   "description": "Resume tailoring and cover letters as a standalone Chrome extension, no backend.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "node build/build-offscreen.mjs",
@@ -13,7 +14,7 @@
     "test:live": "node tests/live/smoke.mjs",
     "test:live:rotation": "node tests/live/rotation.mjs",
     "bench:models": "node tests/live/modelBench.mjs",
-    "assets:store": "node build/make-store-assets.mjs",
+    "assets:store": "node build/make-store-assets.mjs && node build/make-screenshots.mjs",
     "package": "npm run build && node build/package-extension.mjs"
   },
   "devDependencies": {

@@ -2,8 +2,9 @@
 //
 // WHY ARIMO. The DOCX is Arial, so the PDF has to break lines in the same
 // places or the two files stop being the same document. Arimo is Arial's
-// metric-compatible twin (same designer, Apache 2.0, redistributable where
-// Arial is not), and "metric-compatible" here is not a marketing word --
+// metric-compatible twin (same designer, SIL Open Font License 1.1,
+// redistributable where Arial is not), and "metric-compatible" here is not a
+// marketing word --
 // tests/unit/fontMetrics.test.mjs measures every advance width against the
 // real arial.ttf and requires them IDENTICAL, not merely close.
 //
