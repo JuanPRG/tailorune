@@ -4,11 +4,45 @@ Everything the dashboard asks for, written out so it is answered the same way
 every time. Each justification is the true reason the permission exists, traced
 to the code that needs it — a reviewer who checks will find what this says.
 
-**This listing replaces HirePilot's.** The packager enforces it: it refuses to
-build unless `manifest.version` is strictly greater than the published version
-(default `2.2.5`, override with `--published`). If this ever becomes a *new*
-listing instead, that gate is meaningless and the item gets a fresh ID and a
-full new-extension review.
+**CONFIRMED: this is a same-item update.** Tailorune takes over the existing
+HirePilot listing — same item ID, same store URL, same review history. It is
+not a new item.
+
+Two things follow from that, and both have bitten people.
+
+### The version must strictly increase, every upload
+
+The packager refuses to build otherwise. It reads the live version from
+`store/PUBLISHED_VERSION` (currently `2.2.5`); `--published <v>` overrides.
+**Bump that file immediately after a successful upload.** It used to be a
+hard-coded literal, which protected exactly one release — the moment 2.3.0 went
+live, it would have happily packaged 2.3.0 over itself again.
+
+### New host permissions disable the extension for existing users
+
+Against the published 2.2.5, this build:
+
+| | |
+|---|---|
+| **Adds** | `offscreen`, and three host permissions: `generativelanguage.googleapis.com`, `api.groq.com`, `openrouter.ai` |
+| **Removes** | `contextMenus`, and `http://127.0.0.1:7321/*` — the old Python backend |
+
+`offscreen` carries no user-facing warning. **The host permissions do.** Chrome
+shows "Read and change your data on…" and **disables the extension until each
+existing user accepts**. Removing permissions is silent and safe; adding these
+is not.
+
+That is harmless at zero installs, which is the premise here — but it is worth
+reading the dashboard's user count before publishing, because it cannot be
+undone afterwards. If there ever are users, this is the update that interrupts
+them.
+
+### Also changing with the rebrand
+
+Name, icons, description, and single purpose all change. HirePilot's listing
+described a Python-backed product with autofill; Tailorune has neither. Rewrite
+the store description and the privacy practices in the dashboard to match — a
+same-item update inherits the old listing copy until you replace it.
 
 ---
 
@@ -111,9 +145,11 @@ which the store rejects.
 ## Before every upload
 
 1. `npm test` — must be fully green.
-2. `npm run package` — refuses to build on a stale version, a missing bundle, or
+2. `npm run package` — refuses (exit 1) on a stale version, a missing bundle, or
    a provider whose host is absent from `host_permissions`.
 3. Upload `dist/tailorune-<version>.zip`.
+4. **Bump `store/PUBLISHED_VERSION` to what you just uploaded.** Nothing else
+   knows the upload happened.
 
 Check the zip is newer than your last commit. A stale zip once contained a
 build predating three shipped features.

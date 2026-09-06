@@ -29,10 +29,23 @@ const ROOT = path.resolve(__dirname, '..');
 const EXT = path.join(ROOT, 'extension');
 const OUT_DIR = path.join(ROOT, 'dist');
 
-// The version currently live on the store. Overridable, because it is the one
-// fact this script cannot read for itself.
+// The version currently live on the store, and the one fact this script cannot
+// discover for itself.
+//
+// READ FROM A FILE, not hard-coded. This is a SAME-ITEM UPDATE workflow -- the
+// listing that was HirePilot's -- so Chrome enforces a strictly increasing
+// version on every upload, and getting it wrong costs a review cycle. As a
+// literal default it protected exactly one release: the moment 2.3.0 went
+// live, a hard-coded 2.2.5 would happily let 2.3.0 be packaged over itself
+// again, which is the case the gate exists to catch.
+//
+// store/PUBLISHED_VERSION is bumped AFTER a successful upload, so the file
+// always answers "what is live right now". --published still overrides.
 const publishedArg = process.argv.indexOf('--published');
-const PUBLISHED_VERSION = publishedArg !== -1 ? process.argv[publishedArg + 1] : '2.2.5';
+const PUBLISHED_FILE = path.join(ROOT, 'store/PUBLISHED_VERSION');
+const PUBLISHED_VERSION = publishedArg !== -1
+  ? process.argv[publishedArg + 1]
+  : readFileSync(PUBLISHED_FILE, 'utf8').trim();
 
 /** Files and directories never shipped: sources, tests, maps. */
 const EXCLUDE = [/\.map$/, /(^|[\\/])\./, /(^|[\\/])node_modules([\\/]|$)/];
