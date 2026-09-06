@@ -49,9 +49,8 @@ full.
 
 ## Getting started
 
-**1. [Install it](https://chromewebstore.google.com/detail/chnibpoikgjckekkgpoeejdnmempllkh).** That is the whole installation. There is no companion
-app, no local server, and no operating-system restriction — the version this
-replaces needed a 490 MB Windows companion; this one needs nothing.
+**1. [Install it](https://chromewebstore.google.com/detail/chnibpoikgjckekkgpoeejdnmempllkh).** That is the whole installation — no companion
+app, no local server, nothing to configure on your machine.
 
 **2. Get a free AI key.** This is the only fiddly step, and it takes about two
 minutes. Tailorune has no server and no model of its own, so it uses yours:
@@ -116,13 +115,3 @@ documented anywhere and cost an afternoon to discover. See
 
 [`docs/STORE_SUBMISSION.md`](docs/STORE_SUBMISSION.md) has the permission justifications and the
 pre-upload checklist.
-
-## Internal notes
-
-The files below are engineering scratch, not user documentation, and are **not kept in sync** with
-the shipped product — the code and its comments are the source of truth.
-
-- [`docs/STATUS.md`](docs/STATUS.md) — what was built, against the plan.
-- [`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md) — architecture decisions and honest losses.
-- [`docs/SPIKE_FINDINGS.md`](docs/SPIKE_FINDINGS.md) — the measurements behind them: Unicode
-  fidelity across PDF generators, MV3 CSP compatibility, ATS vendor documentation.

@@ -520,10 +520,9 @@ const PERSIST_ON_CHANGE = [
 ];
 
 /**
- * The header pill, which replaced the previous release's "Connected"
- * backend indicator.
+ * The header pill.
  *
- * There is no backend to be connected to, so the equivalent question is
+ * There is no backend to be connected to, so the question worth answering is
  * whether this popup can actually make a call: is there a key, and how many
  * providers can it fall back across. Reported rather than assumed, because
  * "why did nothing happen" is otherwise answered only by opening a collapsed

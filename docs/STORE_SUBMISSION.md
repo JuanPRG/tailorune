@@ -73,7 +73,7 @@ autofill.
 ```
 Tailorune adapts a resume and cover letter to the job posting you are viewing. Open Tailorune on a job page, read the posting into the form, review the detected details, and start tailoring. A tailored resume and cover letter are written to your Downloads as .docx and .pdf files.
 
-Version 2.3.0 replaces the previous release and removes its requirement for a separate Windows companion application. Tailoring now runs entirely inside the extension: there is no local server to install, no companion download, and no operating-system restriction.
+Everything runs inside the extension. There is no companion application, no local server to install, and no operating-system restriction.
 
 Features:
 
@@ -96,7 +96,7 @@ Your resume, your API keys, your preferences, and the list of jobs you have tail
 
 When you tailor, your resume text and the job description are sent directly from your browser to the AI provider you selected, authenticated with your own key. That provider's privacy policy then applies to that request. This is the only data that leaves your computer.
 
-Autofill was part of the previous release and is not included in Tailorune. Resume tailoring and cover-letter generation are this extension's only functions.
+Resume tailoring and cover-letter generation are this extension's only functions.
 
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
