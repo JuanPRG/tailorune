@@ -258,9 +258,20 @@
         </div>
         <label for="apiKey">API key</label>
         <input id="apiKey" type="password" placeholder="stored locally only" />
+        <!-- LINKS, not just reassurance. The previous version said free tiers
+             exist and stopped there, which leaves a job seeker who has never
+             heard of an API key with nowhere to go -- the single hardest step
+             in onboarding, and the one the extension is silent about. Each
+             link lands on the page that issues the key for that provider. -->
         <div class="hint">
           Gemini and Groq have free tiers that need no card. OpenRouter's free models share an
           upstream pool, so they work but can be busy. All three are free to use.
+        </div>
+        <div class="hint key-links">
+          Get a free key:
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Gemini</a>
+          <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">Groq</a>
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">OpenRouter</a>
         </div>
         <div class="hint">
           Optional fallback keys. If your main provider is rate-limited mid-run, the next one with

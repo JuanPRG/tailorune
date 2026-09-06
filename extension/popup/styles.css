@@ -504,6 +504,19 @@ input[type="file"]::file-selector-button:hover { border-color: var(--border-2); 
 /* A lone chip inside a settings card, rather than one of a row of them. It
    needs the line to itself and the breathing room the .chips flex container
    would otherwise have given it. */
+/* The three links that end the "what is an API key" dead end. Jade, spaced,
+   and unmistakably clickable -- a hint the user is meant to ACT on, not another
+   line of prose to skim past. */
+.key-links { display: flex; gap: 10px; align-items: baseline; }
+.key-links a {
+  color: var(--accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+}
+.key-links a:hover { border-bottom-color: var(--accent-ink); }
+.key-links a:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
 .settings-chip {
   display: flex;
   width: fit-content;
