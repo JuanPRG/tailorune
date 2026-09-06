@@ -12,7 +12,7 @@ test('juan-rivera-full: name, contact, summary, skills, projects, experience, ed
   const model = parseTxt(fixture('juan-rivera-full.txt'));
   assert.equal(model.name, 'Juan Rivera');
   assert.match(model.contact, /Toronto, ON/);
-  assert.match(model.contact, /j.rivera@example\.com/);
+  assert.match(model.contact, /j\.rivera@example\.com/);
   assert.ok(model.summary && model.summary.includes('backend development'));
 
   assert.ok(model.skills);
