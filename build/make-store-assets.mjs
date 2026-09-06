@@ -39,7 +39,7 @@ const lockup = (scale) => `
     <span class="tile"><svg viewBox="${markVb}" xmlns="http://www.w3.org/2000/svg">${markInner}</svg></span>
     <span class="word">Tailorune</span>
   </div>
-  <p class="tag">Tailor your resume to any job — entirely in your browser.</p>
+  <p class="tag">Tailor your resume to any job — no account, no server of ours.</p>
   <style>
     .lock{display:flex;align-items:center;gap:${14 * scale}px}
     .tile{width:${56 * scale}px;height:${56 * scale}px;border-radius:${18 * scale}px;
@@ -82,7 +82,12 @@ try {
     ['promo-tile-440x280', 440, 280, TILE],
     ['marquee-1400x560', 1400, 560, MARQUEE],
   ]) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+    // deviceScaleFactor 1, NOT 2. The Chrome Web Store takes these at exact
+    // pixel dimensions and rejects anything else -- and at 2 every file was
+    // written at double the size its own name promised: promo-tile-440x280.png
+    // was 880x560, marquee-1400x560.png was 2800x1120. The viewport is already
+    // the target size, so the content composes identically either way.
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
     const p = await ctx.newPage();
     await p.setContent(html);
     writeFileSync(path.join(OUT, `${name}.png`), await p.screenshot());
