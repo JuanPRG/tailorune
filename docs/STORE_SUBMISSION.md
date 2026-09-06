@@ -114,56 +114,72 @@ Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 
 ## Single purpose
 
-> Tailorune rewrites a resume and drafts a cover letter for one specific job
-> posting, using an AI provider the user supplies their own API key for.
+**AS SUBMITTED** (262 chars):
 
-Everything in the extension serves that: reading the posting, editing the
-resume, and downloading the two documents.
+```
+Tailorune rewrites a resume and drafts a cover letter for the job posting in the active tab, using an AI provider the user supplies their own API key for. Reading the posting, editing the job details, and downloading the two documents all serve that one purpose.
+```
 
 ## Permission justifications
 
-Paste these into the matching fields.
+**AS SUBMITTED.** These are the exact strings that went into the dashboard, not
+a paraphrase — paste them verbatim next time so the answers do not drift
+release to release. Character counts are given so a truncated paste is
+obvious.
 
-**`storage`**
-> Saves the user's resume library, their AI provider API keys, and their
-> tailoring preferences on their own device, so they are not re-entered for
-> every application. Nothing is synced or transmitted.
+**`storage`** (384)
 
-**`downloads`**
-> The extension's output is a tailored resume and cover letter as .docx and
-> .pdf files. This permission delivers those finished files to the user's
-> Downloads folder.
+```
+Stores the user's resume library, their AI provider API keys, their tailoring preferences, the current job draft, and the most recent run's results on the user's own device via chrome.storage.local. This is what lets a resume be uploaded once and reused, and what restores a finished result after the popup closes. Nothing is synchronized to a Tailorune server; no such server exists.
+```
 
-**`offscreen`**
-> A tailoring run makes several sequential AI calls and then renders two
-> documents, which can exceed the 5-minute per-event ceiling a service worker
-> is allowed. The offscreen document hosts that pipeline so a run is not killed
-> partway through.
+**`downloads`** (269)
 
-**`activeTab`**
-> Reads the job posting from the tab the user is looking at, and only after
-> they click the Tailorune toolbar icon. This grants access to that one tab, at
-> that one moment. The extension declares no content scripts and holds no
-> standing access to any site.
+```
+The extension's output is a tailored resume and cover letter, generated as .docx and .pdf files. This permission delivers those finished files to the user's Downloads folder. Downloads occur only after the user presses Tailor, and only in the formats the user selected.
+```
 
-**`scripting`**
-> Injects the job-posting reader into that single tab on demand, paired with
-> activeTab. It is deliberately not declared as a `content_scripts` entry,
-> precisely so the extension has no persistent presence on any page.
+**`offscreen`** (306) — new in 2.3.0, HirePilot never had it, so the field
+starts empty and the dashboard blocks publishing until it is filled
 
-**Host permissions — `generativelanguage.googleapis.com`, `api.groq.com`,
-`openrouter.ai`**
+```
+A tailoring run makes several sequential AI provider calls and then renders two documents, which together can exceed the five-minute per-event limit a Manifest V3 service worker is allowed. The offscreen document hosts that pipeline so a run is not terminated partway through. It renders no user interface.
+```
 
-THE ONE THAT CHANGED MOST. The live listing justifies `127.0.0.1` — a Windows
-companion that no longer exists. Replace it entirely:
+**`activeTab`** (341)
 
-> Three hosts, one per supported AI provider: generativelanguage.googleapis.com
-> (Google Gemini), api.groq.com (Groq), and openrouter.ai (OpenRouter).
-> Tailorune has no backend, so the extension calls the selected provider's chat
-> endpoint directly from the user's browser, authenticated with the API key the
-> user supplied for that provider. Only the provider the user selected is
-> contacted. These permissions grant no access to job boards or any other
-> website; reading a job posting uses activeTab instead.
+```
+Provides temporary access to the current tab, only after the user invokes Tailorune from its toolbar icon and presses Read job description. It is used once, to read the visible job-posting text so the user does not have to copy and paste it. Tailorune does not monitor tabs, does not run in the background, and collects no browsing activity.
+```
+
+**`scripting`** (296)
+
+```
+Injects the packaged job-posting reader into the active tab on demand, paired with activeTab, when the user presses Read job description. It is deliberately not declared as a content_scripts entry, so the extension has no persistent presence on any page. No remote code is downloaded or executed.
+```
+
+**Host permissions** (502) — the field that changed most. HirePilot's justified
+`127.0.0.1` and a Windows companion that no longer exists.
+
+```
+Three hosts, one per supported AI provider: generativelanguage.googleapis.com (Google Gemini), api.groq.com (Groq), and openrouter.ai (OpenRouter). Tailorune has no backend, so the extension calls the selected provider's chat endpoint directly from the user's browser, authenticated with the API key the user supplied for that provider. Only the provider the user selected is contacted. These permissions grant no access to job boards or any other website; reading a job posting uses activeTab instead.
+```
+
+## The dashboard will lie to you about unsaved edits
+
+Publishing was blocked with three errors — a missing `offscreen` justification
+that was visibly typed, and Homepage and Support URLs reported "not reachable"
+that both returned HTTP 200 when checked directly.
+
+None of it was true. **Every tab has its own Save Draft, and moving between
+tabs discards unsaved edits.** The validator reads what is persisted, not what
+is on screen, so unsaved work reports as missing or broken.
+
+  - Save Draft on EACH tab before leaving it, not once at the end.
+  - Click outside a field before saving; some inputs only commit on blur.
+  - Reload and confirm the values survived before pressing Submit.
+  - A trailing space from a paste — `.../tailorune ` — fails a reachability
+    check while looking identical on screen.
 
 ## Remote code
 
