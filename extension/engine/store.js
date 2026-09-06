@@ -2,7 +2,7 @@
 //
 // Only provider, model, and API key for now (Phase 2 scope). Per
 // MIGRATION_PLAN.md §4: plaintext in chrome.storage.local, same security
-// class as v4's plaintext ~/.hirepilot/.env — not a regression in kind.
+// class as v4's plaintext .env — not a regression in kind.
 // This module only runs in an extension context (chrome.storage.local),
 // so it is exercised by the Playwright e2e test, not node:test.
 

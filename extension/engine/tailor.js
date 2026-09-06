@@ -1,7 +1,7 @@
 // tailor.js — the tailoring pipeline: build the prompt, call the LLM once,
 // parse its answer, apply it, and enforce the one-page word budget.
 //
-// Ported from hirepilot_v4/tailor.py's `tailor_editable_blocks`. This pass
+// Ported from v4/tailor.py's `tailor_editable_blocks`. This pass
 // handles the summary and per-role bullets; the skills section is a separate
 // call with different rules and its own deterministic guard, in
 // tailorSkills.js (v4 splits them the same way, and tailor.py:352-356
@@ -41,11 +41,11 @@ import {
 // exact threshold depends on how many lines the headings and role rows take,
 // and erring low costs a few words while erring high costs the page.
 export const ONE_PAGE_WORD_BUDGET = 510;
-const JD_MAX_CHARS = 6000; // matches hirepilot_v4/tailor.py:160
+const JD_MAX_CHARS = 6000; // matches v4/tailor.py:160
 
 /**
  * json.loads-then-brace-slice-salvage, ported from
- * hirepilot_v4/tailor.py:167-179 (`_parse_llm_json`). Also strips a leading
+ * v4/tailor.py:167-179 (`_parse_llm_json`). Also strips a leading
  * markdown code fence, the same normalization fill_mapper.py:382-394 applies
  * before its own brace-slice.
  */
@@ -78,7 +78,7 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
   // role_label is a generic ordinal ("Role 1", "Role 2"), never the entry's
   // real title/company/dates -- those are locked and must not enter the
   // prompt at all, not even as read-only context. Matches
-  // hirepilot_v4/tailor.py's own framing: the model sees bullets only, never
+  // v4/tailor.py's own framing: the model sees bullets only, never
   // the employer or title they belong to.
   const entriesForPrompt = entries.map((e) => ({
     index: e.index,
@@ -171,7 +171,7 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
   ];
 }
 
-const MIN_SUMMARY_WORDS = 20; // matches hirepilot_v4/tailor.py's _MIN_SUMMARY_WORDS
+const MIN_SUMMARY_WORDS = 20; // matches v4/tailor.py's _MIN_SUMMARY_WORDS
 
 // Share of a bullet's concrete vocabulary that must survive rewriting.
 //
@@ -227,7 +227,7 @@ export const RESUME_REASONING_EFFORT = 'none';
 
 /**
  * Deterministic post-generation checks, ported in spirit from
- * hirepilot_v4/tailor.py's `validate_tailored_blocks`.
+ * v4/tailor.py's `validate_tailored_blocks`.
  *
  * Note what this deliberately does NOT check: whether a rewritten bullet
  * still describes the same real activity as its original. That is a semantic

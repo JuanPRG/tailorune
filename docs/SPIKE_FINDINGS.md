@@ -1,11 +1,11 @@
 # Phase 0 Spike — Empirical Findings
 
 Run 2026-08-20 with Node 24 / npm 10 / pypdf / python-docx / the Playwright already vendored in
-hirepilot v4. Every number below is measured, not researched.
+v4. Every number below is measured, not researched.
 
 ## Baseline: what v4 ships today
 
-57 tailored PDFs from the live install (`~/.hirepilot/v4_data/tailored`):
+57 tailored PDFs from the live install (v4's tailored-output directory):
 
 | Metric | Result |
 |---|---|

@@ -11,13 +11,19 @@
 //   PowerShell:  $env:GEMINI_API_KEY = "..."   ; npm run test:live
 //   bash:        GEMINI_API_KEY=... npm run test:live
 //
-// Read, in order: a gitignored `.env.local` in this repo, then
-// ~/.hirepilot/.env (hirepilot v4's own config). Nothing is copied between
-// them -- the secret stays in the one place already managing it, so there is
-// no second copy to leak or to go stale.
+// Read, in order: a gitignored `.env.local` in this repo, then whatever
+// TAILORUNE_ENV_FILE points at. Nothing is copied between them -- the secret
+// stays in the one place already managing it, so there is no second copy to
+// leak or to go stale.
+//
+// That second location is an ENV VAR rather than a hard-coded directory, so
+// this repo names no other product's config path. To keep using an existing
+// key file, set it once in your shell profile:
+//
+//   PowerShell:  $env:TAILORUNE_ENV_FILE = "$HOME/.your-tool/.env"
+//   bash:        export TAILORUNE_ENV_FILE=~/.your-tool/.env
 
 import { readFileSync, existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,7 +32,7 @@ export const ROOT = path.resolve(__dirname, '../..');
 
 const ENV_FILES = [
   path.join(ROOT, '.env.local'),
-  path.join(os.homedir(), '.hirepilot', '.env'),
+  ...(process.env.TAILORUNE_ENV_FILE ? [process.env.TAILORUNE_ENV_FILE] : []),
 ];
 
 // v4 names two of its provider keys differently. Mapped rather than renamed,

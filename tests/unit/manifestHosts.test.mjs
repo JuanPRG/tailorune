@@ -3,7 +3,7 @@
 // This is a release-safety check, not a unit test of behaviour.
 //
 // The rotation in providers.js is expected to change over time: models come
-// and go, and the battle-tested list in ~/.hirepilot/.env is maintained by
+// and go, and the battle-tested list in v4's .env is maintained by
 // hand. Adding a MODEL to a provider already in the manifest is free. Adding a
 // PROVIDER is not — MV3 blocks any request to a host outside
 // `host_permissions`, and the extension would fail every call to it with no

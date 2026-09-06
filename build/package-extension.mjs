@@ -1,7 +1,7 @@
 // package-extension.mjs — produce a Chrome Web Store upload zip.
 //
-// Ported in spirit from hirepilot's scripts/build_chrome_web_store_package.py.
-// The checks matter more than the zipping: this listing REPLACES HirePilot's,
+// Ported in spirit from v4's scripts/build_chrome_web_store_package.py.
+// The checks matter more than the zipping: this listing REPLACES the previously published one,
 // so a mistake here does not fail loudly — it either gets rejected at upload,
 // or worse, publishes something that reaches every existing user.
 //
@@ -33,7 +33,7 @@ const OUT_DIR = path.join(ROOT, 'dist');
 // discover for itself.
 //
 // READ FROM A FILE, not hard-coded. This is a SAME-ITEM UPDATE workflow -- the
-// listing that was HirePilot's -- so Chrome enforces a strictly increasing
+// listing that was the previous product's -- so Chrome enforces a strictly increasing
 // version on every upload, and getting it wrong costs a review cycle. As a
 // literal default it protected exactly one release: the moment 2.3.0 went
 // live, a hard-coded 2.2.5 would happily let 2.3.0 be packaged over itself

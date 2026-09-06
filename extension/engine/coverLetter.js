@@ -1,6 +1,6 @@
 // coverLetter.js — cover letter generation, validation, and rendering.
 //
-// Ported from hirepilot_v4/cover_letter.py. The single most important
+// Ported from v4/cover_letter.py. The single most important
 // property, carried over verbatim: **the LLM only ever writes the body
 // paragraphs.** The greeting and the sign-off (which contains the
 // candidate's real name) are assembled deterministically from the resume

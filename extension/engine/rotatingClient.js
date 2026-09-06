@@ -1,5 +1,5 @@
 // rotatingClient.js — provider/model failover, ported from
-// hirepilot_v4/llm.py's RotatingClient (llm.py:1161-1763).
+// v4/llm.py's RotatingClient (llm.py:1161-1763).
 //
 // The chain is built from curated per-task route lists, not from a union of
 // provider pools -- see providers.js for why that distinction cost a rewrite.

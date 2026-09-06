@@ -4,7 +4,7 @@
 // the entire education section, skills for this phase) from EDITABLE fields
 // (summary, and each experience/project entry's bullets). Locked fields are
 // never sent to the LLM (see tailor.js) and are spliced back in verbatim —
-// the same anti-fabrication guarantee hirepilot_v4/tailor.py enforces via
+// the same anti-fabrication guarantee v4/tailor.py enforces via
 // "you are only shown the editable portions" (tailor.py:117-119), except here
 // it is architectural: the model the LLM never sees cannot be echoed back
 // wrong.
@@ -96,7 +96,7 @@ export function applyTailoredContent(model, tailored) {
  * content first: the last bullet of whichever entry currently has the most
  * bullets, repeated until under budget or nothing left to drop.
  *
- * Replaces hirepilot_v4/render.py's render -> count -> shrink -> re-render
+ * Replaces v4/render.py's render -> count -> shrink -> re-render
  * loop (render.py:244-280, which can burn 4 real renders and then delete the
  * output on failure) with arithmetic — measured in SPIKE_FINDINGS.md to hold
  * at ~510 words for one page (re-measured against the current template).

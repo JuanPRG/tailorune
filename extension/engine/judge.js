@@ -1,6 +1,6 @@
 // judge.js — second-pass semantic review of tailored resume content.
 //
-// Ported from hirepilot_v4/tailor.py's `judge_tailored_blocks`. This closes a
+// Ported from v4/tailor.py's `judge_tailored_blocks`. This closes a
 // gap that `validateTailoredModel()` genuinely cannot: that validator checks
 // role-title fabrication against a watchlist, dropped bullets, and summary
 // length — none of which catch a rewrite that swaps in a *different but

@@ -13,7 +13,7 @@
 //    identifiable at 16px while the jade-on-charcoal version has collapsed
 //    into a faint smudge. The mark is fine line-work; at toolbar size it needs
 //    a solid ground behind it, not a dark one around it. Same reason a solid
-//    paper plane worked for HirePilot.
+//    paper plane worked for the product this replaces.
 //
 // 2. THE VIEWBOX IS CROPPED. The delivered SVG declares 0 0 2048 2066 while
 //    the art occupies x 401..1775, y 335..1855 -- 51% of the canvas is

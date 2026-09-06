@@ -280,9 +280,9 @@ The floor is now graduated: below `RETRY_BULLET_CONCEPT_RETENTION` (0.35) is a r
 and earns another call; the 35-45% band is a warning. Dropped quantities remain errors, since they
 are objective and trivially fixable.
 
-## Replacing HirePilot's listing
+## Replacing the published listing
 
-Tailorune takes over HirePilot's Chrome Web Store listing. **There are no existing installs**, which
+Tailorune takes over the previously published Chrome Web Store listing. **There are no existing installs**, which
 removes most of what a listing replacement usually costs:
 
 - No one auto-updates into it, so nobody is interrupted.
@@ -299,7 +299,7 @@ removes most of what a listing replacement usually costs:
 refuses to build a zip that would be rejected — verified by trying to package 0.1.0.
 
 **Autofill is deferred, not dropped**, and it will not disturb the permission list when it lands.
-HirePilot's autofill ran on `activeTab` + `scripting` via `chrome.scripting.executeScript`, with no
+v4's autofill ran on `activeTab` + `scripting` via `chrome.scripting.executeScript`, with no
 `content_scripts` and no broad host permissions. Tailorune already declares both — the JD reader uses
 the identical mechanism. So autofill is a pure code addition later, with no permission prompt for the
 users who exist by then.
@@ -349,7 +349,7 @@ Three options, in increasing cost and risk:
 
 ## Providers and models: the .env is the authority
 
-`~/.hirepilot/.env` holds the **battle-tested** rotation - maintained by hand as free tiers and model
+v4's `.env` holds the **battle-tested** rotation - maintained by hand as free tiers and model
 availability shift. `providers.js` used to be a guess, and the guess cost a debugging session:
 
 | | Guessed (before) | Aligned to the .env |

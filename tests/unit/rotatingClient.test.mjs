@@ -1,4 +1,4 @@
-// rotatingClient.test.mjs — failover behaviour, ported from HirePilot v4.
+// rotatingClient.test.mjs — failover behaviour, ported from v4.
 //
 // This file was rewritten when the rotation was brought to v4 parity. Two of
 // its previous tests asserted behaviour that turned out to be BACKWARDS

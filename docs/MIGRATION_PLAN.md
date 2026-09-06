@@ -1,6 +1,6 @@
 # Tailorune — Backend Elimination Plan
 
-Porting HirePilot v4 (Python backend + Chrome extension) to a **standalone Chrome extension**.
+Porting v4 (Python backend + Chrome extension) to a **standalone Chrome extension**.
 
 Motivation: user feedback that a backend install deters adoption. Today's install is a **490 MB
 installer** — 101 MB of it Playwright, bundled solely to render a PDF — for a tool that runs
@@ -13,7 +13,7 @@ inside Chrome.
 
 ## 1. What the codebase analysis found
 
-Four parallel deep-dives over `backend/hirepilot_v4/` (11,077 LOC) and `extension/` (6,919 LOC).
+Four parallel deep-dives over `backend/v4/` (11,077 LOC) and `extension/` (6,919 LOC).
 
 ### 1.1 The compromises are mostly already made
 
@@ -58,7 +58,7 @@ Measured: **~150 KB** of config and state across 8 resumes; ~1 MB saturated, aga
 `launcher.py` (201) · `setup_health.py` (49) · `render.py`'s Playwright thread/queue worker (~130).
 
 Plus, extension-side: the connection dot and 2 s ping loop, the recovery panel, the
-`hirepilot://start` protocol handler, companion-startup polling, the version-compat notice, and the
+the custom protocol handler, companion-startup polling, the version-compat notice, and the
 keep-alive hack.
 
 Plus the **download handoff dance** — the backend writes a PDF, the extension fetches it back via
@@ -195,7 +195,7 @@ dependency and only loads when a PDF is actually imported.
 | Per-paragraph font/size/colour from source | Accepted | See §1.1 |
 | Two-column and table layouts | Low | v4 already linearizes and reorders these badly |
 | `/api/resumes/open` (open in Word) | Low | Extensions cannot launch OS apps |
-| Reading `~/.hirepilot/resume.docx` | One-time | User uploads once; the UI already exists |
+| Reading v4's stored resume | One-time | User uploads once; the UI already exists |
 | Transport-error granularity | Low | `fetch()` collapses DNS, refused and TLS into one `TypeError`; HTTP-status classification is unaffected |
 | Ollama TCP preflight | Low | Becomes `fetch()` plus `AbortController` |
 | `qa_bank.yaml` | Trivial | Convert to JSON; drops PyYAML |

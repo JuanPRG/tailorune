@@ -1,6 +1,6 @@
 // preferences.js — user-configurable tailoring/cover-letter preferences.
 //
-// Ported from hirepilot_v4/prompt_preferences.py. Every enum, default, word
+// Ported from v4/prompt_preferences.py. Every enum, default, word
 // range, and guidance string is carried over verbatim, because those values
 // encode real decisions the original made after testing (e.g. the comment at
 // prompt_preferences.py:99-105 records that "conservative" tailoring barely

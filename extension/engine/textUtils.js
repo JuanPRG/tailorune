@@ -1,6 +1,6 @@
 // textUtils.js — shared text helpers and anti-fabrication watchlists.
 //
-// In hirepilot_v4 these lived inside tailor.py and were imported as private
+// In v4 these lived inside tailor.py and were imported as private
 // symbols by five other modules (cover_letter.py, jd_cleanup.py, profile.py,
 // fallback_txt_pdf.py, fill_mapper.py) — MIGRATION_PLAN.md §5 flagged that
 // as the one real coupling smell to fix during the port, so they get their

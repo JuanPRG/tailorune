@@ -9,7 +9,7 @@
 // alongside it as a separate static asset, since pdf.js loads it via a URL
 // at runtime rather than through any bundler's module graph.
 //
-// Ported guard from hirepilot_v4/fallback_txt_pdf.py:42-48
+// Ported guard from v4/fallback_txt_pdf.py:42-48
 // (MIN_EXTRACTABLE_WORDS = 20): a PDF with too little extractable text is
 // almost always a scanned/image PDF, not a real parsing failure, and OCR
 // is out of scope here exactly as it was there.

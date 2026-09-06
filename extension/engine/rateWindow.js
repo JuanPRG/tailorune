@@ -1,7 +1,7 @@
 // rateWindow.js — client-side rate reservation, so we never SEND a request
 // that is already over a provider's per-minute budget.
 //
-// Ported from hirepilot_v4/llm.py:669-812 (`_reserve_rate_budget`,
+// Ported from v4/llm.py:669-812 (`_reserve_rate_budget`,
 // `_reconcile_rate_reservation`, `_observe_rate_metadata`).
 //
 // WHY THIS EXISTS. A live run died on HTTP 413 from Groq: "Limit 8000,

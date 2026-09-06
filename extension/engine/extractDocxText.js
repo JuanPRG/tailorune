@@ -1,6 +1,6 @@
 // extractDocxText.js — .docx -> plain text, paragraph breaks preserved.
 //
-// Deliberately NOT a port of hirepilot_v4/docx_ingest.py's rich style
+// Deliberately NOT a port of v4/docx_ingest.py's rich style
 // extraction (font, size, weight, color, spacing, indent, alignment,
 // bottom-border underline via raw OOXML `qn()` access). That richness is
 // exactly what MIGRATION_PLAN.md §1.1 identifies as unreliable in practice
@@ -79,7 +79,7 @@ export async function extractDocxText(bytes) {
     // metadata (confirmed against tests/fixtures/resumes/juan-rivera.docx,
     // a real resume whose bullets were silently swallowed as bogus new
     // "entries" before this check existed, exactly the failure mode
-    // hirepilot_v4/docx_ingest.py's own `_has_list_numbering` exists to
+    // v4/docx_ingest.py's own `_has_list_numbering` exists to
     // catch). Restore a literal marker so parseTxt.js's BULLET_RE, which
     // only understands literal characters, sees it as any other bullet.
     const hasListNumbering = /<w:pPr>[\s\S]*?<w:numPr>/.test(p);

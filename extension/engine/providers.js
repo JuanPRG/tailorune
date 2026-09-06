@@ -1,6 +1,6 @@
 // providers.js — LLM provider registry, routes, and per-task chains.
 //
-// Ported from hirepilot_v4/llm.py. The shape here mirrors v4's, because the
+// Ported from v4/llm.py. The shape here mirrors v4's, because the
 // mechanism is the thing that was battle-tested, not just the model names:
 //
 //   PROVIDERS  -> one entry per HTTP endpoint (llm.py's base_url + api_key)
@@ -25,7 +25,7 @@
 // what llm.py's `_single_attempt = len(clients) > 1` expresses.
 //
 // Verified against v4's own `describe_provider_chain(task=...)` with the
-// user's ~/.hirepilot/.env loaded. See tests/unit/chainParity.test.mjs, which
+// user's v4's .env loaded. See tests/unit/chainParity.test.mjs, which
 // pins the resolved chains so this file cannot drift back into a pool union.
 //
 // NO LOCAL ROUTE. Every v4 chain ends with `local` (Ollama on :11434). It is

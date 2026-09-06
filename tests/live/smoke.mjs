@@ -22,7 +22,7 @@
 //   bash:        GEMINI_API_KEY=... npm run test:live
 //
 // Read, in order: a gitignored `.env.local` in this repo, then
-// ~/.hirepilot/.env (hirepilot v4's own config). Nothing is copied between
+// v4's own .env. Nothing is copied between
 // them -- the secret stays in the one place already managing it.
 
 import { readFileSync, writeFileSync } from 'node:fs';

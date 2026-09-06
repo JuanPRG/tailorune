@@ -2,7 +2,7 @@
 //
 // One provider, one model, one call. Chain rotation lives in
 // rotatingClient.js; this file is the per-request layer, ported from
-// hirepilot_v4/llm.py's LLMClient (llm.py:846-1147) plus the request-shaping
+// v4/llm.py's LLMClient (llm.py:846-1147) plus the request-shaping
 // helpers at llm.py:814-844.
 //
 // httpx's timeout is inactivity-based, which llm.py wraps in a wall-clock

@@ -2,9 +2,9 @@
 //
 // TWO SOURCES OF TRUTH, and it matters which is which.
 //
-// The STRUCTURE is HirePilot v4's, measured by loading ~/.hirepilot/.env into
+// The STRUCTURE is v4's, measured by loading v4's .env into
 // os.environ and calling v4's own `describe_provider_chain(task=...)`
-// (hirepilot_v4/llm.py:2313), minus the terminal `local` entry Tailorune does
+// (v4/llm.py:2313), minus the terminal `local` entry Tailorune does
 // not ship. v4 has two chain paths and Tailorune uses one for each kind of
 // task:
 //

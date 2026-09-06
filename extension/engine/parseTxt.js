@@ -1,6 +1,6 @@
 // parseTxt.js — plain-text resume -> ResumeModel.
 //
-// Ported and simplified from hirepilot_v4's section-detection heuristics
+// Ported and simplified from v4's section-detection heuristics
 // (docx_ingest.py's _SECTION_HEADER_PATTERNS + state machine, and
 // resume_profile.py's date/title extraction) — 100% regex/heuristic, no LLM,
 // matching the original's own docstring claim (resume_profile.py:7).

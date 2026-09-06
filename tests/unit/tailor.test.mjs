@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(path.join(__dirname, '../fixtures/resumes', name), 'utf8');
 const provider = getProvider('gemini');
 
-// --- parseLlmJson: ported brace-slice salvage (hirepilot_v4/tailor.py:167-179) ---
+// --- parseLlmJson: ported brace-slice salvage (v4/tailor.py:167-179) ---
 
 test('parseLlmJson parses clean JSON directly', () => {
   assert.deepEqual(parseLlmJson('{"summary": "ok"}'), { summary: 'ok' });
@@ -57,7 +57,7 @@ test('buildTailorMessages includes the job description and current bullets, keye
   assert.ok(userMsg.includes('"index": 1'));
 });
 
-test('buildTailorMessages truncates an oversized job description to 6000 chars, matching hirepilot_v4/tailor.py:160', () => {
+test('buildTailorMessages truncates an oversized job description to 6000 chars, matching v4/tailor.py:160', () => {
   const model = parseTxt(fixture('juan-rivera-full.txt'));
   const hugeJd = 'z'.repeat(10_000);
   const messages = buildTailorMessages(model, hugeJd);

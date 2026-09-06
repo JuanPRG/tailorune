@@ -3,7 +3,7 @@
 //   (b) a rate-limited primary provider fails over to a fallback key instead
 //       of failing the whole run.
 //
-// Both were gaps versus hirepilot_v4 and both are the kind of thing that can
+// Both were gaps versus v4 and both are the kind of thing that can
 // look wired up in unit tests while being disconnected in the real pipeline,
 // so they get a real-browser check.
 

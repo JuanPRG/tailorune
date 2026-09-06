@@ -1,6 +1,6 @@
 // content/extractJob.js — reads the job posting off the current tab.
 //
-// Ported from hirepilot_v4/extension/content.js's JD-extraction half. That
+// Ported from v4/extension/content.js's JD-extraction half. That
 // file also carried the whole autofill stack; only four references coupled
 // the two (all in its message listener), so the extraction logic itself came
 // across cleanly and the autofill parts are simply absent here.

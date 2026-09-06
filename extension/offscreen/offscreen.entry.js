@@ -82,7 +82,7 @@ async function runTailor(payload) {
   // map from the popup; `apiKey`/`providerId` remain the primary selection.
   //
   // baseUrlOverride points every entry at one OpenAI-compatible endpoint
-  // instead of the real hosts — the same escape hatch hirepilot_v4 offered
+  // instead of the real hosts — the same escape hatch v4 offered
   // for a local/self-hosted model (config.py's LOCAL_LLM_URL), and what the
   // Playwright e2e tests use to exercise the real pipeline against a local
   // mock server, since context.route() does not intercept fetches made from

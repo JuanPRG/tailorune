@@ -5,7 +5,8 @@ every time. Each justification is the true reason the permission exists, traced
 to the code that needs it — a reviewer who checks will find what this says.
 
 **CONFIRMED: this is a same-item update.** Tailorune takes over the existing
-HirePilot listing — same item ID, same store URL, same review history. It is
+previously published listing — same item ID, same store URL, same review
+history. It is
 not a new item.
 
 Two things follow from that, and both have bitten people.
@@ -39,7 +40,7 @@ them.
 
 ### Also changing with the rebrand
 
-Name, icons, description, and single purpose all change. HirePilot's listing
+Name, icons, description, and single purpose all change. The old listing
 described a Python-backed product with autofill; Tailorune has neither. Rewrite
 the store description and the privacy practices in the dashboard to match — a
 same-item update inherits the old listing copy until you replace it.
@@ -48,8 +49,8 @@ same-item update inherits the old listing copy until you replace it.
 
 ## Store listing copy
 
-A same-item update **inherits HirePilot's listing text until you replace it**,
-and HirePilot's describes a Python-backed product with autofill. Replace all of
+A same-item update **inherits the old listing text until you replace it**,
+and that text describes a Python-backed product with autofill. Replace all of
 it. Paste these verbatim.
 
 ### Short description (132 char limit)
@@ -63,7 +64,7 @@ purpose — the two appear side by side and disagreeing reads as carelessness.
 
 ### Detailed description
 
-Structured like HirePilot's, which passed review: what it does, features, the
+Structured like the previous listing's, which passed review: what it does, features, the
 user-control paragraph, the requirement, then the data-flow disclosure. Three
 claims from the old copy are now FALSE and are gone — the Windows companion at
 127.0.0.1, the local-model option (only three hosted providers are wired), and
@@ -72,7 +73,7 @@ autofill.
 ```
 Tailorune adapts a resume and cover letter to the job posting you are viewing. Open Tailorune on a job page, read the posting into the form, review the detected details, and start tailoring. A tailored resume and cover letter are written to your Downloads as .docx and .pdf files.
 
-Version 2.3.0 replaces the previous HirePilot release and removes its requirement for a separate Windows companion application. Tailoring now runs entirely inside the extension: there is no local server to install, no companion download, and no operating-system restriction.
+Version 2.3.0 replaces the previous release and removes its requirement for a separate Windows companion application. Tailoring now runs entirely inside the extension: there is no local server to install, no companion download, and no operating-system restriction.
 
 Features:
 
@@ -95,7 +96,7 @@ Your resume, your API keys, your preferences, and the list of jobs you have tail
 
 When you tailor, your resume text and the job description are sent directly from your browser to the AI provider you selected, authenticated with your own key. That provider's privacy policy then applies to that request. This is the only data that leaves your computer.
 
-Autofill was part of the previous HirePilot release and is not included in Tailorune. Resume tailoring and cover-letter generation are this extension's only functions.
+Autofill was part of the previous release and is not included in Tailorune. Resume tailoring and cover-letter generation are this extension's only functions.
 
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
@@ -139,7 +140,7 @@ Stores the user's resume library, their AI provider API keys, their tailoring pr
 The extension's output is a tailored resume and cover letter, generated as .docx and .pdf files. This permission delivers those finished files to the user's Downloads folder. Downloads occur only after the user presses Tailor, and only in the formats the user selected.
 ```
 
-**`offscreen`** (306) — new in 2.3.0, HirePilot never had it, so the field
+**`offscreen`** (306) — new in 2.3.0, the previous release never had it, so the field
 starts empty and the dashboard blocks publishing until it is filled
 
 ```
@@ -158,7 +159,7 @@ Provides temporary access to the current tab, only after the user invokes Tailor
 Injects the packaged job-posting reader into the active tab on demand, paired with activeTab, when the user presses Read job description. It is deliberately not declared as a content_scripts entry, so the extension has no persistent presence on any page. No remote code is downloaded or executed.
 ```
 
-**Host permissions** (502) — the field that changed most. HirePilot's justified
+**Host permissions** (502) — the field that changed most. The old one justified
 `127.0.0.1` and a Windows companion that no longer exists.
 
 ```

@@ -1,7 +1,7 @@
 // tailorSkills.js — aggressive skills-section tailoring, with a hard
 // retention guard.
 //
-// Ported from hirepilot_v4/tailor.py's `tailor_skill_blocks` /
+// Ported from v4/tailor.py's `tailor_skill_blocks` /
 // `build_skills_tailor_prompt`. This is deliberately its OWN call and
 // prompt rather than folded into the main resume pass, for the reason v4
 // states directly (tailor.py:352-356): a bare keyword list has no

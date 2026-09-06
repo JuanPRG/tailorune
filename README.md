@@ -90,7 +90,7 @@ full.
 
 **1. [Install it](https://chromewebstore.google.com/detail/chnibpoikgjckekkgpoeejdnmempllkh).** That is the whole installation. There is no companion
 app, no local server, and no operating-system restriction — the previous
-HirePilot release needed a 490 MB Windows companion; this one needs nothing.
+previous release needed a 490 MB Windows companion; this one needs nothing.
 
 **2. Get a free AI key.** This is the only fiddly step, and it takes about two
 minutes. Tailorune has no server and no model of its own, so it uses yours:

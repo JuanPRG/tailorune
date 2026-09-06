@@ -520,7 +520,8 @@ const PERSIST_ON_CHANGE = [
 ];
 
 /**
- * The header pill, which replaced HirePilot's "Connected" backend indicator.
+ * The header pill, which replaced the previous release's "Connected"
+ * backend indicator.
  *
  * There is no backend to be connected to, so the equivalent question is
  * whether this popup can actually make a call: is there a key, and how many
