@@ -310,6 +310,90 @@ test('the front page fits in the 600px Chrome allows a popup', async (t) => {
   await page.close();
 });
 
+test('it still fits once the alerts are up', async (t) => {
+  // REPORTED: "the alerts are making it a little bit cumbersome to watch."
+  //
+  // The budget test above measures a QUIET page -- no hint, no notice, no
+  // status, no findings -- and passed with room to spare while the loaded
+  // popup overflowed by 44px on every finished run. That is the blind spot,
+  // not a second opinion about the same thing: the surfaces that push it over
+  // are precisely the ones that only exist after a run.
+  //
+  // Set directly rather than driven through a run, because this is a claim
+  // about LAYOUT under a given amount of text. The strings are the ones from
+  // the report: a two-line status with timings, and a notice that wraps.
+  const load = async (page, { findings }) => {
+    await page.fill('#resumeText', 'Juan Rivera — Analytical Engine notes');
+    await page.$eval('#resumeManage', (el) => { el.open = false; });
+    await page.fill('#jobDescription', 'Conair Consumer Products ULC is a privately owned '
+      + 'company and part of Conair LLC, a global organization operating in 120 countries.');
+    await page.fill('#jobTitle', 'Consumer Service Representative');
+    await page.fill('#employer', 'Conair Consumer Products');
+    await page.evaluate((withFindings) => {
+      document.getElementById('extractHint').textContent =
+        'Read from indeed_selected_pane. Looks complete.';
+      const notice = document.getElementById('priorTailorNotice');
+      notice.hidden = false;
+      notice.textContent = 'You already tailored for Consumer Service Representative '
+        + 'at Conair Consumer Products — 3 days ago.';
+      document.getElementById('status').textContent =
+        'Done — 393 words, 4 files in Downloads. 10s in 4 AI calls — resume 4.3s (1 call), '
+        + 'skills 3.8s (2 calls), letter 1.6s (1 call), render 0.0s.';
+      document.getElementById('tailorBtnLabel').textContent = 'Re-tailor';
+      document.getElementById('footerResetBtn').hidden = false;
+      if (withFindings) {
+        document.getElementById('warnings').innerHTML =
+          '<details class="finding"><summary>Skills — 2 notes'
+          + '<span class="finding-count">2</span></summary><ul><li>a note</li></ul></details>';
+      }
+    }, findings);
+    await page.waitForTimeout(400);
+  };
+
+  const measure = (page) => page.evaluate(() => {
+    const main = document.getElementById('mainView');
+    const kids = [...main.children].filter((el) => el.getBoundingClientRect().height > 0);
+    const top = main.getBoundingClientRect().top;
+    const bottom = kids[kids.length - 1].getBoundingClientRect().bottom;
+    const content = bottom - top + parseFloat(getComputedStyle(main).paddingBottom);
+    const cta = document.getElementById('tailorBtn').getBoundingClientRect();
+    return {
+      slack: Math.round(main.clientHeight - content),
+      overflow: main.scrollHeight - main.clientHeight,
+      ctaBottom: Math.round(cta.bottom),
+      viewport: window.innerHeight,
+    };
+  });
+
+  const { popup } = await openRealPopup(t);
+
+  // The reported case: a finished run, no findings. It has to have ROOM, not
+  // merely fit -- zero overflow and zero slack are not the same state.
+  const page = await popup.context().newPage();
+  await page.setViewportSize({ width: 420, height: 600 });
+  await page.goto(popup.url());
+  await load(page, { findings: false });
+  const loaded = await measure(page);
+  assert.equal(loaded.overflow, 0,
+    `a finished run should not scroll the front page, but overflows by ${loaded.overflow}px`);
+  assert.ok(loaded.slack > 8, `and should keep room, but has only ${loaded.slack}px spare`);
+  await page.close();
+
+  // The worst case anything can reach: the above plus a findings group. The
+  // claim here is weaker on purpose -- it may sit exactly on the budget -- but
+  // the button must never be the thing pushed off.
+  const worst = await popup.context().newPage();
+  await worst.setViewportSize({ width: 420, height: 600 });
+  await worst.goto(popup.url());
+  await load(worst, { findings: true });
+  const full = await measure(worst);
+  assert.ok(full.overflow <= 0,
+    `with findings too it overflows by ${full.overflow}px`);
+  assert.ok(full.ctaBottom <= full.viewport,
+    `the CTA must stay on screen, but its bottom is at ${full.ctaBottom} of ${full.viewport}`);
+  await worst.close();
+});
+
 test('the popup renders at a usable size, not a sliver', async (t) => {
   // THE REGRESSION THIS EXISTS FOR, and it shipped past a fully green suite.
   //

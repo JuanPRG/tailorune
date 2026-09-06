@@ -68,6 +68,9 @@ async function downloadOutputs(outputs) {
   return results;
 }
 
+/** Guards against a second tailor:run while one is still going. */
+let runInFlight = false;
+
 const LAST_RUN_KEY = 'tailorune_last_run_v1';
 
 /**
@@ -231,6 +234,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     if (message.type === 'tailor:run') {
+      // ONE RUN AT A TIME, and the flag has to live HERE rather than in the
+      // popup. The popup's own busy flag is destroyed with the popup on focus
+      // loss -- which is the ordinary thing to do while waiting a minute or
+      // two for a run -- so reopening showed an idle "Tailor resume" over a
+      // run still going. Pressing it started a second pipeline in the same
+      // offscreen document: the user's key billed and rate-limited twice, two
+      // sets of files in Downloads, and whichever finished last overwrote the
+      // other's stored result.
+      //
+      // The service worker stays alive for the duration because this handler
+      // awaits the whole run, so the flag survives exactly as long as it must.
+      if (runInFlight) {
+        sendResponse({
+          ok: false,
+          error: 'A run is already going. Reopen the popup when it finishes — '
+            + 'your files will be in Downloads.',
+        });
+        return;
+      }
+      runInFlight = true;
       try {
         await ensureOffscreenDocument();
         const result = await chrome.runtime.sendMessage({
@@ -275,6 +298,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse(payload);
       } catch (err) {
         sendResponse({ ok: false, error: String((err && err.message) || err) });
+      } finally {
+        runInFlight = false;
       }
       return;
     }

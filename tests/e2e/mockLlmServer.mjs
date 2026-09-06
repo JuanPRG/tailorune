@@ -12,7 +12,10 @@
 import http from 'node:http';
 
 /**
- * @param {() => object} responseBodyFn returns the OpenAI-shaped JSON body to answer with
+ * @param {() => object|Promise<object>} responseBodyFn returns the OpenAI-shaped JSON body to
+ *   answer with. MAY BE ASYNC: a test that needs a run to still be in flight -- proving the
+ *   service worker refuses a second one -- holds its answer until it says otherwise. `await` on
+ *   a plain object is a no-op, so the synchronous callers are unaffected.
  * @returns {Promise<{ url: string, close: () => Promise<void>, requestCount: () => number }>}
  */
 export function startMockLlmServer(responseBodyFn) {
@@ -30,9 +33,9 @@ export function startMockLlmServer(responseBodyFn) {
     }
     let chunks = [];
     req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
+    req.on('end', async () => {
       requestCount += 1;
-      const body = JSON.stringify(responseBodyFn());
+      const body = JSON.stringify(await responseBodyFn());
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
       res.end(body);
     });

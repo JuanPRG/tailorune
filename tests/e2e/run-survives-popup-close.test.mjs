@@ -463,7 +463,7 @@ test('reset leaves the pin usable for the job it just re-read', async (t) => {
     'precondition: reset re-read the page and refilled the form');
   assert.equal(await popup.$eval('#pinBtn', (el) => el.disabled), false,
     'the job is back, so the pin must be usable again');
-  assert.doesNotMatch(await popup.$eval('#pinBtn', (el) => el.title), /nothing to pin/i,
+  assert.doesNotMatch(await popup.$eval('#pinBtn', (el) => el.title), /nothing to lock/i,
     'and must not still be waiting for one');
 });
 

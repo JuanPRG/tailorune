@@ -178,6 +178,9 @@ async function onSaveResume() {
     });
     await refreshLibrary({ selectId: saved.id });
     els.resumeName.value = saved.name;
+  // suggestName() wrote that field in code, and assigning .value fires no
+  // input event -- so the listener that keeps #resumeMeta honest never runs.
+  refreshResumeSummary();
     setLibraryHint(`Saved as "${saved.name}".`);
   } catch (err) {
     setLibraryHint(String((err && err.message) || err));
@@ -224,6 +227,7 @@ async function onDeleteResume() {
   await deleteResume(storage, id);
   await refreshLibrary({ selectId: '' });
   els.resumeName.value = '';
+  refreshResumeSummary();   // same reason as onSaveResume
   setLibraryHint(`Deleted "${match.name}".`);
 }
 
@@ -261,14 +265,32 @@ async function fileToText(file) {
  * something the user typed deliberately, and overwriting it would save their
  * resume under a name they never chose.
  */
+/**
+ * Which extraction is the one the user is waiting for.
+ *
+ * A PDF is slow enough to click through -- pdf.js has to start a worker --
+ * and picking a second file did not cancel the first. Both kept running and
+ * whichever PARSED LAST wrote the textarea, so choosing a fast .txt over a
+ * slow .pdf put the abandoned PDF back a moment later, under the new file's
+ * name, with a hint saying it had just been read. The user would then tailor
+ * against a resume they had replaced. The straggler also called setStatus('')
+ * unconditionally, which could blank a live "Tailoring..." message.
+ */
+let extractionSeq = 0;
+
 async function extractSelectedFile({ renameFromFile = false } = {}) {
   const file = els.resumeFile.files[0];
   if (!file) return null;
+  const seq = ++extractionSeq;
+  const current = () => seq === extractionSeq;
   setLibraryHint(`Reading ${file.name}...`);
 
   pendingExtraction = (async () => {
     try {
       const text = await fileToText(file);
+      // Superseded while we were parsing: the user has picked another file.
+      // Return it to our own caller, but touch nothing on screen.
+      if (!current()) return text;
       if (!text || !text.trim()) {
         throw new Error('that file contained no readable text.');
       }
@@ -288,15 +310,18 @@ async function extractSelectedFile({ renameFromFile = false } = {}) {
       // overwrites -- so a failure could scroll past unnoticed and read as
       // "it just does nothing", which is exactly how this was reported.
       // #status is the durable copy.
+      if (!current()) return null;   // an abandoned file's failure is not news
       const message = `Could not read ${file.name}: ${(err && err.message) || err}`;
       setLibraryHint(message);
-      setStatus(message);
+      setStatus(message, 'file-error');
       return null;
     }
   })();
 
-  const text = await pendingExtraction;
-  pendingExtraction = null;
+  const mine = pendingExtraction;
+  const text = await mine;
+  // Only clear the slot if it is still ours; a later pick owns it now.
+  if (pendingExtraction === mine) pendingExtraction = null;
   return text;
 }
 
@@ -665,8 +690,18 @@ async function restoreSettings() {
   refreshKeyStatus();
 }
 
-function setStatus(text) {
+/**
+ * The one status line, and what it is currently saying.
+ *
+ * The kind matters because ONE message must not be overwritten: a file that
+ * failed to extract. Everything else -- "Locked.", "Cleared.", "Previous run
+ * -- ..." -- is fair game, and treating them all as precious is what made the
+ * Tailor button do nothing at all. See onTailorClick.
+ */
+let statusKind = '';
+function setStatus(text, kind = '') {
   els.status.textContent = text;
+  statusKind = text ? kind : '';
 }
 
 /**
@@ -785,11 +820,29 @@ async function onTailorClick() {
   const providerKeys = collectProviderKeys();
 
   if (!resumeText) {
-    if (!els.status.textContent) setStatus('Paste your resume, upload a file, or pick a saved one first.');
+    // Suppressed ONLY against a file that failed to read, which is the more
+    // specific thing to say and the reason this check existed. It used to
+    // skip whenever #status held anything at all -- so pressing Tailor after
+    // locking a job, after Reset, or with a previous run restored produced no
+    // message, no run, and no visible change whatsoever.
+    if (statusKind !== 'file-error') {
+      setStatus('Paste your resume, upload a file, or pick a saved one first.');
+    }
     return;
   }
   if (!jobDescription) { setStatus('Paste the job description first.'); return; }
-  if (!apiKey) { setStatus('Enter an API key first — the gear icon, top right.'); return; }
+  // --- A: ASK THE SAME QUESTION THE RUN ASKS -------------------------------
+  // This checked the primary key field alone, while the header pill checked
+  // resolveProviderChain -- which is satisfied by a FALLBACK key on its own.
+  // Put a key in only the Groq box and the pill turned green and said "Groq",
+  // the run would have worked, and this refused it with "Enter an API key
+  // first" while the user looked straight at the key they had entered.
+  if (!resolveProviderChain({
+    providerId, apiKey, model: modelName, providerKeys,
+  }).length) {
+    setStatus('Enter an API key first — the gear icon, top right.');
+    return;
+  }
 
   await persistSettings();
 
@@ -1156,10 +1209,10 @@ function renderPin() {
   els.pinBtn.disabled = !hasJob && !jobPinned;
   els.pinBtn.setAttribute('aria-pressed', String(jobPinned));
   els.pinBtn.title = jobPinned
-    ? 'Pinned. This job stays put while you switch tabs — click to unpin.'
+    ? 'Locked. This job stays put while you switch tabs — click to unlock.'
     : (hasJob
-      ? 'Pin this job so switching tabs does not change it'
-      : 'Nothing to pin yet — read or paste a job first');
+      ? 'Lock this job so switching tabs does not change it'
+      : 'Nothing to lock yet — read or paste a job first');
 }
 
 async function onPinClick() {
@@ -1168,8 +1221,8 @@ async function onPinClick() {
   renderJobDerived();
   await saveJobDraft();
   setStatus(jobPinned
-    ? 'Pinned. This job stays put until you unpin it.'
-    : 'Unpinned. The job will follow the tab again.');
+    ? 'Locked. This job stays put until you unlock it.'
+    : 'Unlocked. The job will follow the tab again.');
 }
 
 function renderCta() {
