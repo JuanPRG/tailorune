@@ -46,6 +46,67 @@ same-item update inherits the old listing copy until you replace it.
 
 ---
 
+## Store listing copy
+
+A same-item update **inherits HirePilot's listing text until you replace it**,
+and HirePilot's describes a Python-backed product with autofill. Replace all of
+it. Paste these verbatim.
+
+### Short description (132 char limit)
+
+```
+Tailor your resume and cover letter to a job posting, using your own AI provider key. No account, no server.
+```
+
+That is 108 characters, and identical to `manifest.json`'s `description` on
+purpose — the two appear side by side and disagreeing reads as carelessness.
+
+### Detailed description
+
+```
+Tailorune rewrites your resume for one specific job posting, and drafts a cover letter to match.
+
+Open a job posting, click Tailorune, and press "Read job description" — it pulls the posting off the page for you. Press Tailor, and four files land in your Downloads: a resume and a cover letter, each as .docx and .pdf.
+
+They are named for the employer and the day — Ada_Lovelace_Northwind_Resume_0906.docx — because applicant tracking systems truncate long filenames, and because three applications in an afternoon otherwise become resume(1).docx and resume(2).docx.
+
+IT DOES NOT INVENT THINGS
+
+Your name, contact details, employers, job titles, dates and education are locked. They are copied through exactly as you wrote them and are never handed to the model for rewriting. Only your summary and the wording of your bullet points change.
+
+There is an optional accuracy review that flags any rewrite drifting from your original wording. It is advisory — it never edits or withholds a document. You decide.
+
+BRING YOUR OWN KEY
+
+There is no account and no server of ours. You supply an API key from Gemini, Groq or OpenRouter — Gemini and Groq both have free tiers that need no card — and the extension talks to that provider directly from your browser.
+
+Your resume, your keys and your preferences are stored on your own machine and are never synced or sent to us. To tailor anything, your resume text and the job description are sent to the AI provider you chose, using your key; that provider's privacy policy then applies. That is the only thing that leaves your machine, and the privacy policy says so in full.
+
+ALSO
+
+• Keeps a library of resumes, so you upload once
+• Lock a job so switching tabs cannot change it
+• Tells you when you return to a posting you already tailored for
+• Reads .txt, .docx and .pdf resumes
+• Light and dark themes
+
+Tailorune reads a job posting only from the tab you are on, and only when you click its icon. It declares no content scripts and has no standing access to any website.
+
+Open source, MIT licensed: https://github.com/JuanPRG/tailorune
+```
+
+### Category and language
+
+- **Category:** Productivity
+- **Language:** English (United States)
+
+### Support and homepage URLs
+
+- Homepage: `https://github.com/JuanPRG/tailorune`
+- Support: `https://github.com/JuanPRG/tailorune/issues`
+
+---
+
 ## Single purpose
 
 > Tailorune rewrites a resume and drafts a cover letter for one specific job
