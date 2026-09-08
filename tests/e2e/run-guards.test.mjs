@@ -74,8 +74,12 @@ test('a key in a fallback box alone is enough to start a run', async (t) => {
 
   // Primary deliberately empty; the key goes only in a fallback box.
   await openSettings(page);
-  await page.fill('#apiKey', '');
-  await page.fill('#fallbackGroq', 'test-key-not-real');
+  // Gemini stays selected and its box stays EMPTY; the key goes only in the
+  // Groq box. That is the case the header pill accepted and the button did
+  // not -- and with one box per provider it is now the ordinary way to use a
+  // single key for a provider you did not pick in the dropdown.
+  await page.fill('#keyGemini', '');
+  await page.fill('#keyGroq', 'test-key-not-real');
   await closeSettings(page);
   await page.waitForTimeout(500);
 
@@ -88,6 +92,40 @@ test('a key in a fallback box alone is enough to start a run', async (t) => {
 
   assert.doesNotMatch(await status(page), /Enter an API key first/i,
     'the run must not refuse a key the pill is already reporting as usable');
+});
+
+// --- the key an existing user already typed --------------------------------
+
+test('a key saved by the old single-box layout survives the update', async (t) => {
+  // 2.3.0 shipped ONE unlabelled key box, saved as `apiKey`, with the
+  // per-provider boxes as optional extras. This version replaces that box with
+  // three, one per provider. Anyone who already entered a key has it in
+  // `apiKey` and nothing in the box that now replaces it -- so without a
+  // migration their key silently disappears on update, the pill reads "No
+  // key", and a working install stops working for no visible reason.
+  //
+  // 2.3.0 is published. Those users exist.
+  const mockLlm = await startMockLlmServer(() => ({ choices: [{ message: { content: '{}' } }] }));
+  t.after(async () => { await mockLlm.close(); });
+
+  const { context, extensionId } = await launch(t);
+  const seeded = await context.newPage();
+  await seeded.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await seeded.evaluate(() => chrome.storage.local.set({
+    tailorune_settings_v1: { provider: 'groq', apiKey: 'key-from-the-old-layout' },
+  }));
+  await seeded.close();
+
+  const page = await openPopup(context, extensionId, mockLlm.url);
+  await page.waitForTimeout(1200);
+  await openSettings(page);
+
+  assert.equal(await page.inputValue('#keyGroq'), 'key-from-the-old-layout',
+    'the old key must land in the box for the provider it was saved against');
+  assert.equal(await page.inputValue('#keyGemini'), '',
+    'and must not be copied into providers it was never for');
+  assert.notEqual(await page.textContent('#keyStatus'), 'No key',
+    'so the install still reports itself as usable');
 });
 
 // --- the button that did nothing at all ------------------------------------

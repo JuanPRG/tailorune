@@ -40,7 +40,7 @@ export async function openSettings(page) {
   if (await page.locator('#settingsView').evaluate((el) => el.hidden)) {
     await page.click('#settingsBtn');
   }
-  await page.waitForSelector('#apiKey', { state: 'visible' });
+  await page.waitForSelector('#keyGemini', { state: 'visible' });
 }
 
 /** Return to the tailoring view. */
@@ -66,28 +66,41 @@ export async function closeSettings(page) {
 /**
  * Configure the provider in ONE settings visit.
  *
- * Provider, key and fallback keys all live behind the gear, and the settings
- * view hides the tailoring view -- so doing them one at a time meant opening
- * and closing it around each field. Tests were written as
- * `selectOption('#provider') ; fillApiKey()` back when both were on the main
- * page; that pairing is now a single trip.
+ * Provider and keys all live behind the gear, and the settings view hides the
+ * tailoring view -- so doing them one at a time meant opening and closing it
+ * around each field. This is a single trip.
+ *
+ * THERE IS NO PRIMARY KEY FIELD any more: there is one box per provider, and
+ * the dropdown only decides which is tried first. So `apiKey` here goes into
+ * the box for `provider`, and `fallbacks` names the others by provider id
+ * rather than by CSS selector.
  *
  * @param {object} opts
- * @param {string} [opts.provider]  value for #provider
- * @param {string} [opts.apiKey]    primary key
- * @param {Record<string,string>} [opts.fallbacks]  selector -> key, e.g. {'#fallbackGroq': 'k'}
+ * @param {string} [opts.provider]  value for #provider, default gemini
+ * @param {string} [opts.apiKey]    key for that provider
+ * @param {Record<string,string>} [opts.fallbacks]  provider id -> key, e.g. { groq: 'k' }
  */
-export async function configureProvider(page, { provider, apiKey = 'test-key-not-real', fallbacks = {} } = {}) {
+export const KEY_FIELD = {
+  gemini: '#keyGemini', groq: '#keyGroq', openrouter: '#keyOpenrouter',
+};
+
+export async function configureProvider(page, {
+  provider = 'gemini', apiKey = 'test-key-not-real', fallbacks = {},
+} = {}) {
   await openSettings(page);
-  if (provider) await page.selectOption('#provider', provider);
-  await page.fill('#apiKey', apiKey);
-  for (const [selector, key] of Object.entries(fallbacks)) await page.fill(selector, key);
+  await page.selectOption('#provider', provider);
+  await page.fill(KEY_FIELD[provider], apiKey);
+  for (const [id, key] of Object.entries(fallbacks)) {
+    await page.fill(KEY_FIELD[id] || id, key);
+  }
   await closeSettings(page);
 }
 
+/** Fill the key for whichever provider is currently selected. */
 export async function fillApiKey(page, key = 'test-key-not-real') {
   await openSettings(page);
-  await page.fill('#apiKey', key);
+  const provider = await page.inputValue('#provider');
+  await page.fill(KEY_FIELD[provider] || '#keyGemini', key);
   await closeSettings(page);
 }
 

@@ -189,7 +189,8 @@ test('real popup: the gear swaps views, and never shows two at once', async (t) 
 
   // The fields really moved -- they are reachable in settings and nowhere else.
   await popup.click('#settingsBtn');
-  for (const id of ['#apiKey', '#provider', '#resumeDensity', '#coverLetterTone', '#fallbackGroq']) {
+  for (const id of ['#keyGemini', '#keyGroq', '#keyOpenrouter', '#provider',
+    '#resumeDensity', '#coverLetterTone']) {
     assert.equal(await popup.isVisible(id), true, `${id} should live in the settings view`);
   }
 });

@@ -256,17 +256,29 @@
             <input id="modelName" placeholder="provider default" />
           </div>
         </div>
-        <label for="apiKey">API key</label>
-        <input id="apiKey" type="password" placeholder="stored locally only" />
-        <!-- LINKS, not just reassurance. The previous version said free tiers
-             exist and stopped there, which leaves a job seeker who has never
-             heard of an API key with nowhere to go -- the single hardest step
-             in onboarding, and the one the extension is silent about. Each
-             link lands on the page that issues the key for that provider. -->
-        <div class="hint">
-          Gemini and Groq have free tiers that need no card. OpenRouter's free models share an
-          upstream pool, so they work but can be busy. All three are free to use.
-        </div>
+        <!-- ONE FIELD PER PROVIDER, and no separate "API key" box above them.
+             It used to be a main key plus three optional fallbacks, which read
+             as four boxes where one was unlabelled and three were named --
+             so the named ones looked like the real ones and the unnamed one
+             looked wrong. The author of this popup was confused by it, which
+             settles the question of whether a first-time user would be.
+             Now: three boxes, each saying whose key it wants. Fill one or
+             fill all three. The dropdown above only decides which is tried
+             FIRST; the others stand by for when it rate-limits. -->
+        <label class="subtle-label" for="keyGemini">Gemini API key</label>
+        <input id="keyGemini" type="password" placeholder="stored on this device only"
+               autocomplete="off" spellcheck="false" />
+        <label class="subtle-label" for="keyGroq">Groq API key</label>
+        <input id="keyGroq" type="password" placeholder="stored on this device only"
+               autocomplete="off" spellcheck="false" />
+        <label class="subtle-label" for="keyOpenrouter">OpenRouter API key</label>
+        <input id="keyOpenrouter" type="password" placeholder="stored on this device only"
+               autocomplete="off" spellcheck="false" />
+
+        <!-- LINKS, not just reassurance. Saying free tiers exist and stopping
+             there leaves a job seeker who has never heard of an API key with
+             nowhere to go -- the hardest step in onboarding. Each link lands
+             on the page that issues that provider's key. -->
         <div class="hint key-links">
           Get a free key:
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Gemini</a>
@@ -274,15 +286,10 @@
           <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">OpenRouter</a>
         </div>
         <div class="hint">
-          Optional fallback keys. If your main provider is rate-limited mid-run, the next one with
-          a key here is used instead — more keys means a run is less likely to stall.
+          One key is enough to start. Gemini and Groq have free tiers that need no card;
+          OpenRouter's free models share an upstream pool, so they work but can be busy.
+          Adding a second key means a run that hits a rate limit rotates instead of stalling.
         </div>
-        <label for="fallbackGemini" class="subtle-label">Gemini</label>
-        <input id="fallbackGemini" type="password" placeholder="optional" />
-        <label for="fallbackGroq" class="subtle-label">Groq</label>
-        <input id="fallbackGroq" type="password" placeholder="optional" />
-        <label for="fallbackOpenrouter" class="subtle-label">OpenRouter</label>
-        <input id="fallbackOpenrouter" type="password" placeholder="optional" />
       </section>
 
       <section class="card">

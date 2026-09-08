@@ -153,7 +153,7 @@ test('a rate-limited primary provider fails over to a fallback key instead of fa
   // chain somewhere to rotate to when the primary is rate limited.
   await configureProvider(page, {
     apiKey: 'primary-gemini-key',
-    fallbacks: { '#fallbackGroq': 'fallback-groq-key' },
+    fallbacks: { groq: 'fallback-groq-key' },
   });
   await page.click('#tailorBtn');
 

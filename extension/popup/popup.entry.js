@@ -53,15 +53,14 @@ const els = {
   coverLetterNotes: $('coverLetterNotes'),
   provider: $('provider'),
   modelName: $('modelName'),
-  apiKey: $('apiKey'),
+  keyGemini: $('keyGemini'),
+  keyGroq: $('keyGroq'),
+  keyOpenrouter: $('keyOpenrouter'),
   mainView: $('mainView'),
   appFooter: $('appFooter'),
   settingsView: $('settingsView'),
   settingsBtn: $('settingsBtn'),
   settingsBackBtn: $('settingsBackBtn'),
-  fallbackGemini: $('fallbackGemini'),
-  fallbackGroq: $('fallbackGroq'),
-  fallbackOpenrouter: $('fallbackOpenrouter'),
   tailorBtn: $('tailorBtn'),
   status: $('status'),
   warnings: $('warnings'),
@@ -441,20 +440,34 @@ async function autoDetectJob() {
   }
 }
 
-/** {providerId: key} for every provider the user supplied a fallback key for. */
+/** {providerId: key} for every provider the user has supplied a key for. */
 function collectProviderKeys() {
   return {
-    gemini: els.fallbackGemini.value.trim(),
-    groq: els.fallbackGroq.value.trim(),
-    openrouter: els.fallbackOpenrouter.value.trim(),
+    gemini: els.keyGemini.value.trim(),
+    groq: els.keyGroq.value.trim(),
+    openrouter: els.keyOpenrouter.value.trim(),
   };
 }
 
 function applyProviderKeys(keys) {
   if (!keys) return;
-  els.fallbackGemini.value = keys.gemini || '';
-  els.fallbackGroq.value = keys.groq || '';
-  els.fallbackOpenrouter.value = keys.openrouter || '';
+  els.keyGemini.value = keys.gemini || '';
+  els.keyGroq.value = keys.groq || '';
+  els.keyOpenrouter.value = keys.openrouter || '';
+}
+
+/** Element id of the box holding a given provider's key. */
+const KEY_FIELD = { gemini: 'keyGemini', groq: 'keyGroq', openrouter: 'keyOpenrouter' };
+
+/**
+ * The key for whichever provider is selected, which is the one tried FIRST.
+ *
+ * There is no separate box for it any more. resolveProviderChain still takes
+ * a primary key and then appends the rest, so the selected provider's own
+ * field supplies it -- the dropdown decides order, nothing else.
+ */
+function primaryApiKey() {
+  return collectProviderKeys()[els.provider.value] || '';
 }
 
 function collectPreferences() {
@@ -489,7 +502,7 @@ function collectSettings() {
   return {
     provider: els.provider.value,
     model: els.modelName.value.trim(),
-    apiKey: els.apiKey.value.trim(),
+    apiKey: primaryApiKey(),
     includeCoverLetter: els.includeCoverLetter.checked,
     useJudge: els.useJudge.checked,
     autoDownloadPdf: els.autoDownloadPdf.checked,
@@ -513,10 +526,10 @@ function collectSettings() {
  * `change` still matters for <select> and checkboxes.
  */
 const PERSIST_ON_CHANGE = [
-  'provider', 'modelName', 'apiKey', 'includeCoverLetter', 'useJudge', 'autoDownloadPdf',
+  'provider', 'modelName', 'includeCoverLetter', 'useJudge', 'autoDownloadPdf',
   'resumeDensity', 'keywordAlignment', 'coverLetterLength', 'coverLetterTone',
   'preservePoints', 'resumeNotes', 'coverLetterNotes',
-  'fallbackGemini', 'fallbackGroq', 'fallbackOpenrouter',
+  'keyGemini', 'keyGroq', 'keyOpenrouter',
 ];
 
 /**
@@ -634,7 +647,7 @@ function refreshKeyStatus() {
   // resolveProviderChain is the same function the run uses.
   const chain = resolveProviderChain({
     providerId: els.provider.value,
-    apiKey: els.apiKey.value,
+    apiKey: primaryApiKey(),
     model: els.modelName.value,
     providerKeys: collectProviderKeys(),
   });
@@ -680,7 +693,17 @@ async function restoreSettings() {
   if (!settings) return;
   if (settings.provider) els.provider.value = settings.provider;
   if (settings.model) els.modelName.value = settings.model;
-  if (settings.apiKey) els.apiKey.value = settings.apiKey;
+  // MIGRATION. Until 2.3.0 the key lived in one unlabelled box, saved as
+  // `apiKey`, and the per-provider boxes were optional extras. Anyone who has
+  // already entered a key has it in `apiKey` and nothing in the box that now
+  // replaces it -- so without this, their key silently vanishes on update.
+  // 2.3.0 is published, so those users exist.
+  if (settings.apiKey) {
+    const forProvider = settings.provider || 'gemini';
+    const el = els[KEY_FIELD[forProvider]];
+    const alreadyHasOne = Boolean((settings.providerKeys || {})[forProvider]);
+    if (el && !el.value.trim() && !alreadyHasOne) el.value = settings.apiKey;
+  }
   if (typeof settings.includeCoverLetter === 'boolean') els.includeCoverLetter.checked = settings.includeCoverLetter;
   if (typeof settings.useJudge === 'boolean') els.useJudge.checked = settings.useJudge;
   if (typeof settings.autoDownloadPdf === 'boolean') els.autoDownloadPdf.checked = settings.autoDownloadPdf;
@@ -812,7 +835,7 @@ async function onTailorClick() {
   const jobDescription = els.jobDescription.value.trim();
   const providerId = els.provider.value;
   const modelName = els.modelName.value.trim();
-  const apiKey = els.apiKey.value.trim();
+  const apiKey = primaryApiKey();
   const includeCoverLetter = els.includeCoverLetter.checked;
   const useJudge = els.useJudge.checked;
   const autoDownloadPdf = els.autoDownloadPdf.checked;

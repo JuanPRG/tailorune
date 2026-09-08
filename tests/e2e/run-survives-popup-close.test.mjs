@@ -209,7 +209,7 @@ test('reset clears the job and the stored run, and keeps what is expensive', asy
 
   // The expensive things survive.
   assert.equal(await page.inputValue('#resumeText'), 'MY RESUME TEXT', 'the resume must NOT be cleared');
-  assert.equal(await page.inputValue('#apiKey'), 'my-precious-key', 'the API key must NOT be cleared');
+  assert.equal(await page.inputValue('#keyGemini'), 'my-precious-key', 'the API key must NOT be cleared');
 
   // And the stored run is actually gone -- otherwise it would return on open.
   const stored = await sw.evaluate(async (key) => (await chrome.storage.local.get(key))[key], LAST_RUN_KEY);
