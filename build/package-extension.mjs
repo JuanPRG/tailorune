@@ -142,9 +142,19 @@ note(`${count} files, ${(statSync(outFile).size / 1024).toFixed(0)} KB`);
 note(`version ${manifest.version} (replacing ${PUBLISHED_VERSION})`);
 note(`providers: ${Object.keys(PROVIDERS).join(', ')}`);
 // A disable-until-accepted prompt only happens when an EXISTING install gains
-// permissions. With no installs, nobody is interrupted -- new users just see
-// the permission list at install time, like any extension. Worth stating,
-// because assuming otherwise drove a chunk of work that had no audience.
-console.log('\nNo existing installs, so there is no permission prompt to plan around.');
-console.log('Autofill lands later on activeTab + scripting, both already declared,');
-console.log('so that feature will not change this permission list either.');
+// permissions.
+//
+// THIS USED TO SAY there were no installs, so nobody could be interrupted and
+// there was nothing to plan around. That stopped being true the moment 2.3.0
+// published. It also cannot be replaced with "permissions are unchanged",
+// because nothing here knows what the PUBLISHED build declared -- the only
+// state this script has about the live version is its version number. So it
+// prints what this build declares and leaves the comparison to a human, which
+// is the honest version. Removing a permission is silent and safe; adding one
+// disables the extension for every existing user until each accepts it.
+console.log('\nThere ARE published installs now, so permission changes are not free.');
+console.log('This build declares:');
+console.log(`  permissions      ${(manifest.permissions || []).join(', ') || '(none)'}`);
+console.log(`  host_permissions ${hosts.join(', ') || '(none)'}`);
+console.log('Compare that against the live listing before uploading. Anything ADDED');
+console.log('here disables the extension for existing users until each one accepts.');
