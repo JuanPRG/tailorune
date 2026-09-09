@@ -14,7 +14,7 @@ Two things follow from that, and both have bitten people.
 ### The version must strictly increase, every upload
 
 The packager refuses to build otherwise. It reads the live version from
-`store/PUBLISHED_VERSION` (currently `2.2.5`); `--published <v>` overrides.
+`store/PUBLISHED_VERSION` (currently `2.3.0`); `--published <v>` overrides.
 **Bump that file immediately after a successful upload.** It used to be a
 hard-coded literal, which protected exactly one release — the moment 2.3.0 went
 live, it would have happily packaged 2.3.0 over itself again.
@@ -83,7 +83,7 @@ Features:
 - Keep a library of saved resumes, so a resume is uploaded once and reused.
 - Lock a job so that switching browser tabs does not change it.
 - See a notice on returning to a posting you have already tailored for.
-- Optional accuracy review that flags rewrites drifting from your original wording. It is advisory and never edits or withholds a document.
+- Automatic checks on every rewrite, plus an optional second-opinion AI review for one extra call. Both are advisory and never edit or withhold a document.
 - Read .txt, .docx, and .pdf resumes.
 
 Tailorune does not fabricate experience. Your name, contact details, employers, job titles, dates, and education are treated as locked fields: they are copied through exactly as written and are never included in the part of the request the model may rewrite. Only your summary and the wording of your bullet points change.
@@ -100,6 +100,15 @@ Resume tailoring and cover-letter generation are this extension's only functions
 
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
+
+> **The live listing still says "accuracy review".** That bullet was renamed in
+> 2.3.1, because the checkbox it described was named for a goal ("accuracy")
+> that the always-on deterministic checks pursue too — so an unticked box next
+> to an amber accuracy warning read as a bug, and was reported as one. The
+> setting is now named for its mechanism instead: *Second-opinion AI review*.
+> Nothing about the extension's behaviour or data flow changed, so this is a
+> copy edit, not a disclosure change. Refresh it on the next listing edit —
+> pushing a listing change on its own buys another review for one bullet.
 
 ### Category and language
 

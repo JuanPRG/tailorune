@@ -25,8 +25,8 @@ No account. No server. Bring your own AI key.
 Read the job off the tab you are on, and get a rewritten resume and a matching
 cover letter — **without the tool inventing a single thing you did not do.**
 
-Paste or upload a resume (`.txt`, `.docx`, `.pdf`), press **Read job
-description** on a posting, then **Tailor**. Four files land in Downloads:
+Upload a resume (`.txt`, `.docx`, `.pdf`), press **Read job description** on a
+posting, then **Tailor**. Four files land in Downloads:
 
 ```
 Ada_Lovelace_Northwind_Resume_0906.docx
@@ -46,15 +46,17 @@ Your name, contact details, employers, job titles, dates and education are
 enter the part of the request the model is allowed to rewrite — only your
 summary and the wording of your bullet points change.
 
-That is a mechanism, not a promise. There is also an optional accuracy review
-that flags rewrites drifting from your original wording; it is advisory and
-never edits or withholds a document.
+That is a mechanism, not a promise. Every run also puts the rewrite through
+automatic checks that cost nothing and cannot be switched off, and you can turn
+on an optional second-opinion AI review for one extra call. Both are advisory:
+they flag rewrites drifting from your original wording, and neither edits or
+withholds a document.
 
 ### Other things it does
 
 | | |
 |---|---|
-| **Resume library** | Upload once, reuse for every application |
+| **Resume library** | Upload once, reuse for every application. Saved under the file's own name |
 | **Lock a job** | The popup stops following your tabs while you compare postings |
 | **Remembers** | Says so when you come back to a posting you already tailored for |
 | **Both formats** | `.docx` and `.pdf`, laid out identically |
@@ -87,15 +89,18 @@ Tailorune has no server and no model of its own, so it uses yours:
 Any one is enough. Sign in, create a key, copy it. The same links are inside
 the extension, under the gear.
 
-**3. Paste the key in.** Toolbar icon → the **gear** → **API key**. It is saved
-on your machine and never sent anywhere but the provider it belongs to.
+**3. Paste the key in.** Toolbar icon → the **gear** → the box named for your
+provider. There is one for each; fill the one you have. Keys are saved on your
+machine and never sent anywhere but the provider they belong to.
 
-> Adding a second provider's key under *fallback keys* is worth the extra
-> minute: free tiers rate-limit, and a run that hits a limit rotates to the
-> next provider instead of failing.
+> Filling a second box is worth the extra minute: free tiers rate-limit, and a
+> run that hits a limit rotates to another provider instead of failing. You do
+> not have to pick a preferred one — a run reaches every provider you have a
+> key for, and chooses per step.
 
-**4. Add your resume.** **Upload** a `.txt`, `.docx` or `.pdf`, or paste the
-text. Press **Save** to keep it in the library so you only do this once.
+**4. Add your resume.** Press the **upload** icon and pick a `.txt`, `.docx`
+or `.pdf`. That is the whole step: it is read, filed in your library under the
+file's own name, and loaded ready to tailor. You only do it once.
 
 **5. Tailor.** Open a job posting, click Tailorune, press **Read job
 description**, then **Tailor resume**. Four files land in Downloads.

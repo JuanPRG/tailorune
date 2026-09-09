@@ -33,7 +33,7 @@ read a `.env` file or a password stored in your browser.
 | What | Why | Limit |
 |---|---|---|
 | Your **resume text** — which normally contains your name, contact details, work history and education | So you do not re-enter it for every application | Up to 20 saved resumes |
-| Your **LLM API keys** (a primary key plus optional fallback keys for other providers) | So a run can authenticate without asking each time | Stored in plain text |
+| Your **LLM API keys** — one per supported provider, for however many you choose to fill in | So a run can authenticate without asking each time, and can rotate to another provider when one rate-limits | Stored in plain text |
 | Your **tailoring preferences** — density, tone, letter length, and any free-text notes or "points to preserve" | So runs behave consistently | — |
 | A **history of jobs you have tailored for** — employer, job title, page URL, when, and how many times | So the extension can tell you when you return to a posting you already worked on | Up to 100 entries. The job description and the generated documents are deliberately **not** kept |
 | Your **most recent run** — the job title, employer, the job description it used, the page URL, the names of the files produced, and the review findings | So closing and reopening the popup does not lose your result | The most recent run only |
