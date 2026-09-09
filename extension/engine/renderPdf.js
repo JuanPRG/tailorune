@@ -353,10 +353,38 @@ async function newDocument(fontBytes, title) {
  * @param {{regular: Uint8Array, bold: Uint8Array, italic: Uint8Array}} fontBytes
  * @returns {Promise<Uint8Array>}
  */
+/**
+ * How many pages this model actually renders to.
+ *
+ * The one promise this tool makes about its output is that it fits on a page,
+ * and until now that was enforced against a WORD COUNT -- a proxy that
+ * under-reports bullet-heavy resumes badly, because pages are made of lines
+ * and every bullet ends mid-line. A real resume tailored to 494 words passed a
+ * 510-word budget and rendered to two.
+ *
+ * This lays the document out with the real font metrics and the real page box
+ * and reports what came out, so the check is about the artifact rather than
+ * about a number correlated with it. It draws into a throwaway document and
+ * never serialises, so it costs a layout pass and no encoding.
+ */
+export async function countResumePages(model, fontBytes) {
+  const { doc, fonts } = await newDocument(fontBytes, 'measure');
+  drawResume(new Sheet(doc, fonts, RESUME_BOX), model, fonts);
+  return doc.getPageCount();
+}
+
 export async function renderResumePdf(model, fontBytes) {
   const { doc, fonts } = await newDocument(fontBytes, model.name ? model.name + ' — Resume' : 'Resume');
-  const sheet = new Sheet(doc, fonts, RESUME_BOX);
+  drawResume(new Sheet(doc, fonts, RESUME_BOX), model, fonts);
+  return doc.save();
+}
 
+/**
+ * The whole resume layout, extracted so countResumePages() measures exactly
+ * what renderResumePdf() ships. Two copies of this would be two answers to
+ * "does it fit", and the wrong one would be the one enforcing the promise.
+ */
+function drawResume(sheet, model, fonts) {
   sheet.text(model.name || 'Unnamed Candidate', { font: fonts.bold, size: NAME, align: 'center' });
   sheet.space(AFTER_NAME);
   if (model.contact) {
@@ -377,8 +405,6 @@ export async function renderResumePdf(model, fontBytes) {
     if (block.kind === 'entries') drawEntries(sheet, block.entries);
     else for (const line of block.lines) drawLine(sheet, line);
   }
-
-  return doc.save();
 }
 
 /**

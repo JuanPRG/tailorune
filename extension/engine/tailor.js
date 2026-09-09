@@ -19,8 +19,8 @@
 // text.
 
 import { chatWithRetry, LlmError } from './llm.js';
-import { flattenEditableEntries, applyTailoredContent, compactToWordBudget, modelWordCount } from './resumeModel.js';
-import { buildResumePreferencesSection, factoryPreferences } from './preferences.js';
+import { flattenEditableEntries, applyTailoredContent, compactUntil, modelWordCount } from './resumeModel.js';
+import { buildResumePreferencesSection, factoryPreferences, RESUME_DENSITY_WORD_TARGET } from './preferences.js';
 import {
   sanitizeText, fabricatedRoleTitles, modelFullText, tokenize,
   resumeSkillsBoundary, FABRICATION_WATCHLIST_TERMS,
@@ -74,6 +74,7 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
   const entries = flattenEditableEntries(model);
   const jd = String(jobDescription || '').slice(0, JD_MAX_CHARS);
   const prefs = preferences || factoryPreferences();
+  const wordTarget = RESUME_DENSITY_WORD_TARGET[prefs.resume_density] || ONE_PAGE_WORD_BUDGET;
 
   // role_label is a generic ordinal ("Role 1", "Role 2"), never the entry's
   // real title/company/dates -- those are locked and must not enter the
@@ -106,8 +107,15 @@ export function buildTailorMessages(model, jobDescription, preferences, avoidNot
     'Do not invent numbers, metrics, team sizes, or achievements that are not already in the'
     + ' original text. You may rephrase and re-emphasize what is there; you may not add new facts.',
     'Write in natural, human, ATS-friendly language. Avoid AI-sounding phrasing and cliches.',
+    // The target now FOLLOWS THE DENSITY the user picked. It was
+    // ONE_PAGE_WORD_BUDGET for all three, which made the selector a lie --
+    // every setting asked for the same 510 words, so someone whose resume came
+    // out two pages could try all three and correctly report that nothing
+    // changed. And the number is guidance only: the page is enforced by
+    // rendering and counting, because a model cannot measure a page.
     'Keep bullets concise and quantified where the original supports it — the whole resume'
-    + ` must fit roughly ${ONE_PAGE_WORD_BUDGET} words total, so favor tight, high-signal bullets.`,
+    + ` must fit on ONE printed page, aiming for about ${wordTarget} words total,`
+    + ' so favor tight, high-signal bullets.',
     // The mandate comes FIRST and the preservation rule second, deliberately.
     // With the order reversed, a model reads the constraint as the primary
     // instruction and satisfies it by copying the input back — observed
@@ -447,8 +455,13 @@ export async function tailorResume({
   model, jobDescription, provider, apiKey, modelName,
   preferences, maxAttempts = 2, demoteLast,
   fetchImpl, timeoutMs, maxRetries, sleepImpl,
-  callLlm, judge, job,
+  callLlm, judge, job, fitsOnePage,
 }) {
+  // `fitsOnePage(model) -> boolean` measures the REAL artifact. When absent --
+  // every unit test, and any caller without fonts loaded -- compaction falls
+  // back to the word budget, which is a proxy that under-reports bullet-heavy
+  // resumes. See compactUntil() in resumeModel.js for the reproduced case.
+  const fits = fitsOnePage || ((m) => modelWordCount(m) <= ONE_PAGE_WORD_BUDGET);
   const prefs = preferences || factoryPreferences();
   let avoidNotes = [];
   let lastResult = null;
@@ -543,7 +556,7 @@ export async function tailorResume({
       judgeResult = await judge({ original: model, tailored: repair.model, job: job || { description: jobDescription } });
     }
 
-    const { model: compacted, wordCount, iterations } = compactToWordBudget(repair.model, ONE_PAGE_WORD_BUDGET);
+    const { model: compacted, wordCount, iterations } = await compactUntil(repair.model, fits);
     // The judge is ADVISORY: it reports, it never gates and never retries.
     //
     // This is v4's `validation_mode: "lenient"` (tailor.py:494, 508-512),
@@ -596,7 +609,7 @@ export async function tailorResume({
   // the untouched resume so the run still yields a document -- but never
   // labelled as though it had been tailored.
   if (!lastResult) {
-    const { model: compacted, wordCount, iterations } = compactToWordBudget(model, ONE_PAGE_WORD_BUDGET);
+    const { model: compacted, wordCount, iterations } = await compactUntil(model, fits);
     return {
       model: compacted,
       wordCount,

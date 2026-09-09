@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tailorune",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Tailor your resume and cover letter to a job posting, using your own AI provider key. No account, no server.",
   "minimum_chrome_version": "116",
   "permissions": [

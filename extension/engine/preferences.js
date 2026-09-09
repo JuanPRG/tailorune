@@ -40,7 +40,17 @@ const MAX_NOTE_CHARS = 800;
 const MAX_PRESERVE_CHARS = 600;
 
 export const DEFAULT_PREFERENCES = {
-  resume_density: 'detailed',
+  // STANDARD, NOT DETAILED, since 2.3.2. "Detailed" asks the model to "use as
+  // much one-page space as possible" and for "as many real bullets per role as
+  // the source supports" -- a MAXIMISING instruction, and a poor default now
+  // that overflow is paid for in dropped bullets rather than in a second page.
+  //
+  // Reported on a real resume: seventeen bullets, tailored bullets 36% longer
+  // than the originals, two pages at every density setting. Compaction now
+  // measures the rendered page and cuts until it fits, so a default that
+  // spends space the compactor then has to claw back is asking the model to
+  // write bullets the user will never see.
+  resume_density: 'standard',
   keyword_alignment: 'balanced',
   emphasis_areas: [],
   preserve_points: '',
@@ -69,6 +79,31 @@ const TEXT_LIMITS = {
   preserve_points: MAX_PRESERVE_CHARS,
   resume_notes: MAX_NOTE_CHARS,
   cover_letter_notes: MAX_NOTE_CHARS,
+};
+
+/**
+ * The word target each density asks the model to aim for.
+ *
+ * GUIDANCE, NOT THE CONSTRAINT. The constraint is one rendered page, and it is
+ * now enforced by laying the document out and counting pages -- see
+ * countResumePages(). A model cannot render, so it still needs a number, and
+ * this is that number.
+ *
+ * It used to be ONE_PAGE_WORD_BUDGET for all three densities, which made the
+ * density selector a lie: the setting claimed to change length while every
+ * setting asked for the same 510 words. Someone whose resume came out two
+ * pages tried all three and correctly reported that nothing changed.
+ *
+ * Only the top of the ladder is measured (510 is the one-page word budget,
+ * itself derived from a LibreOffice page sweep). The lower two are chosen to
+ * leave headroom, not measured -- their job is to keep the model clear of the
+ * boundary so the compactor rarely has to drop a bullet, and being wrong low
+ * costs a slightly shorter resume rather than a lost page.
+ */
+export const RESUME_DENSITY_WORD_TARGET = {
+  concise: 400,
+  standard: 460,
+  detailed: 510,
 };
 
 const RESUME_DENSITY_GUIDANCE = {

@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import {
   validatePreferences, factoryPreferences, coverLetterWordRange, PreferenceError,
   buildResumePreferencesSection, buildCoverLetterPreferencesSection,
+  RESUME_DENSITY_WORD_TARGET,
 } from '../../extension/engine/preferences.js';
 
-test('factoryPreferences matches the v4 defaults (detailed density, balanced keywords, standard length)', () => {
+test('the default density is STANDARD, where v4 used detailed', () => {
+  // v4 defaulted to detailed, and this asserted that for parity. It was
+  // changed deliberately: "detailed" tells the model to use as much of the
+  // page as possible, which is the wrong default now that overflow is paid
+  // for in bullets the compactor drops rather than in a second page.
   const p = factoryPreferences();
-  assert.equal(p.resume_density, 'detailed');
+  assert.equal(p.resume_density, 'standard');
   assert.equal(p.keyword_alignment, 'balanced');
   assert.equal(p.cover_letter_length, 'standard');
   assert.equal(p.cover_letter_tone, 'direct');
@@ -17,7 +22,7 @@ test('factoryPreferences matches the v4 defaults (detailed density, balanced key
 test('validatePreferences fills unspecified fields from defaults (partial payloads are allowed)', () => {
   const p = validatePreferences({ cover_letter_tone: 'warm' });
   assert.equal(p.cover_letter_tone, 'warm');
-  assert.equal(p.resume_density, 'detailed'); // untouched default
+  assert.equal(p.resume_density, 'standard'); // untouched default
 });
 
 test('validatePreferences rejects an unknown field rather than silently ignoring it', () => {
@@ -80,4 +85,15 @@ test('buildCoverLetterPreferencesSection reflects the chosen tone and length', (
   assert.match(section, /Cover letter tone: formal/);
   assert.match(section, /Cover letter length: long/);
   assert.match(section, /NEVER allow invented/);
+});
+
+test('density actually changes the word target the prompt asks for', () => {
+  // THE BUG THIS EXISTS FOR. The prompt hard-coded ONE_PAGE_WORD_BUDGET for
+  // every density, so the selector claimed to change length while all three
+  // settings asked for the same 510 words. Someone whose resume came out two
+  // pages tried concise, standard and detailed, and correctly reported that
+  // nothing changed -- because nothing did.
+  const targets = ['concise', 'standard', 'detailed'].map((d) => RESUME_DENSITY_WORD_TARGET[d]);
+  assert.equal(new Set(targets).size, 3, 'each density must ask for a different length');
+  assert.ok(targets[0] < targets[1] && targets[1] < targets[2], 'and they must be ordered');
 });

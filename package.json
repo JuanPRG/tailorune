@@ -1,6 +1,6 @@
 {
   "name": "tailorune",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "private": true,
   "description": "Resume tailoring and cover letters as a standalone Chrome extension, no backend.",
   "license": "MIT",

@@ -105,24 +105,73 @@ export function compactToWordBudget(model, budgetWords, maxIterations = 20) {
   let next = model;
   let iterations = 0;
   while (modelWordCount(next) > budgetWords && iterations < maxIterations) {
-    const entries = flattenEditableEntries(next);
-    let target = null;
-    for (const e of entries) {
-      if (e.bullets.length > 0 && (!target || e.bullets.length > target.bullets.length)) target = e;
-    }
-    if (!target) break; // nothing left we're willing to drop
-    next = structuredClone(next);
-    let flatIndex = 0;
-    outer: for (const section of next.sections) {
-      if (!section.entries) continue;
-      for (const entry of section.entries) {
-        if (flatIndex === target.index) {
-          entry.bullets.pop();
-          break outer;
-        }
-        flatIndex += 1;
+    const shorter = dropLongestEntrysLastBullet(next);
+    if (!shorter) break;
+    next = shorter;
+    iterations += 1;
+  }
+  return { model: next, wordCount: modelWordCount(next), iterations };
+}
+
+/**
+ * Remove the last bullet of whichever entry has the most, and return a new
+ * model -- or null when there is nothing left this is willing to drop.
+ *
+ * Shared by both compactors so the two cannot disagree about what "compact"
+ * means; only the stopping condition differs between them.
+ */
+function dropLongestEntrysLastBullet(model) {
+  const entries = flattenEditableEntries(model);
+  let target = null;
+  for (const e of entries) {
+    if (e.bullets.length > 0 && (!target || e.bullets.length > target.bullets.length)) target = e;
+  }
+  if (!target) return null;
+  const next = structuredClone(model);
+  let flatIndex = 0;
+  for (const section of next.sections) {
+    if (!section.entries) continue;
+    for (const entry of section.entries) {
+      if (flatIndex === target.index) {
+        entry.bullets.pop();
+        return next;
       }
+      flatIndex += 1;
     }
+  }
+  return null;
+}
+
+/**
+ * Drop bullets until `fits(model)` is true, longest entry first.
+ *
+ * WHY A PREDICATE RATHER THAN A WORD COUNT. The word budget is a proxy for a
+ * page, and on bullet-heavy resumes it is a bad one: pages are made of LINES,
+ * and a resume with seventeen short bullets across six entries spends far
+ * more vertical space per word than one with the same words in eight long
+ * ones. Every bullet ends mid-line, and every entry costs a title row.
+ *
+ * REPORTED, and reproduced exactly: a real resume tailored to 494 words --
+ * comfortably under the 510-word budget, so the compactor ran zero iterations
+ * -- rendered to two pages. Its 421-word original rendered to one. Nothing
+ * about the word count was wrong; the unit was.
+ *
+ * The caller supplies the measurement. tailorResume() passes one backed by
+ * the real PDF renderer when it has fonts, so the check is "does the artifact
+ * we are about to hand over paginate", not "is a correlated number small
+ * enough". Same injection idiom as `judge` and `callLlm`, and for the same
+ * reason: the expensive dependency stays out of the pure module.
+ */
+export async function compactUntil(model, fits, maxIterations = 20) {
+  let next = model;
+  let iterations = 0;
+  // ASYNC because the useful measurement is asynchronous: rendering a PDF to
+  // see whether it paginates. Keeping this sync would have forced the caller
+  // back onto a guess, which is the bug being fixed.
+  while (!(await fits(next)) && iterations < maxIterations) {
+    const shorter = dropLongestEntrysLastBullet(next);
+    if (!shorter) break;
+    next = shorter;
     iterations += 1;
   }
   return { model: next, wordCount: modelWordCount(next), iterations };

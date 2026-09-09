@@ -11,7 +11,7 @@ No account. No server. Bring your own AI key.
 
 ![MIT licence](https://img.shields.io/badge/licence-MIT-2F7A63)
 ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest_V3-2F7A63)
-![467 tests](https://img.shields.io/badge/tests-467_passing-2F7A63)
+![476 tests](https://img.shields.io/badge/tests-476_passing-2F7A63)
 ![No backend](https://img.shields.io/badge/backend-none-2F7A63)
 
 <img src="docs/img/demo.png" width="560" alt="Tailorune: uploading a resume, adding a job posting, and a finished run reporting 313 words across four files in 5 seconds">

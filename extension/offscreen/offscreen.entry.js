@@ -9,7 +9,7 @@
 import { parseTxt } from '../engine/parseTxt.js';
 import { tailorResume } from '../engine/tailor.js';
 import { renderResumeDocx, renderCoverLetterDocx } from '../engine/renderDocx.js';
-import { renderResumePdf, renderCoverLetterPdf } from '../engine/renderPdf.js';
+import { renderResumePdf, renderCoverLetterPdf, countResumePages } from '../engine/renderPdf.js';
 import { generateCoverLetter } from '../engine/coverLetter.js';
 import { tailorSkills } from '../engine/tailorSkills.js';
 import { judgeTailoredModel } from '../engine/judge.js';
@@ -173,6 +173,25 @@ async function runTailor(payload) {
   const useJudge = payload.useJudge === true;
   const judge = useJudge ? (args) => judgeTailoredModel({ ...args, callLlm }) : undefined;
 
+  // THE ONE-PAGE PROMISE, CHECKED AGAINST THE ARTIFACT. Compaction used to
+  // stop when a word count fell under a budget, which is a proxy that
+  // under-reports bullet-heavy resumes: a real one tailored to 494 words came
+  // in under the 510-word budget, compacted zero times, and rendered to two
+  // pages. This lays the actual document out with real font metrics and asks
+  // how many pages came out.
+  //
+  // Fonts are already loaded here for rendering, and the layout pass is cheap
+  // because nothing is serialised. If they cannot be fetched, tailorResume
+  // falls back to the word budget rather than failing the run -- a slightly
+  // long resume beats no resume.
+  let fitsOnePage;
+  try {
+    const pdfFonts = await loadPdfFonts();
+    fitsOnePage = async (candidate) => (await countResumePages(candidate, pdfFonts)) <= 1;
+  } catch {
+    fitsOnePage = undefined;
+  }
+
   const { model: tailoredModel, wordCount, compactionIterations, report: resumeReport } = await timed('resume', () => tailorResume({
     model,
     jobDescription,
@@ -181,6 +200,7 @@ async function runTailor(payload) {
     demoteLast,
     judge,
     job,
+    fitsOnePage,
   }));
 
   // Skills are a separate pass with their own rules (adding plausible

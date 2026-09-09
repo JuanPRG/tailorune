@@ -83,9 +83,27 @@ function textParagraph(text, opts = {}) {
 // a block of text rather than a ragged list. Headings, role titles and dated
 // rows stay unjustified -- stretching a short line to the margin looks broken,
 // and a right-aligned date has nothing to justify against.
+// The other two renderers put bullet text 13.5pt in -- renderHtml's
+// `ul { padding-left: 18px }`, which renderPdf mirrors as BULLET_INDENT. This
+// file set no indent at all, so the docx library's DEFAULT numbering ladder
+// applied: left 720 twips, i.e. HALF AN INCH, nearly four times the other two.
+//
+// REPORTED, on a real resume: "the margin of the bullet points is starting
+// almost as if it was tabbed, taking precious space". It was. On a 7.3in
+// column, 0.5in is 6.8% of the width spent on a glyph that needs about 0.15in,
+// and it applied to every line of every bullet -- so the DOCX wrapped where
+// the PDF of the same content did not, and only the DOCX ran to two pages.
+//
+// 270 twips = 13.5pt, so all three renderers now indent identically. The
+// hanging value puts the marker at 110 twips, matching where renderPdf draws
+// it (BULLET_INDENT less the width of "• ").
+const BULLET_INDENT = 270;
+const BULLET_HANGING = 160;
+
 function bulletParagraph(text) {
   return new Paragraph({
     bullet: { level: 0 },
+    indent: { left: BULLET_INDENT, hanging: BULLET_HANGING },
     alignment: AlignmentType.JUSTIFIED,
     spacing: { after: 20 },
     children: [new TextRun({ text, size: BODY_SIZE, font: FONT })],
