@@ -123,34 +123,75 @@
      key for -- that is the entire product -- and a privacy policy has
      to say so. Copy that contradicts the policy is how a listing gets
      pulled. What IS true: there is no account and no server of ours. -->
-          <p class="empty-copy">Drop in your resume and a job posting.<br>No account, no server of ours.</p>
+          <p class="empty-copy">Upload your resume, then read a job posting.<br>No account, no server of ours.</p>
         </div>
 
         <!-- The whole working state: WHICH resume, and how to bring in
-             another. Everything else is either rare (naming, deleting) or
-             something the user explicitly does not want on screen (the text
-             itself), so it lives one click away. -->
-        <div class="row">
-          <select id="savedResumes" style="flex:2;">
+             another. Upload is the only way in -- there is no paste box, and
+             no name to type, since a saved resume takes the file's own name.
+             Everything else is rare (re-saving, deleting) and lives one click
+             away. -->
+        <!-- ONE ROW: which resume is loaded, and the three things that can be
+             done to the library. Save and Delete were full-width text buttons
+             inside a "Manage saved resumes" disclosure, which spent a click
+             and a labelled row of vertical space on three verbs that have
+             universal icons -- in a 420px popup where the resume card was
+             already the tallest thing on screen. -->
+        <div class="row resume-row">
+          <select id="savedResumes">
             <option value="">No saved resumes</option>
           </select>
-          <button id="uploadBtn" class="secondary-btn mini-btn" type="button">Upload</button>
+
+          <!-- Tray with an arrow coming out of it: upload, not download. The
+               arrow points AWAY from the tray, which is the distinction. -->
+          <button id="uploadBtn" class="icon-btn" type="button"
+                  title="Upload a resume (.txt, .docx or .pdf)"
+                  aria-label="Upload a resume">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 16V4" /><path d="M7 9l5-5 5 5" />
+              <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" />
+            </svg>
+          </button>
+
+          <!-- THERE IS NO SAVE BUTTON. Uploading files the resume in the
+               library, under the file's own name, in the same press.
+               Save briefly lived here as a floppy-disk icon and had nothing
+               left to decide: no name to type, no choice to make, and a hint
+               underneath telling the user to press it. A button whose outcome
+               is fully determined is not offering a decision, it is asking
+               permission. So the library is simply "the resumes you have
+               uploaded", which is one concept instead of two.
+               Saving is BEST-EFFORT and loading is not: at the 20-resume cap
+               saveResume() refuses, and the resume still loads and still
+               tailors -- see saveLoadedResume(). Evicting somebody's saved
+               resume to make room would be destroying data to avoid printing
+               a sentence. -->
+
+          <!-- Trash. Two-step: the first press arms it and turns it red, the
+               second commits. window.confirm() is unavailable in a real popup
+               (it dismisses the popup), so the button IS the confirmation. -->
+          <button id="deleteResumeBtn" class="icon-btn" type="button"
+                  title="Delete the selected resume"
+                  aria-label="Delete the selected resume">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H9a2 2 0 01-2-2L6 6" />
+              <path d="M10 11v6" /><path d="M14 11v6" />
+            </svg>
+          </button>
         </div>
 
-        <details class="sub" id="resumeManage">
-          <summary>Text &amp; library</summary>
-          <div class="body">
-            <div class="row">
-              <input id="resumeName" placeholder="Name this resume" style="flex:2;" />
-              <button id="saveResumeBtn" class="secondary-btn mini-btn" type="button">Save</button>
-              <button id="deleteResumeBtn" class="secondary-btn mini-btn" type="button">Delete</button>
-            </div>
-            <div id="libraryHint" class="hint"></div>
-            <label for="resumeText">Resume text</label>
-            <textarea id="resumeText" placeholder="Paste your resume as plain text..."></textarea>
-            <div class="hint">Uploading a file replaces this text.</div>
-          </div>
-        </details>
+        <!-- Always visible, because uploading is now the ONLY way a resume
+             gets in AND the only report that it was filed. This line carries
+             "Reading juan-rivera.pdf...", "Could not read it", and
+             "Saved ... to your library" -- each answering something the user
+             just did. It spent a while inside a collapsed <details>, where
+             they were invisible: survivable while pasting was an alternative,
+             and not now that one press is the entire interaction. Empty it
+             costs 4px of margin. -->
+        <div id="libraryHint" class="hint" role="status"></div>
 
         <!-- The real file input, driven by the Upload button above.
              Deliberately OUTSIDE the disclosure and only visually hidden: a
@@ -158,6 +199,22 @@
              Playwright's setInputFiles() and a screen reader need it live. -->
         <input id="resumeFile" type="file" accept=".txt,.docx,.pdf" class="visually-hidden"
                aria-label="Upload a resume file (.txt, .docx or .pdf)" />
+
+        <!-- INTERNAL STATE, NOT AN INPUT ANY MORE.
+             The resume used to be pasteable, and this textarea was where it
+             went; a resume now only ever arrives as a file. It stays in the
+             DOM because it is still the single source of truth every other
+             function reads (extraction writes it, Tailor reads it, the word
+             count derives from it) -- a run must never have two candidate
+             resumes and a "which wins" question, and that property came from
+             there being exactly one holder.
+             aria-hidden + tabindex="-1" because visually-hidden alone leaves
+             it in the accessibility tree: a screen reader user would find an
+             editable "Resume text" field that no sighted user has, and typing
+             into it would produce a resume with no file and no name. Hidden
+             from everyone, or it is not removed -- just removed unevenly. -->
+        <textarea id="resumeText" class="visually-hidden" aria-hidden="true"
+                  tabindex="-1"></textarea>
       </section>
 
       <section class="card">
@@ -242,20 +299,6 @@
         <div class="section-title-row">
           <span class="section-heading">AI provider</span>
         </div>
-        <div class="row">
-          <div>
-            <label for="provider">Provider</label>
-            <select id="provider">
-              <option value="gemini">Gemini — free</option>
-              <option value="groq">Groq — free</option>
-              <option value="openrouter">OpenRouter — free tier</option>
-            </select>
-          </div>
-          <div>
-            <label for="modelName">Model (optional)</label>
-            <input id="modelName" placeholder="provider default" />
-          </div>
-        </div>
         <!-- ONE FIELD PER PROVIDER, and no separate "API key" box above them.
              It used to be a main key plus three optional fallbacks, which read
              as four boxes where one was unlabelled and three were named --
@@ -263,8 +306,8 @@
              looked wrong. The author of this popup was confused by it, which
              settles the question of whether a first-time user would be.
              Now: three boxes, each saying whose key it wants. Fill one or
-             fill all three. The dropdown above only decides which is tried
-             FIRST; the others stand by for when it rate-limits. -->
+             fill all three; a run reaches every provider you have a key for,
+             and rotates when one rate-limits. -->
         <label class="subtle-label" for="keyGemini">Gemini API key</label>
         <input id="keyGemini" type="password" placeholder="stored on this device only"
                autocomplete="off" spellcheck="false" />
@@ -290,6 +333,60 @@
           OpenRouter's free models share an upstream pool, so they work but can be busy.
           Adding a second key means a run that hits a rate limit rotates instead of stalling.
         </div>
+
+        <!-- THE PROVIDER DROPDOWN USED TO SIT AT THE TOP OF THIS CARD, beside
+             "Model (optional)", in the same visual weight as the key fields.
+             It did nothing. buildChainEntries() uses the credential list only
+             to look up keys by provider and then walks TASK_CHAINS for the
+             order, on purpose -- so with no model named, which provider is
+             "selected" changes neither the order of attempts nor the set of
+             providers a run can reach. Every provider you hold a key for is
+             reachable either way.
+             What DOES have an effect is the model box, and its effect is to
+             switch the rotation off entirely: one non-empty value makes
+             buildChainEntries return a single pinned entry and discard the
+             curated chain, every fallback provider, and the per-task policy.
+             An optional-looking field that turns off the feature the product
+             is built on does not belong on the same line as the thing it
+             turns off, unlabelled. So: folded away, named for what it does,
+             and the provider comes with it -- because a bare model name is
+             ambiguous without knowing whose catalogue it is from, which is
+             the only job the dropdown has left. -->
+        <details class="sub" id="pinAdvanced">
+          <summary>Advanced — pin one model</summary>
+          <div class="body">
+            <div class="hint">
+              Leave this empty. Tailorune rotates through a curated list of models for
+              each task and moves on when one rate-limits, errors or refuses. Naming a
+              model here turns that off: every call goes to that one model, with no
+              fallback.
+            </div>
+            <div class="row">
+              <div>
+                <label for="provider">Provider</label>
+                <select id="provider">
+                  <option value="gemini">Gemini</option>
+                  <option value="groq">Groq</option>
+                  <option value="openrouter">OpenRouter</option>
+                </select>
+              </div>
+              <div>
+                <label for="modelName">Model</label>
+                <input id="modelName" placeholder="empty = rotation on"
+                       aria-describedby="pinHint" />
+              </div>
+            </div>
+            <!-- Says what the CURRENT values actually do, because the failure
+                 mode here is silent: pinning a model on a provider you have no
+                 key for produced no entry to carry the pin, so the rotation
+                 quietly stayed on and nothing said so.
+                 DESCRIBEDBY, NOT role="status". It is rewritten on every
+                 keystroke in the model box -- as a live region that is one
+                 announcement per character. As a description it is read when
+                 the field takes focus, which is when it is wanted. -->
+            <div class="hint" id="pinHint"></div>
+          </div>
+        </details>
       </section>
 
       <section class="card">
@@ -338,11 +435,20 @@
              among them it read as part of the output rather than as a cost.
              Advisory either way -- it has never changed, weakened or withheld
              a document -- so defaulting it off costs a run nothing but the
-             call. -->
+             call.
+             NAMED FOR ITS MECHANISM, not for its goal. It was "Accuracy
+             review", and the deterministic checks that ALWAYS run emit
+             accuracy-flavoured findings of their own ("claims a professional
+             identity absent from the source resume"), in the same amber panel.
+             So with the box unticked and no AI reviewer ever called, the
+             obvious reading of an amber accuracy warning was that the setting
+             had been ignored -- reported as exactly that. One extra AI call is
+             the thing being switched on here, so that is what the label
+             says. -->
         <label class="chip settings-chip" for="useJudge"
-               title="Costs one extra AI call. Advisory only — it flags rewrites that drift from your original wording, but never changes, weakens or withholds the document. Yours to judge.">
+               title="Sends the finished resume back to a model for a second opinion, at the cost of one extra AI call. Advisory only — it flags rewrites that drift from your original wording, but never changes, weakens or withholds the document. The basic checks below the run run either way, and cost nothing.">
           <input id="useJudge" type="checkbox" />
-          Accuracy review
+          Second-opinion AI review
         </label>
 
         <label for="preservePoints">Points to preserve</label>

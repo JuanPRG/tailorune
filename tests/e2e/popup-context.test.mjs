@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { openRealPopup, readStorage, waitForStorage } from './realPopup.mjs';
-import { openResumeManage, fillApiKey, closeSettings } from './helpers.mjs';
+import { fillApiKey, closeSettings } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOCX_FIXTURE = path.resolve(__dirname, '../fixtures/resumes/juan-rivera-tabstops.docx');
@@ -30,36 +30,34 @@ test('real popup: uploading a .docx extracts it, all the way through the service
   );
 
   const hint = await popup.textContent('#libraryHint');
-  assert.match(hint, /Click Save to keep it/);
+  assert.match(hint, /^Saved "juan-rivera-tabstops[.]docx" to your library[.]$/);
   assert.deepEqual(dialogs, [], 'the real popup must never open a JS dialog');
 });
 
-test('real popup: the name field takes the uploaded file name, replacing whatever was there', async (t) => {
+test('real popup: an uploaded resume is labelled with the file it came from', async (t) => {
+  // There is no name field to check any more, and no way to override the
+  // name: a resume is a file, and it carries that file's name INCLUDING the
+  // suffix. The pill in the title row is the only place it surfaces, so the
+  // pill is what this asserts.
   const { popup } = await openRealPopup(t);
 
-  // Something already typed in the name field must not survive a new upload:
-  // the file the user just picked is what they are naming, and a stale label
-  // would silently mislabel what gets saved.
-  await popup.fill('#resumeName', '123');
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
-  await openResumeManage(popup);
-  assert.equal(await popup.inputValue('#resumeName'), 'juan-rivera-tabstops');
+  assert.match(await popup.textContent('#resumeMeta'),
+    /^juan-rivera-tabstops[.]docx . \d+ words$/);
 });
 
-test('real popup: saving actually writes to storage — the flow that silently did nothing before', async (t) => {
+test('real popup: uploading actually writes to storage — the flow that silently did nothing before', async (t) => {
+  // NO SAVE PRESS. Uploading files the resume in the library in the same
+  // press, so this covers the whole write with one action.
   const { popup, sw } = await openRealPopup(t);
 
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
-  await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
-
-  await openResumeManage(popup);
-  await popup.fill('#resumeName', 'Finance CV');
-  await popup.click('#saveResumeBtn');
   await popup.waitForFunction(
-    () => document.getElementById('libraryHint').textContent.includes('Saved as'),
-    { timeout: 5000 },
+    () => document.getElementById('libraryHint').textContent
+      === 'Saved "juan-rivera-tabstops.docx" to your library.',
+    { timeout: 20000 },
   );
 
   // The assertion that matters is in STORAGE, not the DOM. A hint can be
@@ -67,39 +65,42 @@ test('real popup: saving actually writes to storage — the flow that silently d
   const stored = await readStorage(sw, RESUMES_KEY);
   assert.ok(stored, 'nothing was written to chrome.storage.local');
   assert.equal(stored.resumes.length, 1);
-  assert.equal(stored.resumes[0].name, 'Finance CV');
+  assert.equal(stored.resumes[0].name, 'juan-rivera-tabstops.docx');
   assert.ok(stored.resumes[0].text.includes('Juan Rivera'));
   assert.equal(stored.lastUsedId, stored.resumes[0].id);
 });
 
-test('real popup: a selected file with an empty textarea is recovered by Save, not refused', async (t) => {
-  // The reported failure state: a file sits in the input, the textarea is
-  // empty, and Save answers "nothing to save". Whatever caused the change
-  // event to be missed, refusing is the wrong response -- the file is right
-  // there. Simulated here by blanking the textarea after extraction, which
+test('real popup: a selected file with an empty holder is recovered by Tailor, not refused', async (t) => {
+  // The reported failure state: a file sits in the input, the holder is empty,
+  // and the extension answers "upload a resume first". Whatever caused the
+  // change event to be missed, refusing is the wrong response -- the file is
+  // right there. Simulated by blanking the holder after extraction, which
   // reproduces the state without needing to reproduce its cause.
-  const { popup, sw } = await openRealPopup(t);
+  //
+  // TAILOR IS THE RECOVERY TRIGGER NOW, not Save. Save used to be the other
+  // one and has been folded into Upload, so this drives the caller that is
+  // left -- which is the point: ensureResumeText() runs from onTailorClick
+  // BEFORE any other check, so the re-read happens whatever else is missing.
+  const { popup } = await openRealPopup(t);
 
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
   await popup.evaluate(() => { document.getElementById('resumeText').value = ''; });
-  await openResumeManage(popup);
-  await popup.fill('#resumeName', 'Recovered CV');
+  await popup.click('#tailorBtn');
 
-  await popup.click('#saveResumeBtn');
+  // The holder is repopulated from the file that was sitting there unread.
   await popup.waitForFunction(
-    () => document.getElementById('libraryHint').textContent.includes('Saved as'),
+    () => document.getElementById('resumeText').value.includes('Juan Rivera'),
     { timeout: 20000 },
   );
 
-  const stored = await readStorage(sw, RESUMES_KEY);
-  assert.equal(stored.resumes.length, 1, 'Save should have re-read the selected file');
-  assert.equal(stored.resumes[0].name, 'Recovered CV');
-  assert.ok(stored.resumes[0].text.includes('Juan Rivera'));
-  // And the textarea is repopulated, so the user can see what was saved.
-  await openResumeManage(popup);
-  assert.ok((await popup.inputValue('#resumeText')).includes('Juan Rivera'));
+  // And the run got PAST the resume check: with no job description it stops
+  // there instead of claiming there is no resume. Asserting on which refusal
+  // arrived is what proves the recovery happened rather than a lucky refill.
+  const status = await popup.textContent('#status');
+  assert.match(status, /job description/i, `expected the job-description refusal, got "${status}"`);
+  assert.doesNotMatch(status, /upload a resume/i, 'the file in the input was ignored');
 });
 
 test('real popup: settings persist as you type, without needing a tailor run', async (t) => {
@@ -115,32 +116,35 @@ test('real popup: the resume card stays compact, and says what is loaded', async
   // The contract of the compact resume card, which is easy to regress by
   // accident because every piece of it still exists in the DOM.
   //
-  //   EMPTY  -- the disclosure is OPEN. Folding the textarea away is the
-  //             point of the layout, but in an empty card it is also the only
-  //             way to paste a resume; closing it there would hide the
-  //             primary input behind a control labelled "Text & library".
-  //   LOADED -- the disclosure is CLOSED and a pill states the name and word
-  //             count. That pill is the whole argument for the redesign: the
-  //             textarea's real job was reassurance, and it cost 110px to do
-  //             it badly, showing three lines from wherever the document
-  //             happened to be scrolled.
+  // THE DISCLOSURE IS GONE, and with it both of the assertions this test used
+  // to make about whether it was open. Upload and Delete are two icons in the
+  // picker's own row -- Save was folded into Upload -- so there is no panel to
+  // be in the wrong state. What is left to check is the icons' AVAILABILITY,
+  // which is how an icon button says "not yet" with no words to say it in.
+  //
+  // The pill stating the name and word count is the rest of the contract, and
+  // the whole argument for the compact card: the textarea's real job was
+  // reassurance, and it cost 110px to do it badly, showing three lines from
+  // wherever the document happened to be scrolled.
   const { popup } = await openRealPopup(t);
   const cardHeight = () => popup.$eval(
     'main.scroll > section.card:first-of-type',
     (el) => Math.round(el.getBoundingClientRect().height),
   );
 
-  assert.equal(await popup.$eval('#resumeManage', (el) => el.open), true,
-    'an empty resume card must leave the paste box reachable');
+  assert.equal(await popup.isDisabled('#deleteResumeBtn'), true, 'nothing selected to delete');
+  assert.equal(await popup.isDisabled('#uploadBtn'), false, 'Upload is the only way in, always live');
   assert.equal(await popup.isVisible('#resumeMeta'), false, 'nothing is loaded, so nothing to summarise');
 
   await popup.setInputFiles('#resumeFile', DOCX_FIXTURE);
   await popup.waitForFunction(() => document.getElementById('resumeText').value.length > 0, { timeout: 20000 });
 
-  assert.equal(await popup.$eval('#resumeManage', (el) => el.open), false,
-    'loading a resume must fold the text away -- that is the request this implements');
+  // Uploading files it, so the trash comes alive on the same press -- there
+  // is now something selected to delete.
+  await popup.waitForFunction(
+    () => !document.getElementById('deleteResumeBtn').disabled, { timeout: 20000 });
   assert.match(
-    await popup.textContent('#resumeMeta'), /juan-rivera-tabstops · \d+ words/,
+    await popup.textContent('#resumeMeta'), /juan-rivera-tabstops[.]docx . \d+ words/,
     'the pill must name the loaded resume and count its words',
   );
 
@@ -189,7 +193,10 @@ test('real popup: the gear swaps views, and never shows two at once', async (t) 
 
   // The fields really moved -- they are reachable in settings and nowhere else.
   await popup.click('#settingsBtn');
-  for (const id of ['#keyGemini', '#keyGroq', '#keyOpenrouter', '#provider',
+  // #pinAdvanced rather than #provider: the provider selector moved inside
+  // that disclosure and is deliberately not visible until it is opened, so
+  // asserting on the container is the version of this that stays true.
+  for (const id of ['#keyGemini', '#keyGroq', '#keyOpenrouter', '#pinAdvanced',
     '#resumeDensity', '#coverLetterTone']) {
     assert.equal(await popup.isVisible(id), true, `${id} should live in the settings view`);
   }
@@ -291,7 +298,6 @@ test('the front page fits in the 600px Chrome allows a popup', async (t) => {
   await page.setViewportSize({ width: 420, height: 600 });
   await page.goto(popup.url());
   await page.fill('#resumeText', 'Ada Lovelace — Analytical Engine notes');
-  await page.$eval('#resumeManage', (el) => { el.open = false; });
   await page.waitForTimeout(250);
 
   const fit = await page.evaluate(() => {
@@ -325,7 +331,6 @@ test('it still fits once the alerts are up', async (t) => {
   // the report: a two-line status with timings, and a notice that wraps.
   const load = async (page, { findings }) => {
     await page.fill('#resumeText', 'Juan Rivera — Analytical Engine notes');
-    await page.$eval('#resumeManage', (el) => { el.open = false; });
     await page.fill('#jobDescription', 'Conair Consumer Products ULC is a privately owned '
       + 'company and part of Conair LLC, a global organization operating in 120 countries.');
     await page.fill('#jobTitle', 'Consumer Service Representative');
@@ -485,7 +490,7 @@ test('findings collapse, and a restored run opens with them shut', async (t) => 
 
 test('a finding cannot inject markup into the popup', async (t) => {
   // Findings go through innerHTML and some of them are written by a language
-  // model -- the accuracy review's issues are its own prose. Unescaped, a
+  // model -- the second-opinion review's issues are its own prose. Unescaped, a
   // model that emitted a tag would have it parsed as markup in a document
   // holding the user's API keys. Nothing has emitted one; "nothing has yet"
   // is not a security property.

@@ -1,4 +1,4 @@
-// popup/popup.entry.js — the whole UI: paste or upload a resume plus a job
+// popup/popup.entry.js — the whole UI: upload a resume plus a job
 // description, get a tailored .docx (and optionally a cover letter .docx)
 // in Downloads, with an HTML preview of each for browser print-to-PDF.
 //
@@ -12,7 +12,7 @@
 
 import { getSettings, setSettings } from '../engine/store.js';
 import {
-  chromeStorageAdapter, loadLibrary, saveResume, deleteResume, markUsed, suggestName,
+  chromeStorageAdapter, loadLibrary, saveResume, deleteResume, markUsed,
 } from '../engine/resumeLibrary.js';
 import { extractDocxText } from '../engine/extractDocxText.js';
 import { extractPdfText } from '../engine/extractPdfText.js';
@@ -31,8 +31,6 @@ const els = {
   resumeText: $('resumeText'),
   resumeFile: $('resumeFile'),
   savedResumes: $('savedResumes'),
-  resumeName: $('resumeName'),
-  saveResumeBtn: $('saveResumeBtn'),
   deleteResumeBtn: $('deleteResumeBtn'),
   libraryHint: $('libraryHint'),
   jobDescription: $('jobDescription'),
@@ -66,6 +64,8 @@ const els = {
   warnings: $('warnings'),
   result: $('result'),
   keyStatus: $('keyStatus'),
+  pinAdvanced: $('pinAdvanced'),
+  pinHint: $('pinHint'),
   priorTailorNotice: $('priorTailorNotice'),
   clearHistoryBtn: $('clearHistoryBtn'),
   themeToggle: $('themeToggle'),
@@ -75,7 +75,6 @@ const els = {
   resumeEmpty: $('resumeEmpty'),
   resumeMeta: $('resumeMeta'),
   uploadBtn: $('uploadBtn'),
-  resumeManage: $('resumeManage'),
 };
 
 const storage = chromeStorageAdapter();
@@ -86,6 +85,19 @@ const storage = chromeStorageAdapter();
 // spin up), which is exactly long enough for a user to click through it.
 // Disabling the button instead would trade one dead end for another.
 let pendingExtraction = null;
+
+/**
+ * The name of the resume currently loaded, and the name it will be SAVED
+ * under. Held here rather than in an input, because there is no longer an
+ * input: a resume arrives as a file, and it keeps that file's name.
+ *
+ * WITH THE EXTENSION, deliberately. "The same name as the original file" is
+ * the literal reading, and it is also the safe one -- saveResume() upserts by
+ * name, so stripping the suffix would collapse `resume.pdf` and `resume.docx`
+ * into one library entry and silently overwrite whichever was saved first.
+ * A user who keeps both formats of the same CV is not unusual.
+ */
+let loadedResumeName = '';
 
 // ---------------------------------------------------------------- library --
 
@@ -122,14 +134,14 @@ async function refreshLibrary({ selectId, loadText = false } = {}) {
 
   const match = library.resumes.find((r) => r.id === chosen);
   els.savedResumes.value = match ? match.id : '';
-  if (match) els.resumeName.value = match.name;
+  if (match) loadedResumeName = match.name;
   if (match && loadText) { els.resumeText.value = match.text; refreshResumeSummary(); }
   return library;
 }
 
 async function onSelectResume() {
   // Changing the selection cancels an armed delete: the armed id would no
-  // longer match, but the button label must stop saying "Confirm".
+  // longer match, but the trash button must stop looking armed.
   disarmDelete();
   const id = els.savedResumes.value;
   if (!id) return;
@@ -137,58 +149,66 @@ async function onSelectResume() {
   const match = library.resumes.find((r) => r.id === id);
   if (!match) return;
   els.resumeText.value = match.text;
-  els.resumeName.value = match.name;
-  refreshResumeSummary();
-  syncManageDisclosure();
-  // Clear any staged upload: the textarea is now the source of truth, and
-  // leaving a file selected would silently override the resume just chosen.
+  loadedResumeName = match.name;
+  // Clear any staged upload FIRST: the holder is the source of truth now, and
+  // leaving a file selected would both override the resume just chosen and
+  // make refreshLibraryControls() read a file that is about to be discarded.
   els.resumeFile.value = '';
+  refreshResumeSummary();
+  refreshLibraryControls();
   await markUsed(storage, id);
   setLibraryHint(`Loaded "${match.name}".`);
 }
 
 /**
- * Save whatever is in the textarea under the name in the name field.
+ * File the just-read resume in the library, under the name of its file.
  *
- * The name comes from a real input rather than window.prompt(). That is not a
- * style preference: opening a JS dialog from a browser-action popup dismisses
- * the popup, and prompt() returns null, so the save silently never happened.
- * It looked fine in tests only because Playwright loads popup.html as an
- * ordinary tab, where dialogs behave normally -- the one context difference
- * that mattered. Nothing in this file may depend on prompt/confirm/alert.
+ * NO LONGER A BUTTON. Save had nothing left to decide once the name became
+ * the filename -- there was no field to fill and no choice to make, and the
+ * hint under it told the user to press it. So uploading does both, and the
+ * library means "the resumes you have uploaded".
+ *
+ * TAKES ITS TEXT AS AN ARGUMENT, and that is load-bearing rather than tidy.
+ * The old version began with `await ensureResumeText()`, which awaits
+ * `pendingExtraction`. This is now called FROM INSIDE that promise, so
+ * re-deriving the text that way would make the extraction await itself and
+ * hang the popup with no error. It must never call ensureResumeText().
+ *
+ * BEST-EFFORT, DELIBERATELY. saveResume() throws at MAX_RESUMES, and the one
+ * thing that must not happen is a full library making a resume unusable: the
+ * text is already in the holder and already tailorable, so a refusal is
+ * reported and nothing is undone. The alternative -- evicting the
+ * least-recently-used entry to make room -- destroys somebody's saved resume
+ * to avoid printing a sentence.
+ *
+ * @returns {Promise<string>} the hint to show: what happened, in one line.
  */
-async function onSaveResume() {
-  const text = await ensureResumeText();
-  if (!text) { setLibraryHint('Nothing to save — paste or upload a resume first.'); return; }
-
-  const selectedId = els.savedResumes.value;
-  const library = await loadLibrary(storage);
-  const existing = library.resumes.find((r) => r.id === selectedId);
-  const name = els.resumeName.value.trim() || (existing ? existing.name : suggestName(text));
-
+async function saveLoadedResume({ text, name }) {
   try {
-    // Pass the id only when the user is updating the resume they had loaded
-    // under its own name; otherwise let saveResume() decide by name, so
-    // re-saving under an existing name updates it rather than duplicating it.
-    const saved = await saveResume(storage, {
-      id: existing && existing.name === name ? existing.id : undefined,
-      name,
-      text,
-    });
+    // NO ID, AND NO LOOKUP HERE. saveResume() upserts by name when it is given
+    // no id, which is exactly the behaviour wanted: re-uploading an edited file
+    // updates that entry instead of adding a second one the user cannot tell
+    // apart. Finding the existing entry here first would restate that rule in
+    // a second place, and the two could then disagree about what counts as the
+    // same name.
+    const saved = await saveResume(storage, { name, text });
     await refreshLibrary({ selectId: saved.id });
-    els.resumeName.value = saved.name;
-  // suggestName() wrote that field in code, and assigning .value fires no
-  // input event -- so the listener that keeps #resumeMeta honest never runs.
-  refreshResumeSummary();
-    setLibraryHint(`Saved as "${saved.name}".`);
+    // saveResume() may settle on a different name than we passed (it falls
+    // back to the resume's own first line when the name is empty), so the pill
+    // takes the SAVED name, not the requested one.
+    loadedResumeName = saved.name;
+    return `Saved "${saved.name}" to your library.`;
   } catch (err) {
-    setLibraryHint(String((err && err.message) || err));
+    // Both facts, in one line. "Not saved" alone would read as "not read", and
+    // the user would upload again to fix a problem uploading cannot fix.
+    return `Read ${name}, but did not save it: ${(err && err.message) || err}`;
   }
 }
 
 /**
  * Delete needs a confirmation step, and window.confirm() is unavailable for
- * the same reason prompt() is (see onSaveResume). So it is two-step: the
+ * the same reason prompt() is unavailable: opening a JS dialog dismisses a
+ * browser-action popup, so the answer never arrives. It is two-step: the
  * first click arms, a second click within a few seconds commits. Arming is
  * scoped to the id that was selected, so changing the dropdown between clicks
  * cannot delete something the user never armed.
@@ -197,10 +217,22 @@ const DELETE_ARM_MS = 4000;
 let armedDeleteId = null;
 let armedDeleteTimer = null;
 
+const DELETE_LABEL = 'Delete the selected resume';
+
+/**
+ * Armed state is an ATTRIBUTE now, not a label swap.
+ *
+ * This used to set textContent to 'Confirm', which is unavailable to an icon
+ * button -- writing text into it would replace the SVG. So the state lives in
+ * `data-armed`, the stylesheet turns the button red on it, and the aria-label
+ * changes so the arming is not a purely visual signal.
+ */
 function disarmDelete() {
   armedDeleteId = null;
   if (armedDeleteTimer) { clearTimeout(armedDeleteTimer); armedDeleteTimer = null; }
-  els.deleteResumeBtn.textContent = 'Delete';
+  delete els.deleteResumeBtn.dataset.armed;
+  els.deleteResumeBtn.setAttribute('aria-label', DELETE_LABEL);
+  els.deleteResumeBtn.title = DELETE_LABEL;
 }
 
 async function onDeleteResume() {
@@ -213,8 +245,11 @@ async function onDeleteResume() {
   if (armedDeleteId !== id) {
     disarmDelete();
     armedDeleteId = id;
-    els.deleteResumeBtn.textContent = 'Confirm';
-    setLibraryHint(`Click Confirm to delete "${match.name}". This cannot be undone.`);
+    els.deleteResumeBtn.dataset.armed = 'true';
+    const confirmLabel = `Confirm deleting "${match.name}"`;
+    els.deleteResumeBtn.setAttribute('aria-label', confirmLabel);
+    els.deleteResumeBtn.title = confirmLabel;
+    setLibraryHint(`Press the trash again to delete "${match.name}". This cannot be undone.`);
     armedDeleteTimer = setTimeout(() => {
       disarmDelete();
       setLibraryHint('');
@@ -225,8 +260,9 @@ async function onDeleteResume() {
   disarmDelete();
   await deleteResume(storage, id);
   await refreshLibrary({ selectId: '' });
-  els.resumeName.value = '';
-  refreshResumeSummary();   // same reason as onSaveResume
+  loadedResumeName = '';
+  refreshResumeSummary();   // .value assignments fire no input event
+  refreshLibraryControls(); // nothing is selected now, so the trash goes dead
   setLibraryHint(`Deleted "${match.name}".`);
 }
 
@@ -255,14 +291,8 @@ async function fileToText(file) {
 }
 
 /**
- * Extract the currently selected file into the textarea. Returns its text, or null.
- *
- * `renameFromFile` is true only when the user actually picked a file: the
- * filename is then the label they expect, and it wins over anything left in
- * the name field. It is false when extraction is triggered implicitly, by
- * Save or Tailor recovering an unread file — there the name field holds
- * something the user typed deliberately, and overwriting it would save their
- * resume under a name they never chose.
+ * Extract the currently selected file into the resume holder. Returns its
+ * text, or null.
  */
 /**
  * Which extraction is the one the user is waiting for.
@@ -277,7 +307,7 @@ async function fileToText(file) {
  */
 let extractionSeq = 0;
 
-async function extractSelectedFile({ renameFromFile = false } = {}) {
+async function extractSelectedFile() {
   const file = els.resumeFile.files[0];
   if (!file) return null;
   const seq = ++extractionSeq;
@@ -295,12 +325,22 @@ async function extractSelectedFile({ renameFromFile = false } = {}) {
       }
       els.resumeText.value = text;
       els.savedResumes.value = '';
-      if (renameFromFile || !els.resumeName.value.trim()) {
-        els.resumeName.value = file.name.replace(/\.[^.]+$/, '');
-      }
+      // UNCONDITIONAL. There used to be a `renameFromFile` flag guarding
+      // this, so an implicit extraction would not clobber a name the user had
+      // typed. There is no name to type now -- the file's name IS the name --
+      // so the flag guarded nothing and is gone.
+      loadedResumeName = file.name;
       refreshResumeSummary();
-      syncManageDisclosure();
-      setLibraryHint(`Read ${file.name}. Click Save to keep it for next time.`);
+
+      // AND FILE IT, in the same press. Only the winning extraction gets
+      // here -- a superseded one returned above -- so picking a second file
+      // while the first is still parsing cannot save the abandoned one.
+      // saveLoadedResume() may reset loadedResumeName, so the pill is
+      // repainted after it rather than before.
+      const hint = await saveLoadedResume({ text, name: file.name });
+      refreshResumeSummary();
+      refreshLibraryControls();
+      setLibraryHint(hint);
       setStatus('');
       return text;
     } catch (err) {
@@ -328,10 +368,16 @@ async function extractSelectedFile({ renameFromFile = false } = {}) {
  * The resume text, extracting a selected-but-unread file if that is what it
  * takes.
  *
- * A file sitting in the file input with an empty textarea is a state the user
- * reasonably reads as "my resume is loaded" -- answering that with "nothing to
- * save" is just wrong, whatever caused the change event to be missed. So both
- * Save and Tailor recover from it instead of refusing.
+ * A file sitting in the file input with an empty holder is a state the user
+ * reasonably reads as "my resume is loaded" -- answering that with "upload a
+ * resume first" is just wrong, whatever caused the change event to be missed.
+ * So Tailor recovers from it instead of refusing.
+ *
+ * TAILOR IS NOW THE ONLY CALLER that can recover it. Save used to be the
+ * other one, and folding Save into Upload removed that second chance -- which
+ * is survivable precisely because Tailor calls this BEFORE it checks anything
+ * else, so the re-read happens whatever else is missing. Re-reading also
+ * files the resume, since extractSelectedFile() saves on success.
  */
 async function ensureResumeText() {
   if (pendingExtraction) await pendingExtraction;
@@ -344,7 +390,7 @@ async function ensureResumeText() {
 
 async function onResumeFileChange() {
   if (!els.resumeFile.files[0]) return;
-  await extractSelectedFile({ renameFromFile: true });
+  await extractSelectedFile();
 }
 
 /** {providerId: key} for every provider the user supplied a fallback key for. */
@@ -460,11 +506,17 @@ function applyProviderKeys(keys) {
 const KEY_FIELD = { gemini: 'keyGemini', groq: 'keyGroq', openrouter: 'keyOpenrouter' };
 
 /**
- * The key for whichever provider is selected, which is the one tried FIRST.
+ * The key belonging to whichever provider the pin selector names.
  *
- * There is no separate box for it any more. resolveProviderChain still takes
- * a primary key and then appends the rest, so the selected provider's own
- * field supplies it -- the dropdown decides order, nothing else.
+ * NOT "the one tried first", which is what this said and what the dropdown
+ * was believed to control. resolveProviderChain does put it first in the
+ * array, but buildChainEntries reads that array only as a providerId -> key
+ * lookup and takes the ORDER from TASK_CHAINS, deliberately. So with no model
+ * pinned this choice reaches the run in exactly one way: it decides which
+ * entry carries the `model` field -- and with no model there is none.
+ *
+ * It still matters for a pin, because that entry is the only one a pinned
+ * run uses.
  */
 function primaryApiKey() {
   return collectProviderKeys()[els.provider.value] || '';
@@ -576,26 +628,24 @@ function applyTheme(theme) {
  * loaded"; three lines from wherever the document happened to be scrolled --
  * which is all the textarea actually showed -- say very little.
  *
- * MUST BE CALLED AFTER #resumeName is set, never before. Three call sites had
- * it the other way round. That cost nothing while this function only toggled
- * a mascot, and would have quietly dropped the name from the pill.
+ * MUST BE CALLED AFTER loadedResumeName is set, never before. Three call
+ * sites had it the other way round. That cost nothing while this function
+ * only toggled a mascot, and would have quietly dropped the name from the
+ * pill.
  */
 /**
- * Open the text-and-library disclosure only while there is nothing loaded.
+ * Grey out the trash when there is nothing selected to throw away.
  *
- * Folding the textarea away is the point of this layout, but in an EMPTY
- * popup it is also the only way to paste a resume -- collapsing it there
- * would hide the primary input behind a control labelled "Text & library"
- * and leave Upload as the only visible way in. So: open when empty, closed
- * once a resume exists.
+ * An icon carries no words, so a live-looking button that answers a press
+ * with a one-line hint reads as broken; being visibly unavailable is the
+ * version of "not yet" that an icon can actually deliver.
  *
- * Called when a resume ARRIVES FROM ELSEWHERE -- boot, an upload, a library
- * pick -- and deliberately not while the user is typing, since collapsing
- * the box someone is typing into would be absurd.
+ * This governed Save too until Save was folded into Upload. Upload itself is
+ * never disabled -- it is the only way a resume gets in, and there is no
+ * state in which offering it is wrong.
  */
-function syncManageDisclosure() {
-  if (!els.resumeManage) return;
-  els.resumeManage.open = !els.resumeText.value.trim();
+function refreshLibraryControls() {
+  if (els.deleteResumeBtn) els.deleteResumeBtn.disabled = !els.savedResumes.value;
 }
 
 function refreshResumeSummary() {
@@ -607,7 +657,7 @@ function refreshResumeSummary() {
   els.resumeMeta.hidden = !text;
   if (!text) return;
   const words = text.split(/\s+/).filter(Boolean).length;
-  const name = els.resumeName.value.trim();
+  const name = loadedResumeName.trim();
   els.resumeMeta.textContent = name ? `${name} · ${words} words` : `${words} words`;
   els.resumeMeta.title = els.resumeMeta.textContent;
 }
@@ -665,9 +715,48 @@ function refreshKeyStatus() {
   // key" (which invites "no I have three") and "Gemini" (which invites "ah,
   // the others are not set").
   els.keyStatus.textContent = names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+  // NO ORDER IS PROMISED HERE. This used to read "in order: A -> B", naming
+  // the order of the chain array -- which buildChainEntries deliberately
+  // discards in favour of the curated per-task chain. The set is the true
+  // part, so the set is what it says.
   els.keyStatus.title = names.length === 1
     ? `Only ${names[0]} is set up. Add another provider's key in Settings so a run can survive a rate limit.`
-    : `A run can rotate across ${names.length} providers, in order: ${names.join(' -> ')}.`;
+    : `A run can rotate across ${names.length} providers: ${names.join(', ')}. `
+      + 'Which one each step tries first is chosen per task.';
+}
+
+/** The display name of one provider, without importing the whole table. */
+const providerLabel = (id) => chainLabels([{ providerId: id }])[0] || id;
+
+/**
+ * State the pin's ACTUAL effect, recomputed from the live fields.
+ *
+ * Three outcomes, and the third is why this element exists: a model pinned on
+ * a provider whose key box is empty produces no chain entry, so nothing
+ * carries the pin and the curated rotation quietly stays on. That was
+ * unobservable -- the field looked set and behaved as though it were not.
+ */
+function renderPinHint() {
+  if (!els.pinHint) return;
+  const model = els.modelName.value.trim();
+  const providerId = els.provider.value;
+  const label = providerLabel(providerId);
+
+  if (!model) {
+    els.pinHint.textContent = 'Rotation on. Provider is only used to say whose '
+      + 'catalogue a pinned model comes from, so it has no effect while this is empty.';
+    els.pinHint.dataset.state = 'off';
+    return;
+  }
+  if (!collectProviderKeys()[providerId]) {
+    els.pinHint.textContent = `No ${label} key is set, so this pin does nothing `
+      + `and rotation stays on. Add a ${label} key above, or clear the model.`;
+    els.pinHint.dataset.state = 'broken';
+    return;
+  }
+  els.pinHint.textContent = `Rotation off. Every call goes to ${model} on ${label}, `
+    + 'with no fallback if it rate-limits or refuses.';
+  els.pinHint.dataset.state = 'on';
 }
 
 async function persistSettings() {
@@ -678,6 +767,7 @@ const PERSIST_DEBOUNCE_MS = 250;
 let persistTimer = null;
 function schedulePersist() {
   refreshKeyStatus();
+  renderPinHint();
   refreshResumeSummary();
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => { persistTimer = null; persistSettings(); }, PERSIST_DEBOUNCE_MS);
@@ -693,6 +783,10 @@ async function restoreSettings() {
   if (!settings) return;
   if (settings.provider) els.provider.value = settings.provider;
   if (settings.model) els.modelName.value = settings.model;
+  // A PIN MUST NOT BE INVISIBLE. It suppresses the whole rotation, so folding
+  // it away while it is set would hide the reason a run only ever reaches one
+  // model. Collapsed is the right default only for the empty case.
+  if (settings.model && els.pinAdvanced) els.pinAdvanced.open = true;
   // MIGRATION. Until 2.3.0 the key lived in one unlabelled box, saved as
   // `apiKey`, and the per-provider boxes were optional extras. Anyone who has
   // already entered a key has it in `apiKey` and nothing in the box that now
@@ -711,6 +805,7 @@ async function restoreSettings() {
   applyProviderKeys(settings.providerKeys);
   applyTheme(settings.theme || 'system');
   refreshKeyStatus();
+  renderPinHint();
 }
 
 /**
@@ -754,7 +849,7 @@ ${(llm.ms / 1000).toFixed(0)}s in ${llm.calls} AI call${llm.calls === 1 ? '' : '
 /** Surface validation findings honestly instead of only reporting success. */
 /**
  * Findings go through innerHTML, and some of them are written by a language
- * model -- the accuracy review's issues are its own prose. Unescaped, a
+ * model -- the second-opinion review's issues are its own prose. Unescaped, a
  * model that emitted a tag would have it parsed as markup inside the popup.
  * Nothing has, but "nothing has yet" is not a security property.
  */
@@ -785,10 +880,13 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
   // The judge is advisory: its findings are shown so the user can decide,
   // never used to withhold the document.
   if (resumeJudge && !resumeJudge.passed && resumeJudge.issues && resumeJudge.issues.length) {
-    groups.push({ label: 'Accuracy review — advisory, nothing was changed', items: resumeJudge.issues });
+    groups.push({
+      label: 'Second-opinion AI review — advisory, nothing was changed',
+      items: resumeJudge.issues,
+    });
   }
   if (resumeJudge && resumeJudge.judgeError) {
-    groups.push({ label: 'Accuracy review skipped', items: [resumeJudge.judgeError] });
+    groups.push({ label: 'Second-opinion AI review skipped', items: [resumeJudge.judgeError] });
   }
   if (skills && skills.reverted && skills.reverted.length) {
     groups.push({
@@ -806,8 +904,20 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
   if (resumeIssues.length) {
     // approved_with_judge_warning is an approved outcome -- the judge is
     // advisory -- so it must not be labelled as though something went wrong.
+    //
+    // LABELLED "automatic" because these are the checks that always run, and
+    // saying so is the other half of the fix that renamed the AI reviewer.
+    // A bare "Resume" heading over "claims a professional identity absent
+    // from the source resume" is indistinguishable from an AI accuracy
+    // verdict, which is how an unticked box came to look like it had been
+    // ignored. These cost no AI call and cannot be switched off.
     const approved = !resumeStatus || resumeStatus.startsWith('approved');
-    groups.push({ label: approved ? 'Resume' : `Resume (${resumeStatus})`, items: resumeIssues });
+    groups.push({
+      label: approved
+        ? 'Resume checks — automatic, no AI call'
+        : `Resume (${resumeStatus})`,
+      items: resumeIssues,
+    });
   }
   if (coverLetter) {
     const clIssues = [...(coverLetter.errors || []), ...(coverLetter.warnings || [])];
@@ -827,10 +937,10 @@ function renderFindings({ resumeStatus, resumeWarnings, resumeErrors, resumeJudg
 }
 
 async function onTailorClick() {
-  // The textarea is the single source of truth for the resume. An uploaded
-  // file is extracted into it the moment it is selected (onResumeFileChange),
-  // so there is no second, competing input here and no "which one wins"
-  // question at run time -- but that extraction may still be running.
+  // One holder is the single source of truth for the resume. An uploaded file
+  // is extracted into it the moment it is selected (onResumeFileChange), so
+  // there is no second, competing input here and no "which one wins" question
+  // at run time -- but that extraction may still be running.
   const resumeText = await ensureResumeText();
   const jobDescription = els.jobDescription.value.trim();
   const providerId = els.provider.value;
@@ -849,7 +959,7 @@ async function onTailorClick() {
     // locking a job, after Reset, or with a previous run restored produced no
     // message, no run, and no visible change whatsoever.
     if (statusKind !== 'file-error') {
-      setStatus('Paste your resume, upload a file, or pick a saved one first.');
+      setStatus('Upload a resume, or pick a saved one, first.');
     }
     return;
   }
@@ -1358,7 +1468,6 @@ if (els.resetBtn) els.resetBtn.addEventListener('click', onResetClick);
 if (els.footerResetBtn) els.footerResetBtn.addEventListener('click', onResetClick);
 els.tailorBtn.addEventListener('click', onTailorClick);
 els.savedResumes.addEventListener('change', onSelectResume);
-els.saveResumeBtn.addEventListener('click', onSaveResume);
 els.deleteResumeBtn.addEventListener('click', onDeleteResume);
 els.resumeFile.addEventListener('change', onResumeFileChange);
 // Clearing the value on click guarantees `change` fires even when the user
@@ -1385,10 +1494,14 @@ if (els.themeToggle) {
 
 applyTheme('system');
 refreshKeyStatus();
+renderPinHint();
 refreshResumeSummary();
-syncManageDisclosure();
+refreshLibraryControls();
+// KEPT even though the textarea is no longer user-editable: assigning
+// .value in code fires no input event, but the e2e suite sets the resume
+// by filling this holder directly -- which IS an input event, and is what
+// keeps #resumeMeta honest in those tests.
 els.resumeText.addEventListener('input', refreshResumeSummary);
-els.resumeName.addEventListener('input', refreshResumeSummary);
 
 // The file input is visually hidden, so this is the control the user actually
 // presses; clicking it opens the same OS picker.
@@ -1403,4 +1516,4 @@ loadTailoringHistory()
 restoreSettings();
 // Reopening the popup reloads whichever resume was used last, so the common
 // case -- one resume, many applications -- needs no interaction at all.
-refreshLibrary({ loadText: true }).then(syncManageDisclosure);
+refreshLibrary({ loadText: true }).then(refreshLibraryControls);

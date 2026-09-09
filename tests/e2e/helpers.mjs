@@ -84,10 +84,25 @@ export const KEY_FIELD = {
   gemini: '#keyGemini', groq: '#keyGroq', openrouter: '#keyOpenrouter',
 };
 
+/**
+ * The provider selector lives inside a collapsed <details> now, so it is not
+ * actionable and selectOption would time out. Opened via the DOM rather than
+ * by clicking the summary: this is setup, not the behaviour under test, and a
+ * click there would make every test that configures a provider depend on the
+ * disclosure's hit box.
+ */
+async function openPinAdvanced(page) {
+  await page.evaluate(() => {
+    const d = document.getElementById('pinAdvanced');
+    if (d) d.open = true;
+  });
+}
+
 export async function configureProvider(page, {
   provider = 'gemini', apiKey = 'test-key-not-real', fallbacks = {},
 } = {}) {
   await openSettings(page);
+  await openPinAdvanced(page);
   await page.selectOption('#provider', provider);
   await page.fill(KEY_FIELD[provider], apiKey);
   for (const [id, key] of Object.entries(fallbacks)) {
@@ -159,16 +174,8 @@ export async function pdfTextOf(filePath) {
   return out.replace(/\s+/g, ' ');
 }
 
-/**
- * Open the resume card's "Text & library" disclosure.
- *
- * The textarea, the name field and Save/Delete live behind it: the point of
- * that layout is that a loaded resume shows a name and a word count rather
- * than 110px of scrolled document. It opens itself while the card is empty
- * and closes when a resume arrives, so any test that drives those controls
- * AFTER loading one has to open it -- the same click a user makes, and the
- * same reason fillApiKey() opens the settings view.
- */
-export async function openResumeManage(page) {
-  await page.locator('#resumeManage').evaluate((el) => { el.open = true; });
-}
+// openResumeManage() used to live here, and every test that touched Save,
+// Delete or the name field had to call it first. It is gone with the paste
+// box: the disclosure now holds only Save and Delete, and opens itself
+// exactly when a loaded resume is not yet in the library -- which is the one
+// moment a test wants to press Save. Nothing has to reach past it any more.

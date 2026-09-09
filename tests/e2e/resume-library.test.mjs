@@ -15,14 +15,44 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import { getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey, openResumeManage } from './helpers.mjs';
+import {
+  getExtensionServiceWorker, docxTextOf, waitForCompletedDownload, fillApiKey,
+} from './helpers.mjs';
 import { startMockLlmServer } from './mockLlmServer.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = path.resolve(__dirname, '../../extension');
-const DOCX_FIXTURE = path.resolve(__dirname, '../fixtures/resumes/juan-rivera-tabstops.docx');
+const FIXTURES = path.resolve(__dirname, '../fixtures/resumes');
+const DOCX_FIXTURE = path.join(FIXTURES, 'juan-rivera-tabstops.docx');
+const TXT_FIXTURE = path.join(FIXTURES, 'jordan-lee-standard.txt');
+// Same stem, different suffix. A resume is saved under the file's FULL name
+// for this reason: these two must be two library entries, not one that
+// silently overwrites the other.
+const SAME_STEM_DOCX = path.join(FIXTURES, 'juan-rivera.docx');
+const SAME_STEM_PDF = path.join(FIXTURES, 'juan-rivera.pdf');
 
 const MOCKED_SUMMARY = 'TAILORED SUMMARY from a saved resume.';
+
+/**
+ * Upload a file. That files it in the library too -- there is no Save press.
+ *
+ * THE WAIT IS KEYED ON THE FILENAME, which is what makes it a real wait rather
+ * than an assertion satisfied by the previous upload's leftovers. Waiting on
+ * the extracted TEXT looks equivalent and is not: two fixtures can share their
+ * contents -- juan-rivera.docx and juan-rivera.pdf do -- so a second upload's
+ * wait would be met by the first upload's text, and the test would race the
+ * write it is about to assert on.
+ */
+async function uploadResume(page, fixture) {
+  const name = path.basename(fixture);
+  await page.setInputFiles('#resumeFile', fixture);
+  await page.waitForFunction(
+    (n) => document.getElementById('libraryHint').textContent === `Saved "${n}" to your library.`,
+    name,
+    { timeout: 20000 },
+  );
+  return name;
+}
 
 /**
  * One persistent browser profile for the whole test, so chrome.storage.local
@@ -120,19 +150,15 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
     { timeout: 20000 },
   );
 
-  // The name defaults to the uploaded file's base name, which beats the first
-  // line of the resume — that is just the person's name, and identical across
-  // every resume they own.
-  // Uploading a resume collapses the disclosure, so open it to reach the name.
-  await openResumeManage(first);
-  assert.equal(await first.inputValue('#resumeName'), 'juan-rivera-tabstops');
-
-  await first.fill('#resumeName', 'Finance CV');
-  await first.click('#saveResumeBtn');
+  // ONE PRESS DID ALL OF IT: read, named after the file, and filed in the
+  // library. There is no Save button to follow up with and no name to type,
+  // so the pill in the title row is the whole naming story.
   await first.waitForFunction(
-    () => document.getElementById('libraryHint').textContent.includes('Saved as'),
-    { timeout: 5000 },
+    () => document.getElementById('libraryHint').textContent
+      === 'Saved "juan-rivera-tabstops.docx" to your library.',
+    { timeout: 20000 },
   );
+  assert.match(await first.textContent('#resumeMeta'), /^juan-rivera-tabstops\.docx · \d+ words$/);
 
   // Settings persist on change rather than only on run, so an API key typed
   // and never used still survives. Wait for the write to actually land before
@@ -152,9 +178,9 @@ test('a resume uploaded once is saved, survives the popup closing, and reloads a
   );
 
   const selectedLabel = await second.$eval('#savedResumes', (el) => el.options[el.selectedIndex].textContent);
-  assert.equal(selectedLabel, 'Finance CV', 'the saved resume should be selected on open');
-  await openResumeManage(second);
-  assert.equal(await second.inputValue('#resumeName'), 'Finance CV', 'the name field should reflect the selection');
+  assert.equal(selectedLabel, 'juan-rivera-tabstops.docx', 'the saved resume should be selected on open');
+  assert.match(await second.textContent('#resumeMeta'), /^juan-rivera-tabstops\.docx · \d+ words$/,
+    'the pill should name the restored resume');
 
   const fileInputValue = await second.inputValue('#resumeFile');
   assert.equal(fileInputValue, '', 'no file should need to be re-uploaded');
@@ -189,41 +215,43 @@ test('a second saved resume can be switched between, and deleting takes two clic
   const page = await openPopup(context, extensionId, mockLlm.url);
   const dialogs = forbidDialogs(page);
 
-  // Save two distinct resumes by pasting, which needs no extraction round-trip.
-  await page.fill('#resumeText', 'Ada Lovelace\nAAA distinctive body text');
-  await page.fill('#resumeName', 'Resume A');
-  await page.click('#saveResumeBtn');
-  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
-
-  await page.fill('#resumeText', 'Ada Lovelace\nBBB distinctive body text');
-  await page.fill('#resumeName', 'Resume B');
-  await page.click('#saveResumeBtn');
-  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Resume B'));
+  // TWO REAL UPLOADS. This used to paste two resumes and type a name for
+  // each, which was cheaper but is now impossible: there is no paste box and
+  // no name field, and the names under test ARE the filenames. Two fixtures
+  // in different formats also keep the .docx and .txt readers on this path.
+  await uploadResume(page, DOCX_FIXTURE);
+  await uploadResume(page, TXT_FIXTURE);
 
   const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(labels, ['Load a saved resume…', 'Resume A', 'Resume B']);
+  assert.deepEqual(labels,
+    ['Load a saved resume…', 'juan-rivera-tabstops.docx', 'jordan-lee-standard.txt']);
 
   // Switching the dropdown loads that resume's text and its name.
   const aValue = await page.$eval('#savedResumes option:nth-child(2)', (o) => o.value);
   await page.selectOption('#savedResumes', aValue);
-  await page.waitForFunction(() => document.getElementById('resumeText').value.includes('AAA'));
-  // Switching resumes collapses it again.
-  await openResumeManage(page);
-  assert.equal(await page.inputValue('#resumeName'), 'Resume A');
+  await page.waitForFunction(() => document.getElementById('resumeText').value.includes('Juan Rivera'));
+  assert.match(await page.textContent('#resumeMeta'), /^juan-rivera-tabstops\.docx · \d+ words$/);
 
   // Deleting is two-step, since confirm() is unavailable in a real popup.
   // The first click only arms it — nothing may be removed yet.
   await page.click('#deleteResumeBtn');
-  await page.waitForFunction(() => document.getElementById('deleteResumeBtn').textContent === 'Confirm');
+  // ARMED IS AN ATTRIBUTE, not a label. The button is an icon now, so there
+  // is no text to swap to "Confirm" -- writing text in would replace the SVG.
+  await page.waitForFunction(
+    () => document.getElementById('deleteResumeBtn').dataset.armed === 'true');
   const afterArming = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(afterArming, ['Load a saved resume…', 'Resume A', 'Resume B'], 'arming must not delete anything');
+  assert.deepEqual(afterArming,
+    ['Load a saved resume…', 'juan-rivera-tabstops.docx', 'jordan-lee-standard.txt'],
+    'arming must not delete anything');
 
   await page.click('#deleteResumeBtn');
   await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Deleted'));
 
   const remaining = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(remaining, ['Load a saved resume…', 'Resume B'], 'the wrong resume was removed');
-  assert.equal(await page.$eval('#deleteResumeBtn', (el) => el.textContent), 'Delete', 'the button should reset');
+  assert.deepEqual(remaining, ['Load a saved resume…', 'jordan-lee-standard.txt'],
+    'the wrong resume was removed');
+  assert.equal(await page.$eval('#deleteResumeBtn', (el) => el.dataset.armed), undefined,
+    'the button should disarm itself after committing');
   assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
 });
 
@@ -235,21 +263,49 @@ test('re-saving a loaded resume under the same name updates it instead of duplic
   const page = await openPopup(context, extensionId, mockLlm.url);
   const dialogs = forbidDialogs(page);
 
-  await page.fill('#resumeText', 'Ada Lovelace\noriginal body');
-  await page.fill('#resumeName', 'My CV');
-  await page.click('#saveResumeBtn');
-  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
+  await uploadResume(page, DOCX_FIXTURE);
 
-  // Edit the loaded resume and save again under the same name.
-  await page.fill('#resumeText', 'Ada Lovelace\nedited body');
-  await page.click('#saveResumeBtn');
-  await page.waitForFunction(() => document.getElementById('libraryHint').textContent.includes('Saved as'));
+  // The user edited their resume on disk and uploads it again. The name has
+  // not changed, so this must UPDATE that entry rather than add a second one
+  // they cannot tell apart.
+  //
+  // The hint is blanked and the input cleared to [] first, and both matter.
+  // Blanking stops the wait below from passing on the FIRST upload's message;
+  // clearing guarantees the file list genuinely changes on the way back, since
+  // setInputFiles with an unchanged list is not a reliable way to make the
+  // change event fire a second time.
+  await page.evaluate(() => { document.getElementById('libraryHint').textContent = ''; });
+  await page.setInputFiles('#resumeFile', []);
+  await page.setInputFiles('#resumeFile', DOCX_FIXTURE);
+  await page.waitForFunction(
+    () => document.getElementById('libraryHint').textContent
+      === 'Saved "juan-rivera-tabstops.docx" to your library.',
+    { timeout: 20000 },
+  );
 
   const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
-  assert.deepEqual(labels, ['Load a saved resume…', 'My CV'], 'a duplicate entry was created');
+  assert.deepEqual(labels, ['Load a saved resume…', 'juan-rivera-tabstops.docx'],
+    'a duplicate entry was created');
+  assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
+});
 
-  // Reopening proves the edit is what persisted, not the original.
-  const reopened = await openPopup(context, extensionId, mockLlm.url);
-  await reopened.waitForFunction(() => document.getElementById('resumeText').value.includes('edited body'));
+test('two formats of the same resume are two entries, not one overwriting the other', async (t) => {
+  // WHY THE SAVED NAME KEEPS THE FILE EXTENSION. saveResume() upserts by
+  // name, so naming these "juan-rivera" both times would make the second
+  // upload silently replace the first -- a user who keeps a .docx to edit and
+  // a .pdf to send would lose one of them by uploading the other.
+  const mockLlm = await startMockLlmServer(() => ({ choices: [{ message: { content: '{}' } }] }));
+  t.after(() => mockLlm.close());
+
+  const { context, extensionId } = await launch(t);
+  const page = await openPopup(context, extensionId, mockLlm.url);
+  const dialogs = forbidDialogs(page);
+
+  await uploadResume(page, SAME_STEM_DOCX);
+  await uploadResume(page, SAME_STEM_PDF);
+
+  const labels = await page.$$eval('#savedResumes option', (opts) => opts.map((o) => o.textContent));
+  assert.deepEqual(labels, ['Load a saved resume…', 'juan-rivera.docx', 'juan-rivera.pdf'],
+    'the two formats collapsed into one library entry');
   assert.deepEqual(dialogs(), [], 'the popup must never open a JS dialog');
 });

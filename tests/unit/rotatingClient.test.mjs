@@ -23,6 +23,7 @@ import {
   buildChainEntries, demoteModel, describeChain,
   COOLDOWN_MS, TASK_FAILURE_COOLDOWN_MS, SHARED_SCOPE_FAILURES,
 } from '../../extension/engine/rotatingClient.js';
+import { resolveProviderChain } from '../../extension/engine/providers.js';
 import { LlmError, resetReasoningEffortSupport, strictJsonDisabled } from '../../extension/engine/llm.js';
 import { resetRateWindows } from '../../extension/engine/rateWindow.js';
 
@@ -528,6 +529,64 @@ test('a pinned model is honoured and exempt from task policy', () => {
   );
   assert.deepEqual(entries.map((e) => e.model), ['gemini-3.5-flash']);
   assert.equal(entries[0].pinned, true);
+});
+
+// --- what the settings UI can and cannot do to a run --------------------
+//
+// These three exist because the popup showed a "Provider" dropdown beside
+// "Model (optional)" in the same weight as the key fields, and a reader
+// reasonably concluded the dropdown steered the rotation. It does not steer
+// anything. The model box does, and what it does is switch the rotation off.
+// Both facts are asserted here so the UI cannot drift back into implying
+// otherwise without a test failing.
+
+test('with no model pinned, the provider selection changes nothing about a run', () => {
+  fresh();
+  const providerKeys = { gemini: 'k1', groq: 'k2', openrouter: 'k3' };
+  const resolved = (providerId) => buildChainEntries(
+    resolveProviderChain({
+      providerId, apiKey: providerKeys[providerId], model: '', providerKeys,
+    }),
+    { task: 'resume' },
+  ).map((e) => `${e.providerId}:${e.model}`);
+
+  const asGemini = resolved('gemini');
+  assert.ok(asGemini.length > 1, 'the fixture must actually produce a chain to compare');
+  assert.deepEqual(resolved('groq'), asGemini,
+    'selecting Groq must not reorder or re-limit the curated chain');
+  assert.deepEqual(resolved('openrouter'), asGemini);
+});
+
+test('a pinned model discards the curated chain and every fallback provider', () => {
+  fresh();
+  const providerKeys = { gemini: 'k1', groq: 'k2', openrouter: 'k3' };
+  const chainFor = (model) => buildChainEntries(
+    resolveProviderChain({ providerId: 'gemini', apiKey: 'k1', model, providerKeys }),
+    { task: 'resume' },
+  );
+
+  assert.ok(chainFor('').length > 1, 'unpinned, a run rotates');
+  const pinned = chainFor('gemini-3.5-flash');
+  assert.equal(pinned.length, 1, 'pinned, a run has exactly one attempt and no fallback');
+  assert.equal(pinned[0].providerId, 'gemini');
+  assert.equal(pinned[0].pinned, true);
+});
+
+test('a model pinned on a provider with no key is dropped, and rotation stays on', () => {
+  fresh();
+  // The silent failure the settings panel now reports in words: the pin needs
+  // the selected provider's key to ride on, and without one it produces no
+  // entry at all -- so the run rotates while the field says it is pinned.
+  const providerKeys = { gemini: '', groq: 'k2', openrouter: '' };
+  const entries = buildChainEntries(
+    resolveProviderChain({
+      providerId: 'gemini', apiKey: '', model: 'gemini-3.5-flash', providerKeys,
+    }),
+    { task: 'resume' },
+  );
+  assert.ok(entries.length >= 1, 'the run is still possible on the key that does exist');
+  assert.ok(entries.every((e) => !e.pinned), 'nothing carries the pin');
+  assert.ok(entries.every((e) => e.providerId === 'groq'));
 });
 
 test('no task walks every route, for a caller with no opinion', () => {

@@ -267,12 +267,37 @@ body {
   cursor: pointer;
   transition: color 0.16s ease, border-color 0.16s ease;
 }
-.icon-btn:hover { color: var(--text); border-color: var(--border-2); }
+.icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
 .icon-btn svg { width: 14px; height: 14px; }
 .icon-btn:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
+/* An icon button carries no words, so a dead one has nothing to explain
+   itself with -- it has to LOOK unavailable or it reads as broken. */
+.icon-btn:disabled { opacity: 0.34; cursor: not-allowed; }
+
+/* ---------- the resume row: one picker, three icons ---------- */
+
+/* `.row > *` sets flex:1 so the paired select/input rows share their width
+   evenly. Here that would stretch each 26px icon to a quarter of the popup,
+   so the icons opt out and the picker takes what is left. */
+.resume-row .icon-btn { flex: 0 0 auto; width: 34px; height: auto; }
+.resume-row .icon-btn svg { width: 15px; height: 15px; }
+.resume-row select { flex: 1 1 auto; }
+
+/* ARMED DELETE, and the one place in this popup that earns red.
+   Elsewhere destructive-ish controls use --warn, on the argument that red
+   should be held in reserve; this is what it was held in reserve FOR. There
+   is no text to change to "Confirm" -- the button is the confirmation -- so
+   the colour is doing the whole job of saying "the next press is the one".
+   --error is 5.53:1 on surface in dark, 5.69:1 in light. */
+#deleteResumeBtn[data-armed="true"] {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--error-soft);
+}
+#deleteResumeBtn[data-armed="true"]:focus-visible { outline-color: var(--error); }
 
 /* ---------- scroll region ---------- */
 
@@ -634,6 +659,18 @@ details.sub > summary:hover { color: var(--text-2); }
 details.sub > summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: 4px; }
 details.sub .body > label:first-child { margin-top: 9px; }
 
+/* The pin's live effect line. Amber for both states that switch the rotation
+   off or silently fail to, because both are things the user would want to
+   notice; the default (rotation on, nothing pinned) stays a plain hint. */
+#pinHint { margin-top: 6px; }
+#pinHint[data-state="on"],
+#pinHint[data-state="broken"] {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: 5px;
+  padding: 5px 7px;
+}
+
 /* Present for the DOM and for assistive tech, absent from the layout. The
    file input needs this rather than [hidden]: it is clicked programmatically
    by the Upload button and its files are set directly by the e2e suite, and
@@ -839,7 +876,8 @@ button { font: inherit; cursor: pointer; border-radius: var(--radius-field); }
 .secondary-btn:disabled { opacity: 0.5; cursor: default; }
 .secondary-btn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
-.mini-btn { padding: 7px 10px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+/* .mini-btn lived here and is gone: its only three users were Upload, Save
+   and Delete in the resume card, and all three are icon buttons now. */
 
 /* ---------- collapsibles ---------- */
 
