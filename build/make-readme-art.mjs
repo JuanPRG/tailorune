@@ -10,6 +10,10 @@
 // matching the product.
 //
 //   hero.png   1200x640  one clean popup, no words but the product's own
+//              NO LONGER IN THE README -- docs/img/demo.png took that slot,
+//              being an animated recording of a real run rather than a staged
+//              still. Kept because it is a good single-frame image for a
+//              social preview or a listing, where an APNG will not animate.
 //   dataflow.png 1200x372  what leaves the machine, and what does not
 
 import { chromium } from 'playwright';

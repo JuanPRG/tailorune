@@ -19,3 +19,6 @@ extension/popup/popup.bundle.js
 .env.*.local
 tests/live/last-run.docx
 dist/
+
+# throwaway Chrome profile for build/make-demo.mjs, recreated every run
+.demo-profile/

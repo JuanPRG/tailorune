@@ -1,0 +1,39 @@
+Jordan Lee
+Vancouver, British Columbia, Canada | jordan.lee@example.com | 604-555-0199
+https://www.linkedin.com/in/jordanlee
+
+SUMMARY
+Product analyst with six years turning messy operational data into decisions
+that stuck. Comfortable owning a question end to end: pulling the data,
+choosing the method, and sitting with the team that has to act on the answer.
+
+WORK EXPERIENCE
+
+Product Analyst | Northwind Analytics | Vancouver, BC
+Mar 2021 - Present
+- Rebuilt the weekly reporting pipeline in dbt and Snowflake, cutting turnaround from 4 days to 6 hours for 3 business units.
+- Designed and ran 28 pricing experiments; the 9 that shipped raised contribution margin by 4.2% on a $31M product line.
+- Replaced a hand-maintained spreadsheet forecast with a Python model, reducing mean absolute error from 22% to 9%.
+- Trained 14 analysts and merchandisers on the self-serve dashboards, which cut ad-hoc data requests by roughly half.
+
+Data Analyst | Fabrikam Logistics | Burnaby, BC
+Jul 2019 - Feb 2021
+- Built the first company-wide SQL warehouse view of delivery exceptions, covering 240,000 shipments a quarter.
+- Found and quantified a routing defect costing $180K a year in redelivery fees, and wrote the rules that fixed it.
+- Automated 11 recurring reports in Airflow, freeing about 20 analyst hours a month.
+
+Junior Analyst | Tailspin Retail Group | Vancouver, BC
+Sep 2018 - Jun 2019
+- Segmented 1.2M loyalty members and handed marketing the cohort definitions still used for their quarterly campaigns.
+- Wrote the QA checks that caught a double-counting error in store-level revenue before it reached the board deck.
+
+EDUCATION
+Master of Science, Data Science | 2019
+Simon Fraser University
+
+Bachelor of Commerce, Business Analytics | 2017
+University of British Columbia
+
+TECHNICAL SKILLS
+SQL, Python, pandas, dbt, Snowflake, Airflow, Looker, Tableau, A/B testing,
+causal inference, forecasting, Git, Excel

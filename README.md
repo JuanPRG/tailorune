@@ -11,10 +11,13 @@ No account. No server. Bring your own AI key.
 
 ![MIT licence](https://img.shields.io/badge/licence-MIT-2F7A63)
 ![Manifest V3](https://img.shields.io/badge/Chrome-Manifest_V3-2F7A63)
-![462 tests](https://img.shields.io/badge/tests-462_passing-2F7A63)
+![467 tests](https://img.shields.io/badge/tests-467_passing-2F7A63)
 ![No backend](https://img.shields.io/badge/backend-none-2F7A63)
 
-<img src="docs/img/hero.png" width="820" alt="The Tailorune popup after a finished run">
+<img src="docs/img/demo.png" width="560" alt="Tailorune: uploading a resume, adding a job posting, and a finished run reporting 313 words across four files in 5 seconds">
+
+<sub>A real run, recorded end to end — real provider, real timings, nothing staged.<br>
+The resume is fictional; “Read job description” is left out because it needs a real toolbar click.</sub>
 
 </div>
 
@@ -142,6 +145,18 @@ npm run test:e2e    # real Chromium, real unpacked extension
 npm test            # both
 npm run package     # dist/tailorune-<version>.zip
 ```
+
+The image at the top of this file is generated, not captured by hand:
+
+```bash
+TAILORUNE_ENV_FILE=~/.your-keys/.env npm run assets:demo
+```
+
+That drives the real unpacked extension in Chromium and makes real provider
+calls, so it needs a key — the tailored text in the recording is whatever the
+model actually returned. It writes an APNG rather than a GIF because a
+committed `.mp4` or `.webm` does not render in a GitHub README, and animating a
+PNG needs no encoder (`ffmpeg` is not a dependency here).
 
 The e2e suite drives a real unpacked extension and makes real
 `chrome.downloads` calls. It runs one file at a time on purpose: browser-action
