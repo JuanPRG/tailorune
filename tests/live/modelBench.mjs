@@ -61,12 +61,17 @@ const CANDIDATES = {
     'openai/gpt-oss-120b',     // current chain #3
     'openai/gpt-oss-20b',      // current chain #6
   ],
+  // Refreshed 2026-09-12 against the live catalogue. The previous set had gone
+  // stale in the way this whole file exists to catch: minimax-m2.7:free had
+  // been WITHDRAWN, and z-ai/glm-5.2:free and ling-3.0-flash-fin:free are no
+  // longer among the free models that accept response_format. Use --all-free
+  // to benchmark the current catalogue rather than trusting this list.
   openrouter: [
-    'z-ai/glm-5.2:free',
-    'google/gemma-4-31b-it:free',
-    'minimax/minimax-m2.7:free',
-    'nvidia/nemotron-3.5-lightning:free',
-    'inclusionai/ling-3.0-flash-fin:free',
+    'nex-agi/nex-n2.5-mini:free',            // chain incumbent: 89%, 12.0s, 2/3
+    'nex-agi/nex-n2.5-pro:free',             // 84%, 36.5s, 2/3 -- three times slower
+    'google/gemma-4-31b-it:free',            // rate-limited 6/6 on the free tier
+    'google/gemma-4-26b-a4b-it:free',        // rate-limited 6/6
+    'nvidia/nemotron-3-super-120b-a12b:free', // truncated mid-JSON at 34.9s
   ],
 };
 

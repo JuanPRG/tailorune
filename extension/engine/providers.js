@@ -124,10 +124,31 @@ export const ROUTES = {
       // The one live free route, and the reason OpenRouter is no longer dead
       // weight. Every previously configured OpenRouter model is retired,
       // excluded or 404 -- an OpenRouter-only user could not tailor at all.
-      // Benchmarked at the HIGHEST concreteness of any candidate (92% over
-      // three runs) but also the slowest (10-19s), so it earns a place as
-      // depth rather than as anyone's leader.
-      'minimax/minimax-m2.7:free',
+      //
+      // THIS IS THE SECOND MODEL TO BE WITHDRAWN FROM UNDER THIS ROUTE.
+      // minimax/minimax-m2.7:free held it until OpenRouter dropped it from the
+      // catalogue entirely -- npm run test:live:rotation returned
+      // provider_configuration_error, and /models confirmed the id is gone
+      // while the PAID minimax/minimax-m2.7 remains. Repointing at the paid
+      // one would have started charging users who were promised a free tier,
+      // so it was replaced rather than upgraded. modelBench's own header
+      // records inclusionai/ling-3.0-flash:free going the same way before
+      // that; see the catalogue check in tests/live/rotation.mjs, which now
+      // turns this from an accident into a failing assertion.
+      //
+      // Re-measured 2026-09-12, three real tailoring passes per candidate:
+      //
+      //   nex-agi/nex-n2.5-mini:free   89%  12.0s  2/3   <- chosen
+      //   nex-agi/nex-n2.5-pro:free    84%  36.5s  2/3   <- three times slower
+      //   google/gemma-4-31b-it:free    --     --  0/3   <- rate-limited 6/6
+      //   google/gemma-4-26b-a4b-it     --     --  0/3   <- rate-limited 6/6
+      //   nvidia/nemotron-3-super-120b  --  34.9s  0/1   <- truncated mid-JSON
+      //
+      // Same shape as the model it replaces: highest concreteness of any
+      // candidate, and among the slowest. It earns depth, not a lead -- it
+      // answered two runs in three, and a leader that fails a third of the
+      // time costs the user a visible retry.
+      'nex-agi/nex-n2.5-mini:free',
       'inclusionai/ling-3.0-flash:free',
       'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
@@ -212,7 +233,13 @@ const JSON_PREFERRED_MODELS = [
   //   gemini-3.5-flash-lite   90%  6.1s   2/3           <- best quality
   //   qwen/qwen3.8-27b        75%  1.1s   2/3           <- fastest by far
   //   openai/gpt-oss-20b      75%  6.6s   1/3
-  //   minimax-m2.7:free       92%  9.9s   1/3           <- best, and slowest
+  //   nex-n2.5-mini:free      89% 12.0s   2/3           <- best, and slowest
+  //
+  // The last line was minimax-m2.7:free at 92% until OpenRouter withdrew it;
+  // its replacement re-measured 2026-09-12 at the same profile. flash-lite's
+  // own 63% re-measured at 54% (48-58%, n=3) on the same day, which is the
+  // ordinary run-to-run spread of a language model and not a regression --
+  // recorded here so the next reader does not chase it.
   //
   // flash-lite keeps the lead on reliability rather than score: it is the only
   // candidate that returned a usable resume every time, and the leader is the
@@ -221,7 +248,7 @@ const JSON_PREFERRED_MODELS = [
   'gemini-3.5-flash-lite',
   'qwen/qwen3.8-27b',
   'openai/gpt-oss-120b',
-  'minimax/minimax-m2.7:free',
+  'nex-agi/nex-n2.5-mini:free',
   'gemini-2.5-flash',
 ];
 

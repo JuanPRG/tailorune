@@ -36,7 +36,7 @@ import {
 } from '../../extension/engine/rotatingClient.js';
 import { resetRateWindows } from '../../extension/engine/rateWindow.js';
 import { LlmError, resetReasoningEffortSupport } from '../../extension/engine/llm.js';
-import { ROUTES } from '../../extension/engine/providers.js';
+import { ROUTES, TASK_CHAINS } from '../../extension/engine/providers.js';
 
 const envSources = loadEnvFiles();
 const chain = buildChain();
@@ -92,13 +92,65 @@ console.log('resolved resume chain:');
 RESUME_CHAIN.forEach((m, i) => console.log(`  ${i + 1}. ${m}`));
 console.log();
 
+// --- 0. is every configured OpenRouter model still in the catalogue? --------
+//
+// TWICE NOW, a model this project pins has been withdrawn from OpenRouter's
+// free tier and discovered by accident: inclusionai/ling-3.0-flash:free, which
+// modelBench's header records, and minimax/minimax-m2.7:free, which sat in the
+// resume chain returning provider_configuration_error until a live rotation
+// run happened to surface it. In between, an OpenRouter-only user had a dead
+// third provider while the popup's key pill counted it as live.
+//
+// A withdrawal is indistinguishable from a bad key at the call site -- both
+// come back as a credentials-or-configuration error -- which is exactly why it
+// kept being misread. The catalogue tells them apart, needs NO key, and costs
+// nothing, so there is no reason for this to stay an accident.
+//
+// Checked here rather than in `npm test`: the unit suite must pass offline,
+// and a network call in it would fail on a plane.
+
+console.log('=== 0. reachable OpenRouter models still exist ===');
+{
+  // REACHABLE, not merely listed. The openrouter route deliberately keeps
+  // models that are retired or excluded from every task -- its own comment
+  // says deleting them "would hide that rather than record it" -- so asserting
+  // on the raw `models` array flags three entries no user can ever hit, and a
+  // check that cries wolf is one people learn to ignore. Resolving the chain
+  // per task asks the only question that matters: of the models a run could
+  // actually land on, is any of them gone?
+  const configured = [...new Set(
+    Object.keys(TASK_CHAINS).flatMap(
+      (task) => describeChain([{ providerId: 'openrouter', apiKey: 'probe' }], task)
+        .map((e) => e.model),
+    ),
+  )];
+  if (!configured.length) {
+    console.log('  (no reachable OpenRouter models — nothing to check)');
+  } else {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/models');
+      const catalogue = new Set(((await res.json()).data || []).map((m) => m.id));
+      for (const model of configured) {
+        check(
+          `${model} is still offered`,
+          catalogue.has(model),
+          catalogue.has(model) ? '' : 'WITHDRAWN — repoint this route, and do not repoint it at a paid model',
+        );
+      }
+    } catch (err) {
+      // A checkable fact we could not check is not a failure of the chain.
+      console.log(`  SKIP  catalogue unreachable — ${(err && err.message) || err}`);
+    }
+  }
+}
+
 // --- 1. live conformance: does each entry accept our real request shape? ----
 //
 // The most valuable thing a live test can do that a mock cannot. A model that
 // rejects `response_format`, or chokes on the Groq reasoning parameters, is
 // invisible until a user's run walks far enough down the chain to reach it.
 
-console.log('=== 1. each chain entry, one real JSON-mode call ===');
+console.log('\n=== 1. each chain entry, one real JSON-mode call ===');
 const conformance = [];
 for (const model of RESUME_CHAIN) {
   fresh();
