@@ -80,11 +80,12 @@ Features:
 - Tailor a resume to the job posting in the active tab.
 - Generate a resume and a cover letter, each as .docx and .pdf, in any combination.
 - Save generated documents directly to Downloads, named for the employer and the date so several applications remain distinguishable.
-- Keep a library of saved resumes, so a resume is uploaded once and reused.
+- Add a resume in one press: it is read, filed in your library under the file's own name, and loaded ready to tailor.
 - Lock a job so that switching browser tabs does not change it.
 - See a notice on returning to a posting you have already tailored for.
 - Automatic checks on every rewrite, plus an optional second-opinion AI review for one extra call. Both are advisory and never edit or withhold a document.
 - Read .txt, .docx, and .pdf resumes.
+- Fit one page. The finished document is laid out and its pages counted before it is written, so a long resume is shortened rather than spilling onto a second page.
 
 Tailorune does not fabricate experience. Your name, contact details, employers, job titles, dates, and education are treated as locked fields: they are copied through exactly as written and are never included in the part of the request the model may rewrite. Only your summary and the wording of your bullet points change.
 
@@ -101,14 +102,24 @@ Resume tailoring and cover-letter generation are this extension's only functions
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
 
-> **The live listing still says "accuracy review".** That bullet was renamed in
-> 2.3.1, because the checkbox it described was named for a goal ("accuracy")
-> that the always-on deterministic checks pursue too — so an unticked box next
-> to an amber accuracy warning read as a bug, and was reported as one. The
-> setting is now named for its mechanism instead: *Second-opinion AI review*.
-> Nothing about the extension's behaviour or data flow changed, so this is a
-> copy edit, not a disclosure change. Refresh it on the next listing edit —
-> pushing a listing change on its own buys another review for one bullet.
+> **THE LIVE LISTING IS BEHIND THIS FILE.** Package uploads do not republish
+> listing text, so the copy above has never been pasted into the dashboard.
+> As of 2.3.2 going live, the listing still carries:
+>
+>   - **two sentences naming HirePilot** ("Version 2.3.0 replaces the previous
+>     HirePilot release…" and "Autofill was part of the previous HirePilot
+>     release…"), which the rename was supposed to remove;
+>   - **"accuracy review"**, renamed in 2.3.1 to *Second-opinion AI review*
+>     because the old name described a goal the always-on deterministic checks
+>     pursue too — an unticked box beside an amber accuracy warning read as a
+>     bug, and was reported as one;
+>   - **support.hirepilot@gmail.com** as the support address, which is the last
+>     public trace of the old brand and cannot be fixed by editing text.
+>
+> None of this is a disclosure change, so it is a copy edit rather than a
+> resubmission risk. Discoverability is no longer the reason to do it: the
+> 2.3.2 package publish reindexed the store on its own, and searching
+> "tailorune" now finds the item.
 
 ### Category and language
 
