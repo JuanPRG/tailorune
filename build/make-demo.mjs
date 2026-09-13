@@ -2,6 +2,13 @@
 //
 //   TAILORUNE_ENV_FILE=~/.hirepilot/.env node build/make-demo.mjs
 //
+// NO LONGER IN THE README -- docs/img/demo-read.png took that slot, being a
+// run that includes the page-read this script cannot produce (see below).
+// Kept because it is still the only demo built entirely from a scripted run
+// against a live provider, so it is the one that cannot drift from the
+// product without this script failing, and it shows the resume-library path
+// the filmed recording does not.
+//
 // This drives the ACTUAL unpacked extension in Chromium and makes REAL calls
 // to a real provider with the user's own key. Nothing about the tailored text
 // is staged: what the recording shows is what the model returned.

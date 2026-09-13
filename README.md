@@ -14,10 +14,10 @@ No account. No server. Bring your own AI key.
 ![476 tests](https://img.shields.io/badge/tests-476_passing-2F7A63)
 ![No backend](https://img.shields.io/badge/backend-none-2F7A63)
 
-<img src="docs/img/demo.png" width="560" alt="Tailorune: uploading a resume, adding a job posting, and a finished run reporting 313 words across four files in 5 seconds">
+<img src="docs/img/demo-read.png" width="540" alt="Tailorune: a job posting read from the page in one click, four tailored files written to Downloads, and the finished one-page resume">
 
 <sub>A real run, recorded end to end — real provider, real timings, nothing staged.<br>
-The resume is fictional; “Read job description” is left out because it needs a real toolbar click.</sub>
+The resume is fictional and the employer’s name is blurred.</sub>
 
 </div>
 
@@ -146,17 +146,27 @@ npm test            # both
 npm run package     # dist/tailorune-<version>.zip
 ```
 
-The image at the top of this file is generated, not captured by hand:
+The animations here are built, not captured by hand:
 
 ```bash
+npm run assets:demo-read -- ~/Downloads/tailorune-demo.mp4
 TAILORUNE_ENV_FILE=~/.your-keys/.env npm run assets:demo
 ```
 
-That drives the real unpacked extension in Chromium and makes real provider
-calls, so it needs a key — the tailored text in the recording is whatever the
-model actually returned. It writes an APNG rather than a GIF because a
-committed `.mp4` or `.webm` does not render in a GitHub README, and animating a
-PNG needs no encoder (`ffmpeg` is not a dependency here).
+The first builds the image at the top of this file from a screen recording.
+That one step has to be filmed by a person: `activeTab` is granted only by a
+genuine toolbar click and never by driving the popup from a script, so the
+page-read cannot be automated — and staging it would show a capability working
+when it had not. The recording is not committed; pass its path in.
+
+The second drives the real unpacked extension in Chromium and makes real
+provider calls, so it needs a key — the tailored text is whatever the model
+actually returned. It covers the paths that *can* be scripted.
+
+Both write an APNG rather than a GIF, because a committed `.mp4` or `.webm`
+does not render in a GitHub README. `apng.mjs` assembles the frames by hand, so
+the scripted demo needs no encoder at all; the filmed one uses `ffmpeg` only to
+pull frames out of the recording.
 
 The e2e suite drives a real unpacked extension and makes real
 `chrome.downloads` calls. It runs one file at a time on purpose: browser-action
