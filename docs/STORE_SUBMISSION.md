@@ -73,7 +73,17 @@ autofill.
 ```
 Tailorune adapts a resume and cover letter to the job posting you are viewing. Open Tailorune on a job page, read the posting into the form, review the detected details, and start tailoring. A tailored resume and cover letter are written to your Downloads as .docx and .pdf files.
 
-Everything runs inside the extension. There is no companion application, no local server to install, and no operating-system restriction.
+BEFORE YOU START — YOU NEED YOUR OWN AI KEY
+
+Tailorune has no account and no server of its own, so it runs on an AI provider key that you supply. Setup happens once and takes about two minutes:
+
+1. Get an API key from Google Gemini, Groq, or OpenRouter. Gemini and Groq offer free tiers that require no payment method and no card.
+2. Open Tailorune, click the gear, and paste the key in.
+3. Add your resume once (.txt, .docx, or .pdf). It is saved in your library and reused for every job after that.
+
+There is nothing else to install, nothing to sign up for, and no subscription.
+
+Tailorune replaces HirePilot, which required a separate Windows companion application. Everything now runs inside the extension: no companion app, no local server, and no operating-system restriction.
 
 Features:
 
@@ -81,17 +91,16 @@ Features:
 - Generate a resume and a cover letter, each as .docx and .pdf, in any combination.
 - Save generated documents directly to Downloads, named for the employer and the date so several applications remain distinguishable.
 - Add a resume in one press: it is read, filed in your library under the file's own name, and loaded ready to tailor.
+- Paste a job description by hand when a posting will not read. Some sites load their text late or sit behind a login; pasting works exactly the same.
 - Lock a job so that switching browser tabs does not change it.
 - See a notice on returning to a posting you have already tailored for.
-- Automatic checks on every rewrite, plus an optional second-opinion AI review for one extra call. Both are advisory and never edit or withhold a document.
+- Automatic checks on every rewrite, plus an optional Second-opinion AI review for one extra call. Both are advisory and never edit or withhold a document.
 - Read .txt, .docx, and .pdf resumes.
 - Fit one page. The finished document is laid out and its pages counted before it is written, so a long resume is shortened rather than spilling onto a second page.
 
 Tailorune does not fabricate experience. Your name, contact details, employers, job titles, dates, and education are treated as locked fields: they are copied through exactly as written and are never included in the part of the request the model may rewrite. Only your summary and the wording of your bullet points change.
 
 Tailorune is user-controlled. It accesses the active tab only after you invoke the extension and press Read job description. It declares no content scripts and holds no standing access to any website. It does not read passwords, payment fields, authentication codes, government identifier fields, or file uploads. Review all generated text before submitting an application.
-
-You provide your own API key for one of three supported providers: Google Gemini, Groq, or OpenRouter. Gemini and Groq offer free tiers that require no payment method. Provider availability, quotas, and pricing are controlled by each provider.
 
 Your resume, your API keys, your preferences, and the list of jobs you have tailored for are stored locally in your browser. They are not synced and are never sent to the developer. There is no developer-operated server.
 
@@ -102,24 +111,31 @@ Resume tailoring and cover-letter generation are this extension's only functions
 Open source, MIT licensed: https://github.com/JuanPRG/tailorune
 ```
 
-> **THE LIVE LISTING IS BEHIND THIS FILE.** Package uploads do not republish
-> listing text, so the copy above has never been pasted into the dashboard.
-> As of 2.3.2 going live, the listing still carries:
+> **LISTING UPDATED 2026-09-26 — the copy above is what is live.** It was
+> pasted into the dashboard after 2.3.3 published, and it closed the drift this
+> block used to warn about: "accuracy review" is now *Second-opinion AI review*,
+> and the HirePilot sentence no longer names a version number, so it does not go
+> stale the next time the manifest moves.
 >
->   - **two sentences naming HirePilot** ("Version 2.3.0 replaces the previous
->     HirePilot release…" and "Autofill was part of the previous HirePilot
->     release…"), which the rename was supposed to remove;
->   - **"accuracy review"**, renamed in 2.3.1 to *Second-opinion AI review*
->     because the old name described a goal the always-on deterministic checks
->     pursue too — an unticked box beside an amber accuracy warning read as a
->     bug, and was reported as one;
->   - **support.hirepilot@gmail.com** as the support address, which is the last
->     public trace of the old brand and cannot be fixed by editing text.
+> Two things that copy now carries deliberately, because the listing is where a
+> user reads them BEFORE installing rather than after:
 >
-> None of this is a disclosure change, so it is a copy edit rather than a
-> resubmission risk. Discoverability is no longer the reason to do it: the
-> 2.3.2 package publish reindexed the store on its own, and searching
-> "tailorune" now finds the item.
+>   - **the API key requirement, near the top.** Someone who installs, opens the
+>     popup and only then discovers they need a provider key leaves a one-star
+>     review. For a bring-your-own-key product that is the largest rating risk
+>     there is, and burying it in the eighth paragraph does not mitigate it.
+>   - **pasting a job description by hand.** `popup.html`'s placeholder offers it
+>     and the README's troubleshooting table names it as the fix, but the listing
+>     never did — so a user hitting a posting behind a login concluded the
+>     extension was broken.
+>
+> One trace of the old brand remains and **cannot be fixed by editing listing
+> text**: **support.hirepilot@gmail.com** is published as the developer contact,
+> and it is set on the account rather than on this item.
+>
+> Package uploads do not republish listing text. Editing the copy above changes
+> nothing in the store until it is pasted into the dashboard and each tab is
+> saved separately — see "The dashboard will lie to you about unsaved edits".
 
 ### Category and language
 
@@ -248,6 +264,7 @@ That is acceptable to the store. A GitHub Pages URL is tidier if preferred.
 | Screenshot 1280x800 or 640x400 | **Yes, at least one** | `store/screenshot-*.png`, generated by `npm run assets:store` |
 | Small promo tile 440x280 | Optional | `store/promo-tile-440x280.png` |
 | Marquee 1400x560 | Optional | `store/marquee-1400x560.png` |
+| Promo video (YouTube) | Optional | A URL set in **Graphic assets**, not a file. Lives outside this repo — record the link here once set. |
 
 All are produced at **exact** pixel dimensions. They were previously rendered at
 `deviceScaleFactor: 2`, i.e. at double the size their own filenames promised,
