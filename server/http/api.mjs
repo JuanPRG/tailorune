@@ -63,19 +63,20 @@ export function createApi({ store, runner, env, now, log, platform, defer = () =
 
   // --- retention ---------------------------------------------------------------
 
-  /** Deletes expired files, audit records and old runs. At most hourly, piggybacking on requests. */
+  /**
+   * Deletes expired files, audit records and old runs, piggybacking on requests at most hourly
+   * per instance. Each store decides how to do it cheaply (the Blob store also limits itself to
+   * once a day across instances). Expiry is enforced on every read regardless, so a late
+   * sweep only delays reclaiming space -- it never serves an expired file.
+   */
   async function sweep() {
     const t = now();
     if (t - lastSweep < SWEEP_EVERY_MS) return;
     lastSweep = t;
-    for (const { token, meta } of await store.listFileMetas()) {
-      if (Date.parse(meta.expires_at) <= t) await store.deleteFile(token);
-    }
-    for (const audit of await store.listAudits()) {
-      if (Date.parse(audit.expires_at) <= t) await store.deleteAudit(audit.run_id);
-    }
-    for (const run of await store.listRuns()) {
-      if (Date.parse(run.created_at) + AUDIT_TTL_MS <= t) await store.deleteRun(run.run_id);
+    try {
+      await store.sweepExpired(t, { fileTtlMs: FILE_TTL_MS, auditTtlMs: AUDIT_TTL_MS });
+    } catch (err) {
+      log({ event: 'sweep_failed', error: String((err && err.message) || err).slice(0, 300) });
     }
   }
 
@@ -150,7 +151,9 @@ export function createApi({ store, runner, env, now, log, platform, defer = () =
     }));
 
     const t = now();
-    const runs = await store.listRuns();
+    // The cache and the daily limit only look back a day, so only the last
+    // day's runs are read (on Blob, filtered before any record is fetched).
+    const runs = await store.listRuns({ sinceMs: t - DAY_MS });
 
     // An identical request whose files are still downloadable is answered from
     // the earlier run: same documents, no quota spent. One still in progress

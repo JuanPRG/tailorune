@@ -22,3 +22,7 @@ dist/
 
 # throwaway Chrome profile for build/make-demo.mjs, recreated every run
 .demo-profile/
+
+# Vercel CLI: the project link, and the env files it pulls (they hold tokens)
+.vercel
+.env*

@@ -22,6 +22,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createApp } from '../../server/app.mjs';
+import { createBlobStore } from '../../server/store/blobStore.mjs';
+import { fakeBlobClient } from './helpers/fakeBlobClient.mjs';
 import { sha256Hex } from '../../server/http/auth.mjs';
 import { LlmError } from '../../extension/engine/llm.js';
 import { resetCooldowns } from '../../extension/engine/rotatingClient.js';
@@ -92,7 +94,7 @@ const unavailable = (retryAfterSeconds = 30) => new LlmError(
  * Builds an app over a fresh temp directory. `script` replaces the pipeline:
  * an array of (payload) => result | throw, consumed one call at a time.
  */
-function makeApp(t, { llmUrl, script, env = {}, maxConcurrent } = {}) {
+function makeApp(t, { llmUrl, script, env = {}, maxConcurrent, blob = false } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tailorune-api-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const clock = { ms: Date.parse('2026-10-16T12:00:00Z') };
@@ -119,6 +121,7 @@ function makeApp(t, { llmUrl, script, env = {}, maxConcurrent } = {}) {
     log: (entry) => logs.push(JSON.stringify(entry)),
     ...(runPipeline ? { runPipeline } : {}),
     ...(maxConcurrent ? { maxConcurrent } : {}),
+    ...(blob ? { store: createBlobStore({ client: fakeBlobClient(clock) }) } : {}),
   });
   const call = async (method, urlPath, { body, token = TOKEN, raw } = {}) => {
     const headers = {};
@@ -411,6 +414,23 @@ test('files expire after 24 hours; a fresh run is made rather than a dead cache 
   const again = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
   assert.notEqual(again.json.data.run_id, run.run_id);
   assert.equal(calls.length, 2);
+});
+
+test('the API runs unchanged on the Blob store: upload, run, cache, download, delete', async (t) => {
+  const { call } = makeApp(t, { blob: true, script: [() => fakeResult()] });
+  const resumeId = (await uploadTxt(call)).json.data.resume_id;
+  const run = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
+  assert.equal(run.json.data.status, 'done', run.text);
+  const again = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
+  assert.equal(again.json.data.result.cached, true);
+
+  const filePath = new URL(run.json.data.result.files[0].url).pathname;
+  const dl = await call('GET', filePath);
+  assert.equal(dl.status, 200);
+  assert.equal(dl.text, 'DOCX-BYTES');
+
+  assert.equal((await call('DELETE', `/v1/resumes/${resumeId}`)).status, 204);
+  assert.equal((await call('GET', filePath)).status, 404, 'the files went with the resume');
 });
 
 // --- nothing secret comes back out ------------------------------------------------

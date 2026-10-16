@@ -1,0 +1,23 @@
+# What `vercel deploy` uploads for the agent API -- an allowlist.
+# This repo is public and holds things that must never reach a deployment:
+# .env.local (the API token), server/.data (resumes), test fixtures.
+/*
+!/api
+!/server
+!/extension
+!/package.json
+!/package-lock.json
+!/vercel.json
+
+# Never, wherever they are.
+**/.env*
+/server/.data
+/server/.vercel
+
+# Not used by the API: the probe's own deployment, and the extension's UI.
+/server/api
+/server/vercel.json
+/extension/popup
+/extension/content
+/extension/offscreen
+/extension/vendor

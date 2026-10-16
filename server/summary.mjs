@@ -34,6 +34,13 @@ export function summarizeRun(result, { job, files }) {
 }
 
 /** Belt and braces: the engine's errors are tested to carry no key, but this is the last stop. */
+// Real provider keys are tens of characters. A shorter "key" is a broken
+// configuration, and splitting on it would shred the very message that
+// explains the breakage (it happened: a key truncated to "g").
+const MIN_KEY_CHARS = 16;
+
 export function redact(message, keys) {
-  return Object.values(keys).reduce((text, key) => text.split(key).join('[redacted]'), String(message));
+  return Object.values(keys)
+    .filter((key) => typeof key === 'string' && key.length >= MIN_KEY_CHARS)
+    .reduce((text, key) => text.split(key).join('[redacted]'), String(message));
 }
