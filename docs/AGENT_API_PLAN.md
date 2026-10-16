@@ -454,13 +454,29 @@ added by connecting the store. Previews have no token hash, so they fail closed 
 3. **The Vercel CLI wraps `.env.local` values in quotes** when it rewrites the file. The
    API token is unchanged, but copy it **without** the quotes. `loadEnvFiles` already strips them.
 
-*Found, not fixed (a product decision):* **the cover letter chain is the weak link under Gemini
-overload.** Three full runs failed today the same way. The resume pass succeeded, Qwen's letter
-failed validation (held 30s), and both Gemini models returned 503 "high demand", so the curated
-3-model `coverLetter` chain (`gemini-3.5-flash-lite → gemini-3.1-flash-lite → qwen3.8-27b`) ran
-out, and **the whole run failed, losing a good resume**. Two options, to decide before Muse runs
-batches: (a) let the API return the resume with `cover_letter: {status: "failed"}` instead of
-failing the run, or (b) lengthen the prose chain. (b) needs the `.env` and `chainParity` treatment.
+*Found in production:* **the cover letter chain is the weak link under Gemini overload.** Three
+full runs failed today the same way. The resume pass succeeded, Qwen's letter failed validation
+(held 30s), and both Gemini models returned 503 "high demand", so the curated 3-model
+`coverLetter` chain (`gemini-3.5-flash-lite → gemini-3.1-flash-lite → qwen3.8-27b`) ran out, and
+**the whole run failed, losing a good resume**.
+
+**Option (a) is done (2026-10-16, deployed, `7f6bf02`):** a failed letter no longer costs the resume.
+- `pipeline.js` takes an opt-in `keepResumeIfLetterFails`. When the letter throws, the run still
+  completes, with `coverLetter: {status: "failed", text: null, failure: {kind, message}}` and only
+  the resume files. **The extension does not set it and behaves exactly as before** (tested).
+- The API and the CLI set it. The summary shows `cover_letter.status: "failed"` with
+  `cover_letter.error`, the failure message is redacted like any error, and the OpenAPI doc
+  tells the agent to POST the same request again later.
+- A run whose letter failed is **never served from cache**, so asking again makes a fresh run. A
+  complete run is cached as before.
+- Verified in production against the live overload: the request that failed three times today
+  came back `done` in **8s** (previously a failed run after 66s), with the resume approved, 2 files,
+  and the letter `failed` with its reason. The identical repeat made a new run (not cached).
+
+**Still open: option (b), lengthen the prose chain.** While Gemini is overloaded, letters keep
+failing, because Qwen fails letter validation on this resume and nothing else is in the chain.
+This needs the usual rotation treatment: measure candidates against `~/.hirepilot/.env` and v4's
+`describe_provider_chain`, then update `providers.js` and `chainParity.test.mjs` together.
 
 *Side effect to decide on:* `vercel link` connected the GitHub repo to `tailorune-api`, so a push
 to `main` deploys the API, and other branches get preview deployments (which fail closed).
