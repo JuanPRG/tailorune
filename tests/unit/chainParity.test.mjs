@@ -53,9 +53,11 @@ const ALL_KEYS = Object.keys(PROVIDERS).map((providerId) => ({ providerId, apiKe
 //     25-39s, at equal or higher concreteness.
 //   - gemini-3.5-flash-lite and an OpenRouter free route were added on
 //     measured evidence (tests/live/modelBench.mjs, three passes each).
-//   - That OpenRouter route has now been repointed ONCE: minimax-m2.7:free
-//     was withdrawn from the catalogue outright, and nex-agi/nex-n2.5-mini:free
-//     re-measured at the same profile (89% concreteness, 12.0s, 2 runs in 3).
+//   - That OpenRouter route has now been repointed TWICE: minimax-m2.7:free
+//     was withdrawn from the catalogue outright, then nex-agi/nex-n2.5-mini:free
+//     (89%, 12.0s, 2 in 3) lost its free tier on 2026-10-16. Its replacement,
+//     poolside/laguna-s-2.1:free, measured best of the whole free catalogue:
+//     92-96% concreteness, ~10s, 5 approved of the 7 runs that reached it.
 //     Position unchanged -- it is depth, not a leader, because a model that
 //     answers two times in three would cost the user a visible retry at the
 //     front of the chain.
@@ -67,12 +69,12 @@ const ALL_KEYS = Object.keys(PROVIDERS).map((providerId) => ({ providerId, apiKe
 const EXPECTED_CHAINS = {
   resume: [
     'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'qwen/qwen3.8-27b',
-    'openai/gpt-oss-120b', 'nex-agi/nex-n2.5-mini:free',
+    'openai/gpt-oss-120b', 'poolside/laguna-s-2.1:free',
     'gemini-2.5-flash', 'openai/gpt-oss-20b',
   ],
   skills: [
     'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'qwen/qwen3.8-27b',
-    'openai/gpt-oss-120b', 'nex-agi/nex-n2.5-mini:free',
+    'openai/gpt-oss-120b', 'poolside/laguna-s-2.1:free',
     'gemini-2.5-flash', 'openai/gpt-oss-20b',
   ],
   // Curated, and rebuilt from a PROSE benchmark when Cerebras was dropped.
@@ -163,13 +165,14 @@ test('OpenRouter can actually tailor a resume now', () => {
   // configured OpenRouter model is retired, excluded or 404, so an
   // OpenRouter-only user got a provider_configuration_error on every run.
   //
-  // THAT REGRESSED ONCE ALREADY. minimax-m2.7:free held this position until
-  // OpenRouter withdrew it, and this test kept passing throughout -- it pins
+  // THAT HAS REGRESSED TWICE. minimax-m2.7:free and then nex-n2.5-mini:free
+  // held this position until OpenRouter withdrew each, and this test kept
+  // passing throughout -- it pins
   // which model the chain RESOLVES to, which a withdrawal does not change.
   // Only a live call can see a withdrawal, which is what the catalogue check
   // at the top of tests/live/rotation.mjs is now for.
   const orOnly = [{ providerId: 'openrouter', apiKey: 'k' }];
-  assert.deepEqual(modelsOf(buildChainEntries(orOnly, { task: 'resume' })), ['nex-agi/nex-n2.5-mini:free']);
+  assert.deepEqual(modelsOf(buildChainEntries(orOnly, { task: 'resume' })), ['poolside/laguna-s-2.1:free']);
 });
 
 test('the prose chains are NOT deepened, because the default path drops their policy', () => {

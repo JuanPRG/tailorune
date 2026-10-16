@@ -65,6 +65,9 @@ export const DEPRECATED_MODEL_IDS = new Set([
   // and because benchmarking found the replacement strictly better: 1.1s
   // against 25-39s, at equal or better concreteness.
   'qwen/qwen3.6-27b',
+  // Withdrawn from OpenRouter's free tier (found 2026-10-16: 404 "unavailable
+  // for free"); only the paid slug remains, which this project will not use.
+  'nex-agi/nex-n2.5-mini:free',
 ]);
 
 /**
@@ -125,30 +128,30 @@ export const ROUTES = {
       // weight. Every previously configured OpenRouter model is retired,
       // excluded or 404 -- an OpenRouter-only user could not tailor at all.
       //
-      // THIS IS THE SECOND MODEL TO BE WITHDRAWN FROM UNDER THIS ROUTE.
-      // minimax/minimax-m2.7:free held it until OpenRouter dropped it from the
-      // catalogue entirely -- npm run test:live:rotation returned
-      // provider_configuration_error, and /models confirmed the id is gone
-      // while the PAID minimax/minimax-m2.7 remains. Repointing at the paid
-      // one would have started charging users who were promised a free tier,
-      // so it was replaced rather than upgraded. modelBench's own header
-      // records inclusionai/ling-3.0-flash:free going the same way before
-      // that; see the catalogue check in tests/live/rotation.mjs, which now
-      // turns this from an accident into a failing assertion.
+      // THIS IS THE THIRD MODEL TO BE WITHDRAWN FROM UNDER THIS ROUTE.
+      // inclusionai/ling-3.0-flash:free went first, then minimax-m2.7:free,
+      // then nex-agi/nex-n2.5-mini:free (found 2026-10-16: OpenRouter answers
+      // 404 "unavailable for free", and /models lists only the PAID
+      // nex-agi/nex-n2.5-mini). Each time the paid slug was right there, and
+      // each time it was refused: repointing at it would start charging users
+      // who were promised a free tier. The catalogue check at the top of
+      // tests/live/rotation.mjs reports a withdrawal as WITHDRAWN -- run it.
       //
-      // Re-measured 2026-09-12, three real tailoring passes per candidate:
+      // Re-measured 2026-10-16 against the WHOLE free catalogue (15 models,
+      // three real resume passes each, on a congested day: 4 of 45 usable),
+      // then the leader five more times:
       //
-      //   nex-agi/nex-n2.5-mini:free   89%  12.0s  2/3   <- chosen
-      //   nex-agi/nex-n2.5-pro:free    84%  36.5s  2/3   <- three times slower
-      //   google/gemma-4-31b-it:free    --     --  0/3   <- rate-limited 6/6
-      //   google/gemma-4-26b-a4b-it     --     --  0/3   <- rate-limited 6/6
-      //   nvidia/nemotron-3-super-120b  --  34.9s  0/1   <- truncated mid-JSON
+      //   poolside/laguna-s-2.1:free     92-96%  8-16s  5/7 reached  <- chosen
+      //   nvidia/nemotron-3-nano-omni    87%    129.3s  1/3          <- far too slow
+      //   cohere/north-mini-code:free    75%     42.0s  1/3
+      //   google/gemma-4-31b-it:free     70%     11.8s  1/3  <- and .env excludes gemma for JSON
+      //   everything else                --        --   0/3  (unavailable, truncated, 404)
       //
-      // Same shape as the model it replaces: highest concreteness of any
-      // candidate, and among the slowest. It earns depth, not a lead -- it
-      // answered two runs in three, and a leader that fails a third of the
-      // time costs the user a visible retry.
-      'nex-agi/nex-n2.5-mini:free',
+      // laguna's two failures were both the deterministic validator catching
+      // "a professional identity absent from the source" -- caught, so the
+      // retry rotates away instead of shipping it. Same slot as before: depth,
+      // not a lead.
+      'poolside/laguna-s-2.1:free',
       'inclusionai/ling-3.0-flash:free',
       'openai/gpt-oss-20b:free',
       'nvidia/nemotron-3-super-120b-a12b:free',
@@ -233,10 +236,12 @@ const JSON_PREFERRED_MODELS = [
   //   gemini-3.5-flash-lite   90%  6.1s   2/3           <- best quality
   //   qwen/qwen3.8-27b        75%  1.1s   2/3           <- fastest by far
   //   openai/gpt-oss-20b      75%  6.6s   1/3
-  //   nex-n2.5-mini:free      89% 12.0s   2/3           <- best, and slowest
+  //   laguna-s-2.1:free    92-96% ~10s   5/7           <- best kept, free tier
   //
-  // The last line was minimax-m2.7:free at 92% until OpenRouter withdrew it;
-  // its replacement re-measured 2026-09-12 at the same profile. flash-lite's
+  // The last line is the OpenRouter free slot, now on its fourth occupant:
+  // minimax-m2.7:free (92%), then nex-n2.5-mini:free (89%, 12.0s, 2/3), each
+  // withdrawn in turn; laguna re-measured 2026-10-16 -- see the openrouter
+  // route above for the full catalogue run. flash-lite's
   // own 63% re-measured at 54% (48-58%, n=3) on the same day, which is the
   // ordinary run-to-run spread of a language model and not a regression --
   // recorded here so the next reader does not chase it.
@@ -248,7 +253,7 @@ const JSON_PREFERRED_MODELS = [
   'gemini-3.5-flash-lite',
   'qwen/qwen3.8-27b',
   'openai/gpt-oss-120b',
-  'nex-agi/nex-n2.5-mini:free',
+  'poolside/laguna-s-2.1:free',
   'gemini-2.5-flash',
 ];
 
