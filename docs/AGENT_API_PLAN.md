@@ -451,7 +451,14 @@ added by connecting the store. Previews have no token hash, so they fail closed 
    never parsed by an ad-hoc regex. Use `loadEnvFiles`.
 2. **`redact()` shredded the error** by splitting on that one-letter "key". It now ignores any
    value under 16 characters (`tests/unit/summary.test.mjs`).
-3. **The Vercel CLI wraps `.env.local` values in quotes** when it rewrites the file. The
+3. **No PDF could be uploaded in production** ("DOMMatrix is not defined"), found when Muse uploaded
+   a PDF resume. pdf.js in Node takes `DOMMatrix` from `@napi-rs/canvas`, which it loads with
+   `createRequire` at runtime, and Vercel's file tracing cannot follow that, so the package was
+   never bundled. Every local test passed because the package is installed locally. Fixed by
+   adding `node_modules/@napi-rs/**` to the function's `includeFiles` (pinned in
+   `deployConfig.test.mjs`), and verified in production: the fixture PDF uploads (201, 141 words)
+   with no canvas warnings in the log.
+4. **The Vercel CLI wraps `.env.local` values in quotes** when it rewrites the file. The
    API token is unchanged, but copy it **without** the quotes. `loadEnvFiles` already strips them.
 
 *Found in production:* **the cover letter chain is the weak link under Gemini overload.** Three

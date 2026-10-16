@@ -43,6 +43,11 @@ test('the function gets the time, the region, and the files it reads from disk',
   for (const file of ['extension/fonts/', 'pdfjs-dist/standard_fonts/', 'pdfjs-dist/legacy/build/pdf.worker.mjs']) {
     assert.ok(fn.includeFiles.includes(file), `includes ${file}`);
   }
+  // pdf.js in Node takes DOMMatrix from @napi-rs/canvas, loaded through
+  // createRequire at runtime -- which Vercel's file tracing cannot follow, so
+  // it must be listed. Without it every PDF upload failed in production with
+  // "DOMMatrix is not defined" (found 2026-10-16, when Muse uploaded a PDF).
+  assert.ok(fn.includeFiles.includes('node_modules/@napi-rs/'), 'includes the canvas package pdf.js needs');
   assert.deepEqual(vercel.regions, ['iad1'], 'next to the Blob store, which defaults to iad1');
   assert.match(vercel.installCommand, /npm ci --omit=dev/, 'no Playwright or esbuild in the function');
 });
