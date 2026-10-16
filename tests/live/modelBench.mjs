@@ -54,6 +54,10 @@ const CANDIDATES = {
     'gemini-3.5-flash-lite',
     'gemini-3.8-flash',
     'gemini-3.6-flash',
+    // Excluded for resume JSON by the .env, but never measured for letters --
+    // added 2026-10-16 when an overload showed the 3-model letter chain was too
+    // thin to survive both flash-lites returning 503.
+    'gemini-3.5-flash',
     'gemini-2.5-flash',        // current chain #5
   ],
   groq: [
@@ -67,8 +71,9 @@ const CANDIDATES = {
   // longer among the free models that accept response_format. Use --all-free
   // to benchmark the current catalogue rather than trusting this list.
   openrouter: [
-    'nex-agi/nex-n2.5-mini:free',            // chain incumbent: 89%, 12.0s, 2/3
-    'nex-agi/nex-n2.5-pro:free',             // 84%, 36.5s, 2/3 -- three times slower
+    // Refreshed again 2026-10-16: nex-n2.5-mini/pro lost their free tier (404).
+    'poolside/laguna-s-2.1:free',            // chain incumbent: 92-96%, ~10s, 5/7 reached
+    'cohere/north-mini-code:free',           // 75%, 42.0s, 1/3
     'google/gemma-4-31b-it:free',            // rate-limited 6/6 on the free tier
     'google/gemma-4-26b-a4b-it:free',        // rate-limited 6/6
     'nvidia/nemotron-3-super-120b-a12b:free', // truncated mid-JSON at 34.9s
