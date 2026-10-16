@@ -478,6 +478,62 @@ failing, because Qwen fails letter validation on this resume and nothing else is
 This needs the usual rotation treatment: measure candidates against `~/.hirepilot/.env` and v4's
 `describe_provider_chain`, then update `providers.js` and `chainParity.test.mjs` together.
 
+**Measured 2026-10-16** with `node tests/live/modelBench.mjs --task=coverLetter --repeat=3`: three
+real letters per model, each pinned to that model with no fallback, during the Gemini overload.
+
+| Model | Approved | What happened |
+|---|---|---|
+| gemini-3.5-flash-lite (chain #1) | **3/3** | 220–249 words, 9–14s |
+| gemini-3.1-flash-lite (chain #2) | 0/3 | 503 overload |
+| qwen/qwen3.8-27b (chain #3) | 1/3 | 312 and 324 words, over the 275 ceiling |
+| gemini-3.5-flash / 3.6-flash / 2.5-flash | 0/9 | **Cut off mid-letter** (`finish_reason: length`): 27–210 words |
+| gemini-3.8-flash | 0/3 | 503, then quota exhausted |
+| nex-agi/nex-n2.5-mini:free / pro:free | 0/6 | **404: withdrawn from the free tier** (see below) |
+| google/gemma-4-31b-it:free / 26b:free | 0/6 | Rate-limited |
+
+**No model can be added as measured.** The obvious extra Gemini models are thinking models that
+run out of the letter's 2048-token budget, and the OpenRouter free models are gone or throttled.
+
+**One lead, not yet acted on.** A direct probe showed `gemini-2.5-flash`, `3.5-flash` and
+`3.6-flash` all **accept `reasoning_effort: "none"`** and then finish cleanly, while the same models
+at default settings returned 503s. With thinking capped, they could become real letter depth. But
+`llm.js` deliberately sends Gemini no reasoning parameters (pinned by `reasoningEffort.test.mjs`),
+and every pass requests an effort level, so enabling it changes the **resume** path of the
+published extension too. That needs its own measurement, letters and resumes, before anyone
+decides.
+
+**Found while measuring, and more urgent: OpenRouter withdrew `nex-agi/nex-n2.5-mini:free`**,
+the resume chain's only OpenRouter model. The catalogue lists only the paid `nex-agi/nex-n2.5-mini`,
+and a direct call returns 404 "unavailable for free". It is the third free model lost from that
+slot, after ling-3.0-flash and minimax-m2.7. **An OpenRouter-only user of the published extension
+cannot tailor again.** The precedent is to replace it with a measured free model
+(`npm run bench:models -- openrouter --all-free --repeat=3`), never the paid slug.
+
+**Fixed (2026-10-16, `6b05790`): the slot now holds `poolside/laguna-s-2.1:free`.** It was measured against
+the whole free catalogue: 15 models, three real resume passes each. OpenRouter was congested, so
+only 4 of 45 runs were usable.
+
+| Free model | Usable | Kept | Time |
+|---|---|---|---|
+| **poolside/laguna-s-2.1** | 1/3, then **4/5** on a rerun | **92–96%** | 8–16s |
+| nvidia/nemotron-3-nano-omni (reasoning) | 1/3 | 87% | 129s |
+| cohere/north-mini-code | 1/3 | 75% | 42s |
+| google/gemma-4-31b-it | 1/3 | 70% | 12s (and the `.env` excludes Gemma for resume JSON) |
+| the other 11 | 0/3 | — | unavailable, cut off, 404, or a safety classifier |
+
+- **Laguna's record:** 5 approved of the 7 runs that reached it, better than the model it replaces
+  (2/3, 89%, 12s). Both of its failures were the validator catching "a professional identity absent
+  from the source", so the retry rotates away rather than shipping it. It takes the same position:
+  depth behind the measured leaders, not the lead.
+- **Code changes:** `providers.js` (the route, `JSON_PREFERRED_MODELS`, and `nex-n2.5-mini:free`
+  added to `DEPRECATED_MODEL_IDS`), `chainParity.test.mjs` (resume and skills pins, the
+  OpenRouter-only assertion, history) and `modelBench.mjs` (candidates).
+- **Verification:** `npm test` passes, 462 unit + 84 e2e. `npm run test:live:rotation` passes
+  every check, including the catalogue check (laguna is offered, answers in JSON mode, 6 of 7
+  resume entries are healthy). The API is redeployed.
+- **The published extension (2.3.3) still names the withdrawn model.** OpenRouter-only users stay
+  broken until a 2.3.4 release goes through the Chrome Web Store.
+
 *Side effect to decide on:* `vercel link` connected the GitHub repo to `tailorune-api`, so a push
 to `main` deploys the API, and other branches get preview deployments (which fail closed).
 
