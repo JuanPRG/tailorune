@@ -59,6 +59,18 @@ const CANDIDATES = {
     // thin to survive both flash-lites returning 503.
     'gemini-3.5-flash',
     'gemini-2.5-flash',        // current chain #5
+    // Catalogue refresh 2026-10-16 (GET /models on the OpenAI-compatible
+    // endpoint): new since the chains were built. There is no 3.8 flash-LITE;
+    // 3.8 exists only as the larger thinking tier.
+    'gemini-3.7-flash',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash-lite',
+    'gemini-flash-lite-latest',  // an alias -- measured to see what it points at in practice
+    'gemini-4-argon',
+    // Gemma on Google's own API: v4's #1 letter model, reached through
+    // Cerebras until Tailorune dropped Cerebras.
+    'gemma-4-31b-it',
+    'gemma-4-26b-a4b-it',
   ],
   groq: [
     'qwen/qwen3.8-27b',        // the replacement for the deprecated qwen3.6-27b
