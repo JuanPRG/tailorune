@@ -14,9 +14,7 @@
 /server/.data
 /server/.vercel
 
-# Not used by the API: the probe's own deployment, and the extension's UI.
-/server/api
-/server/vercel.json
+# Not used by the API: the extension's UI.
 /extension/popup
 /extension/content
 /extension/offscreen

@@ -250,6 +250,10 @@ outside: `/openapi.json` is public; `/v1/ping` gives 401 without the token and w
 200 with it; `/v1/files/sample.txt` downloads as an attachment; `/mcp` handles `initialize` and
 `tools/call`; **a 90s call completes**, so Vercel is not the limit below 300s. The token is in
 the gitignored `.env.local` and is stored on Vercel as a sensitive production variable.
+*Retired 2026-10-16:* once Muse moved to the real API, the `tailorune-probe` Vercel project was
+deleted (its URL now returns 404) and the probe code removed from `server/`. It remains in git
+history at `a170da3`.
+
 **Muse connected (2026-10-16, 11:06–11:08 UTC), from the Vercel request logs:**
 
 | Question | Answer | Evidence |
