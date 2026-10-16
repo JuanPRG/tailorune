@@ -104,6 +104,12 @@ test('a full run in Node: resume and cover letter, as DOCX and PDF', async (t) =
   // The one-page check ran against real font metrics, not the word-count fallback.
   assert.equal(typeof result.wordCount, 'number');
   assert.ok(result.llm.calls >= 2, `expected at least resume + letter calls, got ${result.llm.calls}`);
+  // Which model wrote what -- names only -- for the API's audit log.
+  assert.equal(result.llm.answers.length, result.llm.calls);
+  for (const a of result.llm.answers) {
+    assert.deepEqual(Object.keys(a).sort(), ['model', 'providerId', 'task']);
+    assert.equal(a.providerId, 'gemini');
+  }
 });
 
 test('a run result never carries the provider key', async (t) => {

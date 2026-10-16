@@ -24,6 +24,9 @@ import { runTailorPipeline } from '../extension/engine/pipeline.js';
 import { validatePreferences, PreferenceError } from '../extension/engine/preferences.js';
 import { loadEnvFiles, providerKeysFromEnv, PROVIDER_ENV } from './keys.mjs';
 import { nodePlatform } from './platform/node.js';
+import { summarizeRun, redact } from './summary.mjs';
+
+export { summarizeRun };
 
 const MAX_RESUME_BYTES = 2 * 1024 * 1024;
 const MAX_JOB_CHARS = 50_000;
@@ -113,38 +116,6 @@ export function parseCliArgs(argv) {
   };
 }
 
-const seconds = (ms) => Math.round(ms / 100) / 10;
-
-/**
- * The summary an agent reads. An allowlist: fields are copied out one by one,
- * so nothing new in the pipeline's result -- cooldowns, demotions, a future
- * diagnostic -- reaches stdout without someone deciding it should.
- */
-export function summarizeRun(result, { job, files }) {
-  const letter = result.coverLetter;
-  return {
-    status: 'done',
-    job: { title: job.title, employer: job.employer },
-    resume: {
-      status: result.resumeStatus,
-      word_count: result.wordCount,
-      warnings: result.resumeWarnings || [],
-      errors: result.resumeErrors || [],
-    },
-    skills: { status: result.skills ? result.skills.status : null },
-    cover_letter: letter
-      ? { status: letter.status, word_count: letter.wordCount, warnings: letter.warnings || [], errors: letter.errors || [] }
-      : null,
-    cover_letter_text: letter ? letter.text : null,
-    files,
-    llm: { calls: result.llm.calls, seconds: seconds(result.llm.ms) },
-  };
-}
-
-/** Belt and braces: the engine's errors are tested to carry no key, but this is the last stop. */
-function redact(message, keys) {
-  return Object.values(keys).reduce((text, key) => text.split(key).join('[redacted]'), String(message));
-}
 
 function readJob({ jobFile, jobText }) {
   const text = jobFile !== undefined ? readFileSync(jobFile, 'utf8') : jobText;

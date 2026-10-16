@@ -39,8 +39,11 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
-/** Resolves the raw resume text regardless of whether the user pasted text or uploaded a file. */
-async function resolveResumeText({ resumeText, resumeFileBase64, resumeFileExt }, extractPdfText) {
+/**
+ * Resolves the raw resume text regardless of whether the user pasted text or uploaded a file.
+ * Exported for the agent API, which converts an upload to text once, when it is stored.
+ */
+export async function resolveResumeText({ resumeText, resumeFileBase64, resumeFileExt }, extractPdfText) {
   if (!resumeFileBase64) return resumeText;
   const bytes = base64ToBytes(resumeFileBase64);
   if (resumeFileExt === '.docx') return extractDocxText(bytes);
@@ -92,7 +95,10 @@ export async function runTailorPipeline(payload, platform) {
   // any of them can rotate across the provider chain on failure. Which of
   // those actually ran is invisible from the finished document, so it is
   // recorded here and reported alongside the word count.
-  const llm = { calls: 0, ms: 0, demotions: [] };
+  // `answers` records which provider/model produced each answer, in order --
+  // names only, never a credential. The agent API's audit log keeps it, so a
+  // generated document can be traced to the model that wrote it.
+  const llm = { calls: 0, ms: 0, demotions: [], answers: [] };
 
   // The model that answered most recently, so a caller whose VALIDATION failed
   // can rotate away from it -- see demoteLast below.
@@ -111,6 +117,7 @@ export async function runTailorPipeline(payload, platform) {
         task,
         chainLength: describeChain(chain, task).length,
       };
+      llm.answers.push({ task, providerId: response.providerId, model: response.model });
       return response;
     } finally {
       llm.calls += 1;
