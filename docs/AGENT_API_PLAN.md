@@ -94,18 +94,42 @@ Target: **under 1k agent tokens per application**, including the tool schema.
 ### The API surface
 
 ```
-POST /v1/resumes            {filename, content_base64 | text}   -> {resume_id, name, word_count}
-GET  /v1/resumes                                                 -> [{resume_id, name, updated_at}]
-POST /v1/runs               {resume_id, job_url | job_text,
-                             job_title?, employer?, cover_letter?: true,
-                             pdf?: true, judge?: false, preferences?,
-                             wait?: 0..120}                      -> 202 {run_id, status}
+POST   /v1/resumes          {filename, content_base64 | text}   -> {resume_id, name, word_count}
+GET    /v1/resumes                                               -> [{resume_id, name, updated_at}]
+DELETE /v1/resumes/{id}                                          -> 204
+POST   /v1/runs             {resume_id, job_title, employer,
+                             job_text | job_url,
+                             constraints?, cover_letter?: true,
+                             judge?: false, wait?: 0..120}       -> 202 {run_id, status}
                                                                     | 200 {…finished run…} if done within `wait`
-GET  /v1/runs/{run_id}                                           -> {status, result?, error?}
-GET  /v1/files/{token}                                           -> the .docx / .pdf (signed, expires in 24h)
-GET  /openapi.json                                               -> what Muse reads to build its client
-POST /mcp                                                        -> the same 4 operations as MCP tools
+GET    /v1/runs/{run_id}[?inline=base64]                         -> {status, result?, error?}
+GET    /v1/runs/{run_id}/audit                                   -> the stored inputs and outputs for that run
+GET    /v1/files/{token}                                         -> the .docx / .pdf (signed, expires in 24h)
+GET    /openapi.json                                             -> what Muse reads to build its client
+POST   /mcp                                                      -> optional (M6); Muse used REST in M0
 ```
+
+**Decided with Muse (2026-10-16)**, after it proposed its own contract:
+
+- **Async by default.** `POST /v1/runs` returns a `run_id` at once. Muse runs applications on a
+  schedule in batches, so it should not hold a connection open per run. `wait` stays available for
+  single interactive runs (M0 measured 90s working on Vercel).
+- **`constraints` maps to the existing validated preferences**, not to free text inserted into the
+  prompt. Accepted keys: `resume_notes` and `cover_letter_notes` (≤800 chars each),
+  `preserve_points` (≤600), `resume_density`, `keyword_alignment`, `emphasis_areas`,
+  `cover_letter_length` and `cover_letter_tone`. `validatePreferences()` checks them, and the
+  engine already treats them as style guidance only. Truthfulness comes from structure, not from
+  instructions: locked fields (name, contact, employers, titles, dates, education) never enter a
+  prompt, and validators flag rewrites that drop numbers or drift from the original wording.
+  Unknown keys are rejected with 400, so a typo cannot silently do nothing.
+- **Model routing stays on the server.** Per-task chains (resume, skills, cover letter, judge) are
+  tuned and pinned by `chainParity.test.mjs`. There is no per-call model override, because one
+  would bypass rotation and bring back failures already fixed. (Muse suggested "Grok" for cover
+  letters; the key is **Groq**, a different provider.)
+- **The result includes `cover_letter_text`** (the paragraphs as plain text, for pasting into
+  application forms), alongside the file links.
+- **Files are links by default.** `?inline=base64` adds `content_base64` to each file, for clients
+  that would rather not make a second request.
 
 A finished run, which is all the agent ever sees:
 
@@ -116,6 +140,7 @@ A finished run, which is all the agent ever sees:
   "job": {"title": "Data Analyst", "employer": "Northwind"},
   "resume": {"status": "ok", "word_count": 486, "pages": 1, "warnings": []},
   "cover_letter": {"status": "ok", "word_count": 312, "warnings": []},
+  "cover_letter_text": "Dear Hiring Team,\n\n…",
   "files": [
     {"kind": "resume", "name": "Ada_Lovelace_Northwind_Resume_1016.docx", "url": "https://…/f/…"},
     {"kind": "resume_pdf", "name": "…Resume_1016.pdf", "url": "…"},
@@ -163,6 +188,19 @@ the common case, and otherwise the agent polls `GET /v1/runs/{id}`, as v4 did.
 - **Logs carry no resume text, job text or keys**: only run ids, timings, model names, and
   `credentialFingerprint()` values.
 - A **kill switch** env var (`API_DISABLED=1`) and a documented token-rotation step.
+- **The server stores only a hash of the token** (`TAILORUNE_API_TOKEN_SHA256`) and compares
+  SHA-256 digests in constant time. The token is 32 random bytes, so a slow password hash adds
+  nothing; the plain token exists only in `.env.local` and in Muse's credential store.
+- **Audit log:** each run stores its inputs (resume id plus a hash of the resume text, the job
+  text, the constraints) and its outputs (the tailored text, file names, validator and judge
+  reports, which models answered). It is kept **12 months**, can be read with
+  `GET /v1/runs/{id}/audit`, and is deleted along with its resume. It holds personal data, so it
+  is never written to the request log.
+
+**Hosting decision:** Vercel, not a home server over Tailscale (Muse's suggestion). Muse runs on
+a schedule, and a sleeping PC would fail those runs. Joining Muse's VM to your tailnet would also,
+by default, expose every device on it. If the keys must stay at home later, use Cloudflare Tunnel
+to one port rather than adding Muse to the tailnet.
 
 ---
 
@@ -212,7 +250,23 @@ outside: `/openapi.json` is public; `/v1/ping` gives 401 without the token and w
 200 with it; `/v1/files/sample.txt` downloads as an attachment; `/mcp` handles `initialize` and
 `tools/call`; **a 90s call completes**, so Vercel is not the limit below 300s. The token is in
 the gitignored `.env.local` and is stored on Vercel as a sensitive production variable.
-**Still open:** the four Muse-side answers, from a real Muse connection.
+**Muse connected (2026-10-16, 11:06–11:08 UTC), from the Vercel request logs:**
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Bearer or OAuth? | **Bearer works. No OAuth needed** | Two 401s from `curl` without a token, then every call with `Bearer` got 200. The token never appears in the logs |
+| REST or MCP? | **REST**, via the OpenAPI doc. MCP was never called | `curl` fetched `/openapi.json`, then a **`Python-urllib/3.12`** script made every authenticated call. Muse writes its own Python client on its VM and saved it as a "connector doc plus helper" |
+| Can it fetch a file link? | **Yes** | `GET /v1/files/sample.txt` → 200 from the same Python client |
+| How long may a call take? | **At least 240s**: 60, 120 and 240 all returned 200 | Muse's rerun at 11:14–11:21 UTC. Responses logged at 11:15:35, 11:17:35 and 11:21:36, all 200 from `Python-urllib`. The gaps match back-to-back 60/120/240s waits. The probe caps at 280s, so Vercel's 300s is the ceiling, not Muse |
+
+**What this changes in the plan:**
+- Connectors are created **in chat**, not in Settings. Meta's help article says to ask Muse to create a custom connector, and Muse keeps the key in its Secure Credentials Store.
+- **M6 (MCP) drops to optional.** Muse used REST + OpenAPI on its own, so the OpenAPI doc is the main interface. Its descriptions matter more than any MCP tool schema.
+- **The timeout belongs to Muse's script, not a tool-call limit, and it held 240s.** A synchronous
+  `wait` covering a whole run (typically 10–20s) is safe for single runs. Async with polling stays
+  the default for scheduled batches, where holding connections open buys nothing.
+- **M0 is complete.** All four questions are answered.
+- **Hobby keeps runtime logs for under an hour.** Read them right after a Muse session (`vercel logs --cwd server --environment production --since 59m`).
 
 ### M1 — Pull the pipeline out of the offscreen document (1–2 days, riskiest)
 - Move `runTailor` from `offscreen.entry.js` into `extension/engine/pipeline.js`, taking its four
@@ -227,6 +281,22 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
   extension. That is why it comes first and is guarded by the full e2e suite. The alternative,
   copying `runTailor` into the server, avoids that risk but means two copies that drift apart.)*
 
+**Progress (2026-10-16): built and committed (`ce4bc25`).**
+- `extension/engine/pipeline.js` exports `runTailorPipeline(payload, platform)`. The body was moved
+  byte for byte by script from `offscreen.entry.js`; the only edit passes `extractPdfText` into
+  `resolveResumeText`.
+- `offscreen.entry.js` is now a ~60-line wrapper that supplies Chrome's fonts, FileReader base64 and
+  the vendored pdf.js.
+- PDF text assembly and the scanned-PDF guard moved to `engine/pdfText.js`
+  (`extractPdfTextWith(pdfjsLib, bytes)`), shared by `extractPdfText.js` (Chrome) and
+  `server/platform/node.js` (pdfjs-dist legacy build, loaded lazily).
+- `tests/unit/pipeline.test.mjs`: full Node runs (txt and PDF resumes → DOCX and PDF), the Node
+  seams, and no provider key in the result.
+- `npm test`: **408 unit + 84 e2e pass.**
+- **Still to do before a release:** one manual run of the unpacked extension with a real key.
+- Known noise: in Node, pdf.js warns `standardFontDataUrl` once per PDF. Extraction is unaffected,
+  but silence it before M3 so it stays out of production logs.
+
 ### M2 — CLI (1 day)
 - `server/cli.mjs`: `tailorune tailor --resume <file> (--job-url <u> | --job-file <f>) [--no-cover] [--pdf] [--out <dir>] [--json]`.
 - Keys come only from env vars / `.env.local`, reusing `liveEnv.mjs`. Prints the compact JSON from §2.
@@ -239,12 +309,19 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
   auth, input validation, size limits, a consistent `{ok, data, error}` envelope.
 - A storage interface (`putFile`, `getFile`, `putResume`, `getRun`, …) with a **local-disk**
   version for dev and tests.
-- An async run queue, with `wait` support and response caching by fingerprint.
+- An async run queue, with `wait` support and response caching by fingerprint. On Vercel the run
+  continues after the 202 through `waitUntil` (from `@vercel/functions`), within `maxDuration`.
+  Concurrency is capped at 2, so a scheduled morning batch queues instead of hitting free-tier
+  rate limits all at once.
+- `constraints` → `validatePreferences()`, rejecting unknown keys; `cover_letter_text`; `?inline=base64`.
+- Token auth against `TAILORUNE_API_TOKEN_SHA256`, replacing the probe's plain-token comparison.
+- An audit record per run (§3), with `GET /v1/runs/{id}/audit` and the 12-month retention sweep.
 - `GET /openapi.json`, written by hand and short. Its descriptions *are* the agent's instructions,
   so keep them terse.
 - **Tests:** integration tests over the handler against `mockLlmServer`. Cover 401 without a
-  token, 413 over the size limits, the async → poll → done path, the cached second call, and that
-  no response contains a key.
+  token, 413 over the size limits, 400 for an unknown `constraints` key, the async → poll → done
+  path, the cached second call, the audit record matching the result, and that no response,
+  audit record or log contains a provider key or the token.
 - **Done when:** the CLI and HTTP both pass the same golden-run test.
 
 ### M4 — Read the job from a URL on the server (1 day)
@@ -263,7 +340,7 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
 - **Done when:** the production smoke test (resume upload → run → download) passes against the
   live URL, and a request without a token gets 401.
 
-### M6 — MCP endpoint (1 day)
+### M6 — MCP endpoint (1 day). *Optional since M0: Muse connected over REST + OpenAPI without it*
 - `POST /mcp` (streamable HTTP, official `@modelcontextprotocol/sdk`) exposing `save_resume`,
   `list_resumes`, `tailor_job` and `get_run`. Each is a thin call into the M3 handlers.
 - Bearer auth by default. Add **OAuth (M8)** only if M0 showed Muse's connector settings need it.
