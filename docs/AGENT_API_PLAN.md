@@ -206,6 +206,14 @@ behave identically after every milestone.**
 - **Done when:** Muse calls the hello endpoint with a token from its Credentials Store, and the
   answers are written into this doc.
 
+**Progress (2026-10-16):** the probe (`server/http/probe.js`, 12 tests) is live at
+`https://tailorune-probe.vercel.app` (Vercel project `tailorune-probe`, Hobby). Verified from
+outside: `/openapi.json` is public; `/v1/ping` gives 401 without the token and with a wrong one,
+200 with it; `/v1/files/sample.txt` downloads as an attachment; `/mcp` handles `initialize` and
+`tools/call`; **a 90s call completes**, so Vercel is not the limit below 300s. The token is in
+the gitignored `.env.local` and is stored on Vercel as a sensitive production variable.
+**Still open:** the four Muse-side answers, from a real Muse connection.
+
 ### M1 — Pull the pipeline out of the offscreen document (1–2 days, riskiest)
 - Move `runTailor` from `offscreen.entry.js` into `extension/engine/pipeline.js`, taking its four
   platform seams as injected arguments (`loadFonts`, `toBase64`, `extractPdf`, `now`).
