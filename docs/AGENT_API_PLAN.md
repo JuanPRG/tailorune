@@ -403,6 +403,68 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
 - **Done when:** the production smoke test (resume upload → run → download) passes against the
   live URL, and a request without a token gets 401.
 
+**Progress (2026-10-16): deployed and verified at `https://tailorune-api.vercel.app`; committed (`ebfcd26`).**
+M4 was skipped for now: Muse sends `job_text`.
+
+*How it differs from the plan above:*
+- The project deploys from the **repo root**, not `server/`, because the function imports
+  `extension/engine` and the root dependencies.
+- It is a new Vercel project, **`tailorune-api`**. The probe (`tailorune-probe`) is untouched.
+- Everything is stored in **one private Vercel Blob store** (`tailorune-data`, iad1, private
+  access), with no separate KV. The rate limit and the cache read the last day's runs from it.
+
+*Files:*
+- `api/index.js`: `createApp` with `createBlobStore()` and `defer = waitUntil`
+  (`@vercel/functions`).
+- `server/store/blobStore.mjs`: private access only, uncached reads, and the same contract as
+  `fsStore` (`tests/unit/stores.test.mjs` runs both against an SDK-faithful fake).
+- `vercel.json`: `framework: null`, `npm ci --omit=dev`, and a build that emits only a deny-all
+  `robots.txt`, so no repo file is ever served. Also `maxDuration` 300, region iad1, and
+  `includeFiles` for the Arimo fonts and pdf.js's worker and standard fonts.
+- `.vercelignore`: an **allowlist** that never uploads `.env*`, `server/.data` or tests.
+- `tests/unit/deployConfig.test.mjs` pins all of the above.
+
+*Operation budget:* `listRuns({sinceMs})` filters on listing metadata before reading anything.
+The sweep works from metadata alone, at most once a day across all instances (a marker blob).
+
+*Secrets:* `TAILORUNE_API_TOKEN_SHA256` (the same token Muse already holds) and `GEMINI_API_KEY`,
+`GROQ_API_KEY`, `OPENROUTER_API_KEY`, all sensitive, production only. `BLOB_READ_WRITE_TOKEN` was
+added by connecting the store. Previews have no token hash, so they fail closed with 503.
+
+*Verified in production:*
+- Only `/openapi.json` and `/robots.txt` answer without the token. `README.md`, `.env.local`,
+  `package.json` and source paths all reach the API and get 401.
+- Upload works. A resume-only run finished in 3s, approved.
+- Downloading from private Blob returns 200, and 401 without the token.
+- The audit names the models. A repeated POST is a cache hit.
+- **The async path works:** a 202, then `queued → running → done` in 15s. `waitUntil` keeps the
+  run alive after the response.
+- The test data was deleted through the API, which cascaded to runs, files and audit records,
+  leaving 0 blobs. 35 production log records hold no secret and no job text.
+
+*Bugs production found, and fixed:*
+1. **Provider keys were stored truncated.** A deploy helper written through a shell heredoc lost
+   the backslashes in its regex (`\s` became `s`), so each key was cut at its first letter "s".
+   Groq's became `"g"`, and OpenRouter's ran on into the following lines of the `.env`. Gemini
+   answered 400 and Groq a credentials error. The keys were re-added, this time parsed by
+   `server/keys.mjs` (tested), and verified by length and shape before upload. Lesson: secrets are
+   never parsed by an ad-hoc regex. Use `loadEnvFiles`.
+2. **`redact()` shredded the error** by splitting on that one-letter "key". It now ignores any
+   value under 16 characters (`tests/unit/summary.test.mjs`).
+3. **The Vercel CLI wraps `.env.local` values in quotes** when it rewrites the file. The
+   API token is unchanged, but copy it **without** the quotes. `loadEnvFiles` already strips them.
+
+*Found, not fixed (a product decision):* **the cover letter chain is the weak link under Gemini
+overload.** Three full runs failed today the same way. The resume pass succeeded, Qwen's letter
+failed validation (held 30s), and both Gemini models returned 503 "high demand", so the curated
+3-model `coverLetter` chain (`gemini-3.5-flash-lite → gemini-3.1-flash-lite → qwen3.8-27b`) ran
+out, and **the whole run failed, losing a good resume**. Two options, to decide before Muse runs
+batches: (a) let the API return the resume with `cover_letter: {status: "failed"}` instead of
+failing the run, or (b) lengthen the prose chain. (b) needs the `.env` and `chainParity` treatment.
+
+*Side effect to decide on:* `vercel link` connected the GitHub repo to `tailorune-api`, so a push
+to `main` deploys the API, and other branches get preview deployments (which fail closed).
+
 ### M6 — MCP endpoint (1 day). *Optional since M0: Muse connected over REST + OpenAPI without it*
 - `POST /mcp` (streamable HTTP, official `@modelcontextprotocol/sdk`) exposing `save_resume`,
   `list_resumes`, `tailor_job` and `get_run`. Each is a thin call into the M3 handlers.
