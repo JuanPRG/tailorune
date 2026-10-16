@@ -304,6 +304,33 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
   (`npm run test:live`-style check). This is already a working local integration for any agent
   that can run a shell, Muse Code included.
 
+**Progress (2026-10-16): done and committed (`bfedc98`).**
+- As built: `node server/cli.mjs tailor --resume <file> --title <t> --employer <e>
+  (--job-file <f> | --job-text <t>) [--out <dir>] [--constraints <file.json>] [--no-cover]
+  [--no-pdf] [--judge]`. It always prints JSON (stdout on success, `{status:"error"}` on stderr),
+  with exit codes 0 / 1 (run failed) / 2 (usage or configuration). `--job-url` waits for M4.
+- Key loading moved from `tests/live/liveEnv.mjs` to **`server/keys.mjs`**, which `liveEnv`
+  re-exports, so there is still one place that reads keys. Key-like flags (`--api-key`, `--token`,
+  …) are refused by name, so a key never lands in shell history. The summary is an allowlist, and
+  every configured key is redacted from output as a last stop.
+- `--constraints` takes the preference fields from §2, and `validatePreferences()` already rejects
+  unknown keys, so the CLI exits 2 before any model call.
+- The pipeline result now includes `coverLetter.text`, which becomes `cover_letter_text`.
+- pdf.js in Node now gets its standard fonts and `verbosity: 0`. Its warnings went to stdout and
+  would have corrupted the JSON on PDF resumes.
+- Tests: `tests/unit/cli.test.mjs` (12, including end-to-end child-process runs against the mock).
+  `npm test`: **420 unit + 84 e2e pass.**
+- **Live run** with the real keys (fictional `jordan-lee-standard.txt` against the fictional demo
+  posting): **done in 20s with 3 calls**. Resume, skills and cover letter were all approved, and the
+  four files were written. Every locked field was verified unchanged in the DOCX, and the PDF reads
+  back. The summary is 3.3 KB (~800 tokens, half of it the letter text). A scan of stdout and
+  stderr found none of the four keys, not even a 12-character prefix.
+- **What the live run taught us:** the *first* attempt failed. Both Gemini models returned
+  `provider_unavailable` and Groq's Qwen failed validation, so the run ended with "retry in about
+  30s". The identical retry a minute later succeeded. **M3's queue must retry a run that fails as
+  temporarily unavailable** (once, after the suggested wait), or Muse's scheduled batches will
+  report outages as failed applications.
+
 ### M3 — HTTP API core (2 days)
 - `server/http/handler.js`: the routes from §2 as one `(Request) → Response` handler. Bearer
   auth, input validation, size limits, a consistent `{ok, data, error}` envelope.
@@ -312,7 +339,8 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
 - An async run queue, with `wait` support and response caching by fingerprint. On Vercel the run
   continues after the 202 through `waitUntil` (from `@vercel/functions`), within `maxDuration`.
   Concurrency is capped at 2, so a scheduled morning batch queues instead of hitting free-tier
-  rate limits all at once.
+  rate limits all at once. A run that fails as *temporarily unavailable* is retried once after
+  the wait the error suggests (M2's live run needed exactly this), and only then reported as failed.
 - `constraints` → `validatePreferences()`, rejecting unknown keys; `cover_letter_text`; `?inline=base64`.
 - Token auth against `TAILORUNE_API_TOKEN_SHA256`, replacing the probe's plain-token comparison.
 - An audit record per run (§3), with `GET /v1/runs/{id}/audit` and the 12-month retention sweep.
