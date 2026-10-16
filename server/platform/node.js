@@ -5,6 +5,7 @@
 // PDF text assembly -- only where the bytes come from differs.
 
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPdfTextWith } from '../../extension/engine/pdfText.js';
 
@@ -42,10 +43,20 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
+// pdf.js's Node build reads standard fonts from disk, and without them warns
+// once per PDF -- on stdout, where the CLI writes the JSON an agent parses.
+// Verbosity 0 is errors only.
+// The location must end in "/" -- pdf.js rejects a Windows "\" -- and fs
+// accepts forward slashes on every platform.
+const PDF_DOCUMENT_OPTIONS = Object.freeze({
+  standardFontDataUrl: `${path.dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json'))).replace(/\\/g, '/')}/standard_fonts/`,
+  verbosity: 0,
+});
+
 async function extractPdfText(bytes) {
   // pdf.js takes ownership of (and detaches) the buffer it is given, so it
   // gets a copy and the caller's bytes stay usable.
-  return extractPdfTextWith(await loadPdfjs(), new Uint8Array(bytes));
+  return extractPdfTextWith(await loadPdfjs(), new Uint8Array(bytes), PDF_DOCUMENT_OPTIONS);
 }
 
 export const nodePlatform = Object.freeze({ loadFonts, toBase64, extractPdfText });

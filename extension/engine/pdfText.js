@@ -23,10 +23,12 @@ export class NoExtractableTextError extends Error {
 /**
  * @param {object} pdfjsLib  a loaded pdf.js module (vendored in Chrome, pdfjs-dist/legacy in Node)
  * @param {Uint8Array|ArrayBuffer} bytes
+ * @param {object} [documentOptions]  extra getDocument() options. Node passes its standard-font
+ *   location and a quiet verbosity, since pdf.js warns on stdout -- where the CLI writes its JSON.
  * @returns {Promise<string>} page texts joined by "\n\n"
  */
-export async function extractPdfTextWith(pdfjsLib, bytes) {
-  const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+export async function extractPdfTextWith(pdfjsLib, bytes, documentOptions = {}) {
+  const doc = await pdfjsLib.getDocument({ ...documentOptions, data: bytes }).promise;
   const pageTexts = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);

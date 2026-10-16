@@ -22,50 +22,14 @@
 //
 //   PowerShell:  $env:TAILORUNE_ENV_FILE = "$HOME/.your-tool/.env"
 //   bash:        export TAILORUNE_ENV_FILE=~/.your-tool/.env
+//
+// The loading itself lives in server/keys.mjs, shared with the agent API's
+// CLI; this module keeps what only the harnesses need.
 
-import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { loadEnvFiles, PROVIDER_ENV, ROOT } from '../../server/keys.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(__dirname, '../..');
-
-const ENV_FILES = [
-  path.join(ROOT, '.env.local'),
-  ...(process.env.TAILORUNE_ENV_FILE ? [process.env.TAILORUNE_ENV_FILE] : []),
-];
-
-// v4 names two of its provider keys differently. Mapped rather than renamed,
-// so v4's own config is never edited to suit this repo.
-const KEY_ALIASES = {
-  LLM_PROVIDER_OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
-};
-
-export const PROVIDER_ENV = {
-  gemini: 'GEMINI_API_KEY',
-  groq: 'GROQ_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-};
-
-/** Load KEY=value pairs into the environment, without printing any value. */
-export function loadEnvFiles() {
-  const loadedFrom = [];
-  for (const file of ENV_FILES) {
-    if (!existsSync(file)) continue;
-    let used = false;
-    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-      const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-      if (!m) continue;
-      const value = m[2].replace(/^["']|["']$/g, '');
-      if (!value) continue;
-      for (const name of [m[1], KEY_ALIASES[m[1]]].filter(Boolean)) {
-        if (!process.env[name]) { process.env[name] = value; used = true; }
-      }
-    }
-    if (used) loadedFrom.push(file);
-  }
-  return loadedFrom;
-}
+export { loadEnvFiles, PROVIDER_ENV, ROOT };
 
 /** @returns {Array<{providerId: string, apiKey: string}>} configured providers only. */
 export function buildChain() {

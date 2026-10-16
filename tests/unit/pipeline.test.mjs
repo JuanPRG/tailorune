@@ -96,6 +96,8 @@ test('a full run in Node: resume and cover letter, as DOCX and PDF', async (t) =
   assert.match(byKind.resume.filename, /_Acme_Corp_Resume_\d{4}\.docx$/);
   assert.match(await docxText(byKind.resume.base64), /TAILORED SUMMARY/);
   assert.match(await docxText(byKind.cover_letter.base64), /BODY PARAGRAPH ONE/);
+  // The letter's body as plain text, for pasting into application forms.
+  assert.equal(result.coverLetter.text, `${CL_PARA_ONE}\n\n${CL_PARA_TWO}`);
   assert.ok(isPdf(byKind.resume_pdf.base64), 'resume PDF has a PDF header');
   assert.ok(isPdf(byKind.cover_letter_pdf.base64), 'cover letter PDF has a PDF header');
 

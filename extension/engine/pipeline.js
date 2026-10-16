@@ -260,6 +260,9 @@ export async function runTailorPipeline(payload, platform) {
     });
     coverLetter = {
       status: report.status,
+      // The body as plain text. The popup ignores it; the agent API returns
+      // it as cover_letter_text, for pasting into application forms.
+      text: paragraphs.join('\n\n'),
       wordCount: report.validator ? report.validator.wordCount : null,
       warnings: report.validator ? report.validator.warnings : [],
       errors: report.validator ? report.validator.errors : [],
