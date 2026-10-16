@@ -157,9 +157,11 @@ export function createApi({ store, runner, env, now, log, platform, defer = () =
 
     // An identical request whose files are still downloadable is answered from
     // the earlier run: same documents, no quota spent. One still in progress
-    // is returned too, so a retried POST cannot start a duplicate.
+    // is returned too, so a retried POST cannot start a duplicate. A run whose
+    // letter failed is not reused -- asking again is how the agent gets one.
+    const letterFailed = (r) => Boolean(r.result && r.result.cover_letter && r.result.cover_letter.status === 'failed');
     const previous = runs
-      .filter((r) => r.fingerprint === fingerprint && r.status !== 'failed')
+      .filter((r) => r.fingerprint === fingerprint && r.status !== 'failed' && !letterFailed(r))
       .filter((r) => r.status !== 'done' || Date.parse(r.created_at) + FILE_TTL_MS > t)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     if (previous) {

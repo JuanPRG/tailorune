@@ -7,7 +7,7 @@
 // summary an agent will read.
 
 import { randomBytes } from 'node:crypto';
-import { summarizeRun } from '../summary.mjs';
+import { redact, summarizeRun } from '../summary.mjs';
 
 export const FILE_TTL_MS = 24 * 3_600_000;
 export const AUDIT_TTL_MS = 365 * 24 * 3_600_000;
@@ -38,7 +38,7 @@ export async function executeRun(run, resume, deps) {
   if (!providerId) throw new ConfigurationError('No provider key is configured on the server.');
 
   const input = run.input;
-  const result = await runPipeline({
+  const raw = await runPipeline({
     resumeText: resume.text,
     jobDescription: input.job_text,
     jobTitle: input.job_title,
@@ -50,9 +50,17 @@ export async function executeRun(run, resume, deps) {
     includeCoverLetter: input.cover_letter,
     autoDownloadPdf: true,
     useJudge: input.judge,
+    // A letter that fails (a provider outage) must not cost the finished
+    // resume: the run completes, and the letter is reported as failed.
+    keepResumeIfLetterFails: true,
     baseUrlOverride,
   }, platform);
-  if (!result || !result.ok) throw new Error((result && result.error) || 'The run failed.');
+  if (!raw || !raw.ok) throw new Error((raw && raw.error) || 'The run failed.');
+  // A failed letter carries the provider's error text; redact it like any other.
+  const failure = raw.coverLetter && raw.coverLetter.failure;
+  const result = failure
+    ? { ...raw, coverLetter: { ...raw.coverLetter, failure: { ...failure, message: redact(failure.message, providerKeys) } } }
+    : raw;
 
   const createdAt = now();
   const files = [];

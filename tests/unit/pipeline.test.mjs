@@ -31,14 +31,23 @@ const CL_PARA_TWO = `BODY PARAGRAPH TWO about transferable experience. ${Array(1
 // A recognisable fake key, so the leak assertion below can look for it.
 const FAKE_KEY = 'AIzaFAKE-pipeline-test-key-0123456789';
 
-/** JSON for the resume pass, prose for the letter -- keyed off the request, not call order. */
-function startMockLlm() {
+/**
+ * JSON for the resume pass, prose for the letter -- keyed off the request, not call order.
+ * `failLetter` answers every cover-letter request with a 400, so the letter's whole chain fails
+ * while the resume passes, as happened in production when Gemini was overloaded.
+ */
+function startMockLlm({ failLetter = false } = {}) {
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
       const body = Buffer.concat(chunks).toString('utf8');
       const isCoverLetter = body.includes('cover letter') || body.includes('no sign-off');
+      if (isCoverLetter && failLetter) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'mock: letter requests are refused' } }));
+        return;
+      }
       const content = isCoverLetter
         ? `${CL_PARA_ONE}\n\n${CL_PARA_TWO}`
         : JSON.stringify({
@@ -166,4 +175,40 @@ test('a PDF resume goes through the pipeline via the injected extractor', async 
 
   assert.equal(result.ok, true);
   assert.match(await docxText(result.outputs[0].base64), /Rivera/);
+});
+
+// --- a letter that fails must not take the resume with it (opt-in) ---------------
+
+const letterRun = (mock, extra = {}) => runTailorPipeline({
+  resumeText: RESUME_TEXT,
+  jobDescription: 'Backend engineer, Python and AWS.',
+  jobTitle: 'Backend Engineer',
+  employer: 'Acme Corp',
+  providerId: 'gemini',
+  apiKey: FAKE_KEY,
+  baseUrlOverride: mock.url,
+  includeCoverLetter: true,
+  autoDownloadPdf: true,
+  ...extra,
+}, nodePlatform);
+
+test('by default a failed letter still fails the run -- the extension is unchanged', async (t) => {
+  const mock = await startMockLlm({ failLetter: true });
+  t.after(() => mock.close());
+  await assert.rejects(() => letterRun(mock), (err) => typeof err.kind === 'string');
+});
+
+test('keepResumeIfLetterFails: the resume comes back and the letter is marked failed', async (t) => {
+  const mock = await startMockLlm({ failLetter: true });
+  t.after(() => mock.close());
+  const result = await letterRun(mock, { keepResumeIfLetterFails: true });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.outputs.map((o) => o.kind).sort(), ['resume', 'resume_pdf']);
+  assert.match(await docxText(result.outputs.find((o) => o.kind === 'resume').base64), /TAILORED SUMMARY/);
+  assert.equal(result.coverLetter.status, 'failed');
+  assert.equal(result.coverLetter.text, null);
+  assert.equal(typeof result.coverLetter.failure.kind, 'string');
+  assert.match(result.coverLetter.failure.message, /\S/);
+  assert.doesNotMatch(JSON.stringify(result.coverLetter), new RegExp(FAKE_KEY));
 });

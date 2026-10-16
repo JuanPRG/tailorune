@@ -25,7 +25,14 @@ export function summarizeRun(result, { job, files }) {
     },
     skills: { status: result.skills ? result.skills.status : null },
     cover_letter: letter
-      ? { status: letter.status, word_count: letter.wordCount, warnings: letter.warnings || [], errors: letter.errors || [] }
+      ? {
+        status: letter.status,
+        word_count: letter.wordCount,
+        warnings: letter.warnings || [],
+        errors: letter.errors || [],
+        // Only when the letter could not be written at all (the resume still was).
+        ...(letter.failure ? { error: { kind: letter.failure.kind, message: letter.failure.message } } : {}),
+      }
       : null,
     cover_letter_text: letter ? letter.text : null,
     files,

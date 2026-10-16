@@ -375,6 +375,47 @@ test('runs per day are capped; cached answers do not count', async (t) => {
   assert.ok(Number(over.headers.get('retry-after')) > 0);
 });
 
+test('a failed letter still delivers the resume; the same request later tries again', async (t) => {
+  const letterFailed = () => {
+    const r = fakeResult();
+    return {
+      ...r,
+      coverLetter: {
+        status: 'failed', text: null, wordCount: null, warnings: [], errors: [],
+        failure: { kind: 'providers_temporarily_unavailable', message: 'Retry in about 30s.' },
+      },
+    };
+  };
+  const { call, calls } = makeApp(t, { script: [letterFailed, () => fakeResult()] });
+  const resumeId = (await uploadTxt(call)).json.data.resume_id;
+
+  const first = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
+  assert.equal(first.json.data.status, 'done', 'the run is done: the resume is there');
+  assert.equal(first.json.data.result.cover_letter.status, 'failed');
+  assert.equal(first.json.data.result.cover_letter.error.kind, 'providers_temporarily_unavailable');
+  assert.equal(first.json.data.result.cover_letter_text, null);
+  assert.equal(first.json.data.result.files.length, 2, 'resume .docx and .pdf');
+  assert.equal(calls[0].keepResumeIfLetterFails, true, 'the API asks the pipeline to keep the resume');
+
+  const second = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
+  assert.notEqual(second.json.data.run_id, first.json.data.run_id, 'a letterless run is not served from cache');
+  assert.equal(second.json.data.result.cover_letter.status, 'approved');
+  assert.equal(calls.length, 2);
+
+  const third = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30 }) });
+  assert.equal(third.json.data.run_id, second.json.data.run_id, 'a complete run is cached as before');
+});
+
+test('without a letter requested, a resume-only run is cached normally', async (t) => {
+  const noLetter = () => ({ ...fakeResult(), coverLetter: null });
+  const { call, calls } = makeApp(t, { script: [noLetter] });
+  const resumeId = (await uploadTxt(call)).json.data.resume_id;
+  const a = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30, cover_letter: false }) });
+  const b = await call('POST', '/v1/runs', { body: runBody(resumeId, { wait: 30, cover_letter: false }) });
+  assert.equal(b.json.data.run_id, a.json.data.run_id);
+  assert.equal(calls.length, 1);
+});
+
 // --- audit and retention --------------------------------------------------------
 
 test('the audit record keeps what was generated, from what, by which model', async (t) => {

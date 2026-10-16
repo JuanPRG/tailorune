@@ -251,14 +251,36 @@ export async function runTailorPipeline(payload, platform) {
   }
 
   let coverLetter = null;
+  let letter = null;
   if (payload.includeCoverLetter) {
-    const { paragraphs, report } = await timed('coverLetter', () => generateCoverLetter({
-      model: tailoredModel,
-      job,
-      preferences,
-      callLlm,
-      demoteLast,
-    }));
+    try {
+      letter = await timed('coverLetter', () => generateCoverLetter({
+        model: tailoredModel,
+        job,
+        preferences,
+        callLlm,
+        demoteLast,
+      }));
+    } catch (err) {
+      // By default a letter that cannot be written fails the run, as it always
+      // has in the extension. The agent API opts out: when Gemini was
+      // overloaded, the letter's short curated chain ran out three times in one
+      // day and took a finished, approved resume down with it. An agent applying
+      // on a schedule is better served by the resume now and the letter marked
+      // failed than by nothing.
+      if (payload.keepResumeIfLetterFails !== true) throw err;
+      coverLetter = {
+        status: 'failed',
+        text: null,
+        wordCount: null,
+        warnings: [],
+        errors: [],
+        failure: { kind: (err && err.kind) || 'error', message: String((err && err.message) || err) },
+      };
+    }
+  }
+  if (letter) {
+    const { paragraphs, report } = letter;
     const clDocx = await renderCoverLetterDocx({ bodyParagraphs: paragraphs, model: tailoredModel, job });
     outputs.push({
       kind: 'cover_letter',

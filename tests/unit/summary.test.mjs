@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { redact } from '../../server/summary.mjs';
+import { redact, summarizeRun } from '../../server/summary.mjs';
 
 const KEY = 'gsk_RealLookingKey0123456789abcdefghijklmnop';
 
@@ -19,4 +19,26 @@ test('a real key is redacted wherever it appears', () => {
 test('a value too short to be a key is never used to redact', () => {
   const message = 'gemini/gemini-3.1-flash-lite: request_incompatible; groq: provider_configuration_error';
   assert.equal(redact(message, { groq: 'g', gemini: '', openrouter: 'short' }), message);
+});
+
+test('a failed letter is reported as failed, with why, and no text', () => {
+  const summary = summarizeRun({
+    resumeStatus: 'approved', wordCount: 400, resumeWarnings: [], resumeErrors: [],
+    skills: { status: 'approved' },
+    coverLetter: {
+      status: 'failed', text: null, wordCount: null, warnings: [], errors: [],
+      failure: { kind: 'providers_temporarily_unavailable', message: 'Retry in about 30s.' },
+    },
+    llm: { calls: 4, ms: 9_000 },
+  }, { job: { title: 'T', employer: 'E' }, files: [] });
+
+  assert.deepEqual(summary.cover_letter, {
+    status: 'failed',
+    word_count: null,
+    warnings: [],
+    errors: [],
+    error: { kind: 'providers_temporarily_unavailable', message: 'Retry in about 30s.' },
+  });
+  assert.equal(summary.cover_letter_text, null);
+  assert.equal(summary.resume.status, 'approved');
 });

@@ -197,6 +197,9 @@ export async function main(argv, { env = process.env, stdout = process.stdout, s
         includeCoverLetter: options.coverLetter,
         autoDownloadPdf: options.pdf,
         useJudge: options.judge,
+        // As in the API: a letter lost to a provider outage still leaves the
+        // resume written, with the letter reported as failed in the summary.
+        keepResumeIfLetterFails: true,
         // Points every provider at one OpenAI-compatible endpoint: the test
         // suite's local mock, or a self-hosted model. Not for normal use.
         baseUrlOverride: env.TAILORUNE_LLM_BASE_URL || undefined,

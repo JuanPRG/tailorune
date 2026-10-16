@@ -46,7 +46,11 @@ const run = {
       properties: {
         job: { type: 'object' },
         resume: { type: 'object', description: 'status, word_count, warnings, errors.' },
-        cover_letter: { type: ['object', 'null'] },
+        cover_letter: {
+          type: ['object', 'null'],
+          description: 'status "failed" (with error) when only the letter could not be written; the resume '
+            + 'files are still there. POST the same request again later to get the letter.',
+        },
         cover_letter_text: { type: ['string', 'null'], description: 'Letter body as plain text, for form fields.' },
         files: { type: 'array', items: file },
         cached: { type: 'boolean', description: 'True when an identical earlier run was returned.' },
