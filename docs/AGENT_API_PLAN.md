@@ -352,6 +352,41 @@ the gitignored `.env.local` and is stored on Vercel as a sensitive production va
   audit record or log contains a provider key or the token.
 - **Done when:** the CLI and HTTP both pass the same golden-run test.
 
+**Progress (2026-10-16): built, tested locally and committed (`1d7cfcd`); not yet deployed.**
+- **Layout:** `server/app.mjs` wires the pieces together. `http/api.mjs` handles routes, caching,
+  the rate limit and the retention sweep. `http/validate.mjs` rejects unknown fields with 400.
+  `http/auth.mjs` checks the hashed token. `http/openapi.mjs` holds Muse's instructions.
+  `runs/runner.mjs` is the queue (concurrency 2, retry policy), `runs/execute.mjs` runs one attempt
+  and writes its files and audit record, and `store/fsStore.mjs` stores everything as atomic JSON,
+  with ids pattern-checked before they become paths. `summary.mjs` is shared with the CLI.
+- **Token:** only `TAILORUNE_API_TOKEN_SHA256` is read. `node server/hash-token.mjs` prints the
+  hash from `.env.local`. The hash itself is not accepted as a token (tested).
+- **Retry policy:** `providers_temporarily_unavailable` and `rate_limited` are retried, and
+  `quota_exhausted` too when its wait is ≤90s. The suggested wait is clamped to 1–90s, with 2
+  attempts in all. A bad key or other errors fail at once. Provider keys are redacted from stored
+  errors.
+- **Cache:** an identical request (same resume text, job, constraints and options) returns the
+  earlier run while its files are live, or the in-progress run, so a repeated POST cannot start a
+  duplicate. Failed runs are never served from the cache.
+- **Retention:** files 24h, audit records and runs 12 months, swept at most hourly. Deleting a
+  resume deletes its runs, files and audit records.
+- **Pipeline additions** (ignored by the extension): `llm.answers` records which provider and
+  model answered each step, and `resolveResumeText` is exported so uploads are read to text once.
+- **Tests:** `tests/unit/api.test.mjs` (19). `npm test`: **439 unit + 84 e2e pass.**
+- **Live local check** (`node server/dev.mjs` with real keys, fictional resume and posting):
+  - The first run **failed after both attempts**. A direct probe confirmed Google was returning
+    **503 "high demand"** for `gemini-3.5-flash-lite` while `3.1-flash-lite` answered: a real,
+    intermittent outage, not a bug.
+  - The same request a minute later was a fresh run (failed runs are not cached): **done in 33s**,
+    all approved, 4 files.
+  - The download returned 200 with the right content type, and 401 without the token. The audit
+    named the models. A repeated POST was a cache hit. A scan of stored data, logs and responses
+    found no secrets.
+- **Open question:** two outages in an hour suggest **raising `maxAttempts` to 3** (waits within
+  Vercel's 300s), and Groq's Qwen failed resume validation in both outages, so it is a weak
+  fallback for this task. Measure both before changing anything, using
+  `npm run test:live:rotation` and `providers.js`, edited only from `~/.hirepilot/.env`.
+
 ### M4 — Read the job from a URL on the server (1 day)
 - Fetch the page with the SSRF guard. Run `extractJob.js`'s **JSON-LD tier** (no DOM needed), then
   readable-text extraction over the parsed HTML (`linkedom`, small and dependency-free).
