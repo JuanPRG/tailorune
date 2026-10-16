@@ -534,6 +534,51 @@ only 4 of 45 runs were usable.
 - **The published extension (2.3.3) still names the withdrawn model.** OpenRouter-only users stay
   broken until a 2.3.4 release goes through the Chrome Web Store.
 
+**Release 2.3.4, prepared (2026-10-16), not yet uploaded.**
+- Branch `release/2.3.4`, cut from `main`: the OpenRouter fix (`e402712`, cherry-picked from
+  `6b05790`), the version bump (`4d17f2a`) and the benchmark candidates (`2339d39`). None of the API
+  work is included.
+- `dist/tailorune-2.3.4.zip` has 44 files. Its manifest is identical to 2.3.3 apart from the version
+  (the permissions are unchanged, so no install is disabled). The bundles route to laguna, and the
+  zip contains no API code, `.env` or `.vercel` files.
+- `npm test` passes, 392 unit + 84 e2e (476, the same count as 2.3.3).
+- `store/PUBLISHED_VERSION` stays at 2.3.3 until the store accepts the upload. After that: record
+  it, merge `release/2.3.4` into `main`, and tag `v2.3.4`.
+
+**Are the chains up to date? Catalogue and benchmark check, 2026-10-16, on `release/2.3.4`.**
+- **Nothing is retired.** Every chain model is still in its provider's `GET /models`.
+- **Groq has nothing new**: only `allam-2-7b` beyond the chain's three models.
+- **New on Gemini, measured and not adopted:**
+  - **There is no `gemini-3.8-flash-lite`.** 3.8 exists only as `gemini-3.8-flash`, the larger
+    thinking tier.
+  - **`gemini-flash-lite-latest` resolves to `gemini-3.5-flash-lite`** (its `modelVersion`), which
+    is already #2. The chain already has the newest Flash-Lite. The alias scored 3/3 resumes
+    (80–84% kept) and 3/3 letters, but pinning an alias would let Google change the model under a
+    tested chain.
+  - `gemini-3.8-flash` / `3.7-flash`: 503 "high demand", then quota exhausted on every real-sized
+    request. They cannot be measured today, and free-tier headroom for resume-sized prompts looks
+    too small.
+  - `gemini-3.6-flash`: answers a 5-token ping, but hit quota on every real resume request. As a
+    thinking tier it is also prone to truncating letters (see the letter benchmark above).
+  - `gemini-3-flash-preview`: cut off every letter (69–72 words).
+  - `gemini-2.5-flash-lite`: fast (~1.5s) but weak: resumes 1/3 (dropped quantities), letters 1/3
+    (too short).
+  - **`gemini-4-argon`: no free tier.** A 5-token request broke all four free-tier quotas at once
+    (requests and tokens, per minute and per day).
+  - `gemma-4-31b-it` / `26b` on Google's API: unavailable (31b), or 1,300-word truncated letters
+    (26b).
+- **A transient Groq limit, seen live:** during the first full run, Groq refused Qwen with "Request
+  too large ... output tokens per minute (OTPM): **Limit 1000**, Requested 2048". Minutes later all
+  three Groq models accepted 3,072 output tokens again, with the usual 8,000/min budget. Groq
+  evidently tightens limits under load. Rotation treated it as a rate limit (an 86s hold), and
+  retrying the same model with `max_tokens` under the stated limit would have worked. Not changed
+  in 2.3.4; worth a look if it recurs.
+- **Full live run with all providers** (`npm run test:live`): **passed in 24s**. The resume and
+  skills were approved (84–93% kept). The letter was written by Qwen while both Gemini flash-lites
+  returned 503, and came out at 286 words, over the 275 ceiling: Qwen's known length habit.
+  `npm run test:live:rotation` passed the catalogue and health checks, and failed two forced-walk
+  checks only on landing position, because Gemini was returning 503s.
+
 *Side effect to decide on:* `vercel link` connected the GitHub repo to `tailorune-api`, so a push
 to `main` deploys the API, and other branches get preview deployments (which fail closed).
 
